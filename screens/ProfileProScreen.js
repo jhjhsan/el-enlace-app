@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Modal, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Modal, Linking } from 'react-native';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
 import { Ionicons } from '@expo/vector-icons';
-
-const { width } = Dimensions.get('window');
+import { AntDesign } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function ProfileProScreen({ navigation }) {
   const { userData } = useUser();
@@ -13,113 +13,99 @@ export default function ProfileProScreen({ navigation }) {
   if (!userData) {
     return (
       <View style={styles.screen}>
-        <Text style={styles.loadingText}>Cargando perfil...</Text>
+        <Text style={{ color: '#fff' }}>Cargando perfil...</Text>
       </View>
     );
   }
 
-  const {
-    profileImage,
-    name,
-    email,
-    phone,
-    instagram,
-    categories,
-    description,
-    images
-  } = userData;
-
-  const handlePhonePress = () => {
-    Linking.openURL(`tel:${phone}`);
+  const handleContact = (type) => {
+    if (type === 'email' && userData.email) {
+      Linking.openURL(`mailto:${userData.email}`);
+    } else if (type === 'phone' && userData.phone) {
+      Linking.openURL(`tel:${userData.phone}`);
+    } else if (type === 'instagram' && userData.instagram) {
+      const instagramUsername = userData.instagram.replace('@', '');
+      Linking.openURL(`https://instagram.com/${instagramUsername}`);
+    }
   };
 
-  const handleEmailPress = () => {
-    Linking.openURL(`mailto:${email}`);
+  const handleWhatsApp = () => {
+    if (userData.phone) {
+      const phoneNumber = userData.phone.replace(/\D/g, '');
+      Linking.openURL(`https://wa.me/${phoneNumber}`);
+    }
   };
 
-  const handleInstagramPress = () => {
-    Linking.openURL(`https://www.instagram.com/${instagram}`);
-  };
-
-  const handleWhatsAppPress = () => {
-    Linking.openURL(`https://wa.me/${phone.replace('+', '')}`);
+  const handleToggleImage = (uri) => {
+    if (selectedImage === uri) {
+      setSelectedImage(null);
+    } else {
+      setSelectedImage(uri);
+    }
   };
 
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
 
-        {/* Botón de editar */}
-        <View style={styles.editButtonContainer}>
-          <TouchableOpacity onPress={() => navigation.navigate('CompleteProfile')}>
-            <Ionicons name="create-outline" size={24} color="#D8A353" />
-          </TouchableOpacity>
-        </View>
+        {/* Botón Editar */}
+        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('CompleteProfile')}>
+          <AntDesign name="edit" size={24} color="#D8A353" />
+        </TouchableOpacity>
 
-        <Image
-          source={profileImage ? { uri: profileImage } : require('../assets/imagen5.png')}
-          style={styles.profileImage}
-        />
-        <Text style={styles.name}>{name}</Text>
-        {categories && <Text style={styles.category}>{categories.join(', ')}</Text>}
+        {/* Foto de perfil */}
+        <Image source={{ uri: userData.profilePhoto }} style={styles.profileImage} />
+
+        {/* Nombre y Categoría */}
+        <Text style={styles.name}>{userData.name}</Text>
+        <Text style={styles.category}>{userData.category.join(', ')}</Text>
 
         {/* Contacto */}
-        <View style={styles.infoContainer}>
-          <TouchableOpacity style={styles.infoRow} onPress={handleEmailPress}>
-            <Ionicons name="mail-outline" size={20} color="#D8A353" style={{ marginRight: 10 }} />
-            <Text style={styles.infoText}>{email}</Text>
+        <View style={styles.contactContainer}>
+          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
+            <Ionicons name="mail" size={20} color="#D8A353" />
+            <Text style={styles.contactText}>{userData.email}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.infoRow} onPress={handlePhonePress}>
-            <Ionicons name="call-outline" size={20} color="#D8A353" style={{ marginRight: 10 }} />
-            <Text style={styles.infoText}>{phone}</Text>
+          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
+            <Ionicons name="call" size={20} color="#D8A353" />
+            <Text style={styles.contactText}>{userData.phone}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.infoRow} onPress={handleInstagramPress}>
-            <Ionicons name="logo-instagram" size={20} color="#E1306C" style={{ marginRight: 10 }} />
-            <Text style={styles.infoText}>@{instagram}</Text>
+          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('instagram')}>
+            <MaterialCommunityIcons name="instagram" size={20} color="#E4405F" />
+            <Text style={styles.contactText}>{userData.instagram}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Descripción */}
-        <Text style={styles.sectionTitle}>DESCRIPCIÓN</Text>
-        <View style={styles.descriptionBox}>
-          <Text style={styles.descriptionText}>{description || 'Agrega una descripción...'}</Text>
-        </View>
+        {userData.description ? (
+          <Text style={styles.description}>{userData.description}</Text>
+        ) : null}
 
         {/* Fotos y Videos */}
-        <Text style={styles.sectionTitle}>FOTOS Y VIDEOS</Text>
         <View style={styles.galleryContainer}>
-          {images && images.length > 0 ? (
-            images.map((img, index) => (
-              <TouchableOpacity key={index} onPress={() => setSelectedImage(img)}>
-                <Image source={{ uri: img }} style={styles.galleryImage} />
-              </TouchableOpacity>
-            ))
-          ) : (
-            <Text style={styles.noPhotosText}>No has agregado fotos aún.</Text>
-          )}
+          {userData.bookPhotos && userData.bookPhotos.map((uri, index) => (
+            <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
+              <Image
+                source={{ uri }}
+                style={selectedImage === uri ? styles.largeImage : styles.galleryImage}
+              />
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Botones de acción */}
-        <TouchableOpacity style={styles.viewBookButton}>
-          <Text style={styles.viewBookText}>➔ Ver Book Completo (Drive)</Text>
+        {/* Botón Contactar */}
+        <TouchableOpacity style={styles.contactButton} onPress={handleWhatsApp}>
+          <Text style={styles.contactButtonText}>CONTACTAR</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.contactButton} onPress={handleWhatsAppPress}>
-          <Text style={styles.contactButtonText}>Contactar al WhatsApp</Text>
+        {/* Botón Ver Book Completo */}
+        <TouchableOpacity style={styles.viewBookButton}>
+          <Text style={styles.viewBookText}>📁 Ver book completo (Drive)</Text>
         </TouchableOpacity>
 
       </ScrollView>
-
-      {/* Modal para imagen expandida */}
-      <Modal visible={!!selectedImage} transparent={true} animationType="fade">
-        <TouchableOpacity style={styles.modalContainer} onPress={() => setSelectedImage(null)}>
-          {selectedImage && (
-            <Image source={{ uri: selectedImage }} style={styles.fullImage} resizeMode="contain" />
-          )}
-        </TouchableOpacity>
-      </Modal>
 
       <BottomBar />
     </View>
@@ -133,110 +119,80 @@ const styles = StyleSheet.create({
   },
   container: {
     alignItems: 'center',
-    paddingBottom: 100,
-  },
-  editButtonContainer: {
-    alignSelf: 'flex-end',
-    marginTop: 50,
-    marginRight: 30,
+    paddingBottom: 120,
+    paddingTop: 40,
   },
   profileImage: {
-    width: 120,
-    height: 120,
+    width: 80,
+    height: 80,
     borderRadius: 60,
-    marginTop: -10,
-    borderWidth: 2,
     borderColor: '#D8A353',
+    borderWidth: 2,
+    marginBottom: 10,
   },
   name: {
-    color: '#FFFFFF',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#fff',
     marginTop: 10,
   },
   category: {
-    color: '#CCCCCC',
-    fontSize: 16,
+    fontSize: 14,
+    color: '#D8A353',
     marginBottom: 20,
   },
-  infoContainer: {
+  contactContainer: {
     width: '80%',
     marginBottom: 20,
   },
-  infoRow: {
+  contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1B1B1B',
+    padding: 10,
+    borderRadius: 8,
     borderColor: '#D8A353',
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
     marginVertical: 5,
   },
-  infoText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  contactText: {
+    color: '#CCCCCC',
+    marginLeft: 10,
   },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    marginLeft: '10%',
-  },
-  descriptionBox: {
+  description: {
     width: '80%',
+    color: '#CCCCCC',
+    backgroundColor: '#1B1B1B',
+    padding: 10,
+    borderRadius: 10,
     borderColor: '#D8A353',
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 20,
-  },
-  descriptionText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    marginVertical: 15,
   },
   galleryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    width: '90%',
-    justifyContent: 'space-around',
-    marginBottom: 20,
+    justifyContent: 'center',
+    marginVertical: 15,
   },
   galleryImage: {
-    width: (width * 0.4),
-    height: (width * 0.4),
-    borderRadius: 10,
+    width: 70,
+    height: 70,
+    borderRadius: 8,
     margin: 5,
   },
-  noPhotosText: {
-    color: '#CCCCCC',
-    fontSize: 14,
-    marginTop: 10,
-  },
-  viewBookButton: {
-    marginTop: 10,
-    borderColor: '#D8A353',
-    borderWidth: 1,
+  largeImage: {
+    width: 200,
+    height: 200,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    marginBottom: 15,
-  },
-  viewBookText: {
-    color: '#D8A353',
-    fontSize: 14,
+    margin: 5,
   },
   contactButton: {
     backgroundColor: '#D8A353',
     borderRadius: 10,
     paddingVertical: 15,
-    paddingHorizontal: 30,
     width: '80%',
-    marginBottom: 30,
+    marginTop: 20,
   },
   contactButtonText: {
     color: '#000',
@@ -244,20 +200,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#000000CC',
-    justifyContent: 'center',
-    alignItems: 'center',
+  viewBookButton: {
+    marginTop: 15,
   },
-  fullImage: {
-    width: width * 0.9,
-    height: width * 1.1,
+  viewBookText: {
+    color: '#CCCCCC',
+    textDecorationLine: 'underline',
   },
-  loadingText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginTop: 50,
-    textAlign: 'center',
+  editButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 10,
   },
 });
