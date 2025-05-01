@@ -5,6 +5,7 @@ import BottomBar from '../components/BottomBar';
 import { Ionicons } from '@expo/vector-icons';
 import { AntDesign } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Video } from 'expo-av';
 
 export default function ProfileProScreen({ navigation }) {
   const { userData } = useUser();
@@ -49,7 +50,7 @@ export default function ProfileProScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container}>
 
         {/* Botón Editar */}
-        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('CompleteProfile')}>
+        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfile')}>
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
 
@@ -58,7 +59,9 @@ export default function ProfileProScreen({ navigation }) {
 
         {/* Nombre y Categoría */}
         <Text style={styles.name}>{userData.name}</Text>
-        <Text style={styles.category}>{userData.category.join(', ')}</Text>
+<Text style={styles.category}>
+  {(userData.category && Array.isArray(userData.category)) ? userData.category.join(', ') : ''}
+</Text>
 
         {/* Contacto */}
         <View style={styles.contactContainer}>
@@ -77,6 +80,22 @@ export default function ProfileProScreen({ navigation }) {
             <Text style={styles.contactText}>{userData.instagram}</Text>
           </TouchableOpacity>
         </View>
+        <View style={styles.infoBox}>
+  {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
+  {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
+  {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
+  {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
+  {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
+  {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
+  {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
+  {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
+  {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
+  {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
+  {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
+  {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
+  {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
+</View>
+
 
         {/* Descripción */}
         {userData.description ? (
@@ -94,15 +113,18 @@ export default function ProfileProScreen({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
+        {userData.profileVideo && (
+  <Video
+    source={{ uri: userData.profileVideo }}
+    useNativeControls
+    resizeMode="contain"
+    style={styles.video}
+  />
+)}
 
-        {/* Botón Contactar */}
+        {/* Botón Contactaral Whatsapp */}
         <TouchableOpacity style={styles.contactButton} onPress={handleWhatsApp}>
-          <Text style={styles.contactButtonText}>CONTACTAR</Text>
-        </TouchableOpacity>
-
-        {/* Botón Ver Book Completo */}
-        <TouchableOpacity style={styles.viewBookButton}>
-          <Text style={styles.viewBookText}>📁 Ver book completo (Drive)</Text>
+          <Text style={styles.contactButtonText}>Contactar al Whatsapp</Text>
         </TouchableOpacity>
 
       </ScrollView>
@@ -123,8 +145,8 @@ const styles = StyleSheet.create({
     paddingTop: 40,
   },
   profileImage: {
-    width: 80,
-    height: 80,
+    width: 120,
+    height: 120,
     borderRadius: 60,
     borderColor: '#D8A353',
     borderWidth: 2,
@@ -213,4 +235,27 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 10,
   },
+  infoBox: {
+    width: '80%',
+    backgroundColor: '#1B1B1B',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    padding: 10,
+    marginBottom: 20,
+  },
+  infoText: {
+    color: '#CCCCCC',
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  video: {
+    width: '90%',
+    height: 200,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    marginVertical: 15,
+  }
+  
 });

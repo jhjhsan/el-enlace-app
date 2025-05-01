@@ -1,12 +1,15 @@
+// screens/SplashScreen.js
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUser } from '../contexts/UserContext';
 
-export default function SplashScreen({ navigation }) {
+export default function SplashScreen() {
+  const { setUserData, setIsLoggedIn } = useUser(); // ✅ asegúrate de tener esto en tu contexto
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Para desvanecer
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Animación de giro
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -15,19 +18,24 @@ export default function SplashScreen({ navigation }) {
       })
     ).start();
 
-    // Esperar 3 segundos y navegar a Welcome
-    const timeout = setTimeout(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      }).start(() => {
-        navigation.replace('Welcome');
-      });
-    }, 3000);
+    const checkSession = async () => {
+      try {
+        const json = await AsyncStorage.getItem('userProfile');
+        if (json) {
+          const profile = JSON.parse(json);
+          setUserData(profile);
+          setIsLoggedIn(true); // 🔁 activa AppNavigator
+        } else {
+          setIsLoggedIn(false); // 🔁 activa AuthNavigator
+        }
+      } catch (err) {
+        console.warn('Error leyendo sesión:', err);
+        setIsLoggedIn(false);
+      }
+    };
 
-    return () => clearTimeout(timeout);
-  }, [navigation, rotateAnim, fadeAnim]);
+    setTimeout(checkSession, 2000); // espera 2 segundos
+  }, [rotateAnim, setUserData, setIsLoggedIn]);
 
   const spin = rotateAnim.interpolate({
     inputRange: [0, 1],
@@ -47,7 +55,7 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // fondo negro
+    backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }) {
@@ -12,13 +13,27 @@ export default function LoginScreen({ navigation }) {
     return regex.test(email);
   };
 
-  const handleLogin = () => {
-    navigation.navigate('Dashboard');
+  const handleLogin = async () => {
+    try {
+      const json = await AsyncStorage.getItem('userData');
+      const storedUser = JSON.parse(json);
+
+      if (!storedUser || storedUser.email !== email || storedUser.password !== password) {
+        Alert.alert('Acceso denegado', 'Correo o contraseña incorrectos.');
+        return;
+      }
+
+      await AsyncStorage.setItem('userProfile', JSON.stringify(storedUser));
+      navigation.replace('Dashboard');
+    } catch (error) {
+      console.log(error);
+      Alert.alert('Error', 'No se pudo acceder. Intenta nuevamente.');
+    }
   };
 
   return (
     <View style={styles.container}>
-      {/* Logo grande */}
+      {/* Logo */}
       <Image
         source={require('../assets/logo.png')}
         style={styles.logo}
@@ -74,7 +89,7 @@ export default function LoginScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* Registrarse */}
-      <TouchableOpacity>
+      <TouchableOpacity onPress={() => navigation.navigate('Register')}>
         <Text style={styles.registerText}>
           ¿No tienes cuenta? <Text style={{ color: '#BF872E' }}>Regístrate</Text>
         </Text>

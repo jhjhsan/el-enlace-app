@@ -1,6 +1,17 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, FlatList, Dimensions } from 'react-native';
-import BottomBar from '../components/BottomBar'; // ✅ Aquí se importa bien el BottomBar
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  Dimensions,
+  Alert,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import BottomBar from '../components/BottomBar';
 
 const { width } = Dimensions.get('window');
 
@@ -15,6 +26,20 @@ const images = [
 export default function DashboardScreen({ navigation }) {
   const scrollRef = useRef(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [userName, setUserName] = useState('');
+  const [membershipType, setMembershipType] = useState('free');
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const json = await AsyncStorage.getItem('userProfile');
+      if (json) {
+        const user = JSON.parse(json);
+        setUserName(user.name || 'Usuario');
+        setMembershipType(user.membershipType || 'free');
+      }
+    };
+    loadUser();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -22,7 +47,6 @@ export default function DashboardScreen({ navigation }) {
       setCurrentIndex(nextIndex);
       scrollRef.current?.scrollToOffset({ offset: nextIndex * width, animated: true });
     }, 5000);
-
     return () => clearInterval(interval);
   }, [currentIndex]);
 
@@ -31,8 +55,10 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container}>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
 
-        <Text style={styles.title}>EL ENLACE</Text>
-        <Text style={styles.subtitle}>Conecta talentos y servicios del mundo audiovisual</Text>
+        <Text style={styles.title}> {userName}</Text>
+        <Text style={styles.subtitle}>
+          Tipo de cuenta: {membershipType === '' ? 'Pro 🏆' : 'Free 🎬'}
+        </Text>
 
         <FlatList
           ref={scrollRef}
@@ -47,12 +73,25 @@ export default function DashboardScreen({ navigation }) {
         />
 
         <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => navigation.navigate('ExploreProfiles')}
+          >
             <Text style={styles.buttonText}>Explorar perfiles</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.button}>
-            <Text style={styles.buttonText}>Publicar un servicio</Text>
-          </TouchableOpacity>
+
+          <TouchableOpacity
+  style={[styles.button, { opacity: 0.5 }]}
+  onPress={() =>
+    Alert.alert(
+      'Solo usuarios Pro',
+      'Debes tener una membresía Pro para publicar servicios.'
+    )
+  }
+>
+  <Text style={styles.buttonText}>🔒 Publicar un servicio</Text>
+</TouchableOpacity>
+
         </View>
 
         <Text style={styles.categoriesTitle}>Categorías destacadas</Text>
@@ -72,13 +111,16 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Botón agregado para navegar a CompleteProfile */}
-        <TouchableOpacity
-          style={styles.publishButton}
-          onPress={() => navigation.navigate('CompleteProfile')}
-        >
-          <Text style={styles.publishButtonText}>PUBLICAR PERFIL PROFESIONAL</Text>
-        </TouchableOpacity>
+        
+        {membershipType === 'free' && (
+  <TouchableOpacity
+    style={styles.proButton}
+    onPress={() => navigation.navigate('Subscription')}
+  >
+    <Text style={styles.proButtonText}>🔒 Membresía Pro</Text>
+  </TouchableOpacity>
+)}
+
 
       </ScrollView>
 
@@ -109,8 +151,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: '#CCCCCC',
-    fontSize: 16,
-    marginTop: 5,
+    fontSize: 14,
     marginBottom: 10,
   },
   carouselImage: {
@@ -170,4 +211,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+  disabledButton: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    marginTop: 30,
+    marginBottom: 40,
+    alignSelf: 'center',
+    width: '80%',
+    opacity: 0.5, // para mantenerlo visualmente deshabilitado
+  },
+  
+  disabledButtonText: {
+    color: '#888',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  accountBadge: {
+    color: '#D8A353',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginVertical: 10,
+  },
+  proButton: {
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    marginTop: 40,
+    marginBottom: 60,
+    opacity: 0.5,
+  },
+  proButtonText: {
+    color: '#D8A353',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  
 });

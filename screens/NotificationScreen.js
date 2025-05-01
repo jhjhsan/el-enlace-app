@@ -2,12 +2,12 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import BottomBar from '../components/BottomBar';
 
-export default function HomeScreen() {
+export default function NotificationScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Inicio</Text>
-        <Text style={styles.text}>Aquí verás las novedades y recomendaciones.</Text>
+        <Text style={styles.title}>Notificaciones</Text>
+        <Text style={styles.text}>Aquí recibirás todas las alertas importantes.</Text>
       </View>
       <BottomBar />
     </View>
