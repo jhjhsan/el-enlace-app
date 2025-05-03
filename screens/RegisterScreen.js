@@ -1,6 +1,13 @@
 // screens/RegisterScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RegisterScreen({ navigation }) {
@@ -18,8 +25,7 @@ export default function RegisterScreen({ navigation }) {
 
     try {
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
-      Alert.alert('Cuenta creada', 'Ahora puedes iniciar sesión.');
-      navigation.navigate('Login');
+      navigation.replace('CompleteFree'); // Redirige al formulario de perfil gratuito
     } catch (err) {
       console.log(err);
       Alert.alert('Error', 'Hubo un problema al guardar los datos.');

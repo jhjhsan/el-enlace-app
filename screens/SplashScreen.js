@@ -1,15 +1,18 @@
-// screens/SplashScreen.js
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 
 export default function SplashScreen() {
-  const { setUserData, setIsLoggedIn } = useUser(); // ✅ asegúrate de tener esto en tu contexto
+  const { setUserData, setIsLoggedIn } = useUser();
+  const navigation = useNavigation();
+
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    // Animación giratoria
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -18,24 +21,36 @@ export default function SplashScreen() {
       })
     ).start();
 
-    const checkSession = async () => {
+    const loadUser = async () => {
       try {
-        const json = await AsyncStorage.getItem('userProfile');
+        const json =
+          (await AsyncStorage.getItem('userProfilePro')) ||
+          (await AsyncStorage.getItem('userProfile'));
         if (json) {
           const profile = JSON.parse(json);
           setUserData(profile);
-          setIsLoggedIn(true); // 🔁 activa AppNavigator
-        } else {
-          setIsLoggedIn(false); // 🔁 activa AuthNavigator
+          setIsLoggedIn(true);
         }
       } catch (err) {
         console.warn('Error leyendo sesión:', err);
-        setIsLoggedIn(false);
       }
     };
 
-    setTimeout(checkSession, 2000); // espera 2 segundos
-  }, [rotateAnim, setUserData, setIsLoggedIn]);
+    const timer = setTimeout(async () => {
+      await loadUser();
+
+      // Fade elegante antes de navegar
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }).start(() => {
+        navigation.replace('MainApp'); // Ahora va al stack completo
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   const spin = rotateAnim.interpolate({
     inputRange: [0, 1],

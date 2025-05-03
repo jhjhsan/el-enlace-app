@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomBar from '../components/BottomBar';
+import { useFocusEffect } from '@react-navigation/native';
+import { useUser } from '../contexts/UserContext';
 
 const { width } = Dimensions.get('window');
 
@@ -28,18 +30,23 @@ export default function DashboardScreen({ navigation }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userName, setUserName] = useState('');
   const [membershipType, setMembershipType] = useState('free');
+  const { setUserData } = useUser();
 
-  useEffect(() => {
-    const loadUser = async () => {
-      const json = await AsyncStorage.getItem('userProfile');
-      if (json) {
-        const user = JSON.parse(json);
-        setUserName(user.name || 'Usuario');
-        setMembershipType(user.membershipType || 'free');
-      }
-    };
-    loadUser();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const loadUser = async () => {
+        const json = await AsyncStorage.getItem('userProfile');
+        if (json) {
+          const user = JSON.parse(json);
+          setUserName(user.name || 'Usuario');
+          setMembershipType(user.membershipType || 'free');
+          setUserData(user);
+          console.log('Loaded user:', user);
+        }
+      };
+      loadUser();
+    }, [setUserData])
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -55,10 +62,13 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container}>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
 
-        <Text style={styles.title}> {userName}</Text>
-        <Text style={styles.subtitle}>
-          Tipo de cuenta: {membershipType === '' ? 'Pro 🏆' : 'Free 🎬'}
-        </Text>
+        <Text style={styles.userName}>{userName}</Text>
+
+        {membershipType === 'pro' ? (
+          <Text style={styles.proBadge}> Miembro Pro 🏆</Text>
+        ) : (
+          <Text style={styles.freeBadge}> Miembro Free  🎬 </Text>
+        )}
 
         <FlatList
           ref={scrollRef}
@@ -80,18 +90,23 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.buttonText}>Explorar perfiles</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-  style={[styles.button, { opacity: 0.5 }]}
-  onPress={() =>
-    Alert.alert(
-      'Solo usuarios Pro',
-      'Debes tener una membresía Pro para publicar servicios.'
-    )
-  }
->
-  <Text style={styles.buttonText}>🔒 Publicar un servicio</Text>
-</TouchableOpacity>
-
+          {membershipType === 'pro' ? (
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => navigation.navigate('Publish')}
+            >
+              <Text style={styles.buttonText}>Publicar un servicio</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.button, { opacity: 0.5 }]}
+              onPress={() =>
+                Alert.alert('Solo usuarios Pro', 'Debes tener una membresía Pro para publicar servicios.')
+              }
+            >
+              <Text style={styles.buttonText}>🔒 Publicar un servicio</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={styles.categoriesTitle}>Categorías destacadas</Text>
@@ -111,20 +126,24 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        
-        {membershipType === 'free' && (
-  <TouchableOpacity
-    style={styles.proButton}
-    onPress={() => navigation.navigate('Subscription')}
-  >
-    <Text style={styles.proButtonText}>🔒 Membresía Pro</Text>
-  </TouchableOpacity>
-)}
-
-
+        {membershipType === 'free' ? (
+          <TouchableOpacity
+            style={styles.disabledButton}
+            onPress={() => navigation.navigate('Subscription')}
+          >
+            <Text style={styles.disabledButtonText}>🔒 Membresía Pro</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.proButton}
+            onPress={() => navigation.navigate('Subscription')}
+          >
+            <Text style={styles.proButtonText}>Miembro Pro 🏆</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
-      <BottomBar />
+      <BottomBar membershipType={membershipType} />
     </View>
   );
 }
@@ -142,6 +161,13 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     marginTop: 50,
+  },
+  userName: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: -5,
+    marginBottom: 5,
   },
   title: {
     color: '#D8A353',
@@ -197,16 +223,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginVertical: 5,
   },
-  publishButton: {
-    backgroundColor: '#D8A353',
+  proButton: {
+    backgroundColor: '#000',
     borderRadius: 10,
+    borderColor: '#D8A353',
+    borderWidth: 1,
     paddingVertical: 15,
     paddingHorizontal: 30,
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: 30,
+    marginBottom: 40,
   },
-  publishButtonText: {
-    color: '#000',
+  proButtonText: {
+    color: '#D8A353',
     fontWeight: 'bold',
     fontSize: 14,
     textAlign: 'center',
@@ -222,36 +250,24 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     alignSelf: 'center',
     width: '80%',
-    opacity: 0.5, // para mantenerlo visualmente deshabilitado
+    opacity: 0.5,
   },
-  
   disabledButtonText: {
     color: '#888',
     fontWeight: 'bold',
     fontSize: 14,
     textAlign: 'center',
   },
-  accountBadge: {
+  proBadge: {
     color: '#D8A353',
     fontSize: 16,
     fontWeight: 'bold',
-    marginVertical: 10,
+    marginBottom: 15,
   },
-  proButton: {
-    borderWidth: 1,
-    borderColor: '#D8A353',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    marginTop: 40,
-    marginBottom: 60,
-    opacity: 0.5,
-  },
-  proButtonText: {
+  freeBadge: {
     color: '#D8A353',
+    fontSize: 16,
     fontWeight: 'bold',
-    fontSize: 14,
-    textAlign: 'center',
+    marginBottom: 15,
   },
-  
 });

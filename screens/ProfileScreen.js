@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,50 +10,68 @@ import {
 } from 'react-native';
 import BottomBar from '../components/BottomBar';
 import { AntDesign } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { useUser } from '../contexts/UserContext';
 
 const { width } = Dimensions.get('window');
 
 export default function ProfileScreen({ navigation }) {
-  const userName = 'Jhon Santana';
-  const category = 'Extra / Actor';
-  const email = 'jhonsantana@email.com';
-  const description = 'Soy un apasionado del cine y el teatro. Busco nuevas oportunidades en el mundo audiovisual.';
-  const images = [
-    require('../assets/imagen1.png'),
-    require('../assets/imagen2.png'),
-    require('../assets/imagen3.png'),
-  ];
+  const { userData, setUserData } = useUser();
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadUser = async () => {
+        const json = await AsyncStorage.getItem('userProfileFree');
+        if (json) {
+          const user = JSON.parse(json);
+          setUserData(user);
+        }
+      };
+      loadUser();
+    }, [])
+  );
+
+  if (!userData) {
+    return (
+      <View style={styles.screen}>
+        <Text style={{ color: '#fff' }}>Cargando perfil...</Text>
+      </View>
+    );
+  }
+
+  const userName = userData.name || 'Usuario';
+  const category = userData.category || 'Categoría no definida';
+  const email = userData.email || 'Correo no definido';
+  const description = userData.description || 'Sin descripción';
+  const images = userData.bookPhotos || [];
 
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Botón Editar */}
-        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfile')}>
+        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfileFree')}>
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
 
-        {/* Foto de perfil */}
-        <Image source={require('../assets/imagen5.png')} style={styles.profileImage} />
+        <Image source={userData.profilePhoto ? { uri: userData.profilePhoto } : require('../assets/imagen5.png')} style={styles.profileImage} />
 
-        {/* Nombre y categoría */}
         <Text style={styles.name}>{userName}</Text>
         <Text style={styles.category}>{category}</Text>
 
-        {/* Email (solo texto en Free) */}
         <Text style={styles.label}>Correo:</Text>
-        <Text style={styles.text}>{email}</Text>
+        <View style={styles.descriptionBox}>
+          <Text style={styles.text}>{email}</Text>
+        </View>
 
-        {/* Descripción */}
         <Text style={styles.label}>Descripción:</Text>
         <View style={styles.descriptionBox}>
           <Text style={styles.text}>{description}</Text>
         </View>
 
-        {/* Galería simple */}
         <Text style={styles.label}>Fotos:</Text>
         <View style={styles.gallery}>
-          {images.map((img, index) => (
-            <Image key={index} source={img} style={styles.galleryImage} />
+          {images.map((uri, index) => (
+            <Image key={index} source={{ uri }} style={styles.galleryImage} />
           ))}
         </View>
       </ScrollView>
@@ -93,7 +111,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   category: {
-    fontSize: 14,
+    fontSize: 18,
     color: '#CCCCCC',
     marginBottom: 10,
   },
@@ -108,8 +126,6 @@ const styles = StyleSheet.create({
   text: {
     color: '#FFFFFF',
     fontSize: 14,
-    marginHorizontal: 40,
-    marginTop: 5,
     textAlign: 'left',
   },
   descriptionBox: {
@@ -121,6 +137,7 @@ const styles = StyleSheet.create({
   },
   gallery: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     marginTop: 10,
     gap: 10,

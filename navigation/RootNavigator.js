@@ -1,15 +1,27 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+
+import SplashScreen from '../screens/SplashScreen';
 import AppNavigator from './AppNavigator';
-import AuthNavigator from './AuthNavigator';
-import { useUser } from '../contexts/UserContext';
+
+const Stack = createNativeStackNavigator();
+
+const MyDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#000', // fuerza fondo negro al montar y transicionar pantallas
+  },
+};
 
 export default function RootNavigator() {
-  const { isLoggedIn } = useUser();
-
   return (
-    <NavigationContainer>
-      {isLoggedIn ? <AppNavigator /> : <AuthNavigator />}
+    <NavigationContainer theme={MyDarkTheme}>
+      <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Splash" component={SplashScreen} />
+        <Stack.Screen name="MainApp" component={AppNavigator} />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }

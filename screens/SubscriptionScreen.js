@@ -1,24 +1,52 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Image, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Linking,
+  Image,
+  Alert,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SubscriptionScreen({ navigation }) {
-  const handlePayment = () => {
-    Linking.openURL('https://tuweb.com/webpay'); // 🔁 Reemplaza con tu URL de WebPay real
-  };
+  const [membershipType, setMembershipType] = useState('free');
+
+  useEffect(() => {
+    const loadMembership = async () => {
+      const json = await AsyncStorage.getItem('userProfile');
+      if (json) {
+        const user = JSON.parse(json);
+        setMembershipType(user.membershipType || 'free');
+      }
+    };
+    loadMembership();
+  }, []);
 
   const activarProManual = async () => {
     try {
       const json = await AsyncStorage.getItem('userProfile');
       if (json) {
-        const perfil = JSON.parse(json);
-        perfil.membershipType = 'pro';
-        await AsyncStorage.setItem('userProfile', JSON.stringify(perfil));
-        Alert.alert('¡Activado!', 'Ahora tienes cuenta Pro 🏆');
+        const user = JSON.parse(json);
+        const updatedUser = {
+          ...user,
+          membershipType: user.membershipType === 'pro' ? 'free' : 'pro',
+        };
+        await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUser));
+        setMembershipType(updatedUser.membershipType);
+        Alert.alert(
+          'Cuenta actualizada',
+          `Ahora estás usando la cuenta: ${updatedUser.membershipType.toUpperCase()}`
+        );
       }
-    } catch (err) {
-      Alert.alert('Error', 'No se pudo activar el modo Pro');
+    } catch (error) {
+      console.warn('Error actualizando cuenta:', error);
     }
+  };
+
+  const handlePayment = () => {
+    Linking.openURL('https://tuweb.com/webpay'); // Reemplaza con tu enlace real
   };
 
   return (
@@ -49,13 +77,15 @@ export default function SubscriptionScreen({ navigation }) {
         <Text style={styles.payButtonText}>💳 Pagar con WebPay - $4.990 CLP</Text>
       </TouchableOpacity>
 
-      {/* ✅ Botón adicional solo para pruebas */}
+      {/* Botón para cambiar entre Free y Pro (modo test) */}
       <TouchableOpacity
         style={[styles.payButton, { backgroundColor: '#555' }]}
         onPress={activarProManual}
       >
-        <Text style={[styles.payButtonText, { color: '#fff' }]}>
-          Activar cuenta Pro (modo test)
+        <Text style={[styles.payButtonText, { color: '#fff' }]}>  
+          {membershipType === 'pro'
+            ? 'Volver a cuenta Free (modo test)'
+            : 'Activar cuenta Pro (modo test)'}
         </Text>
       </TouchableOpacity>
 
@@ -120,5 +150,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textDecorationLine: 'underline',
     marginTop: 10,
+  },
+  switchLabel: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    marginBottom: 10,
   },
 });

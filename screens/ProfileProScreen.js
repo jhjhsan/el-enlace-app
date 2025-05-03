@@ -1,20 +1,42 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Modal, Linking } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Linking } from 'react-native';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
 import { Ionicons } from '@expo/vector-icons';
 import { AntDesign } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ProfileProScreen({ navigation }) {
-  const { userData } = useUser();
+  const { userData, setUserData } = useUser();
   const [selectedImage, setSelectedImage] = useState(null);
+
+  useEffect(() => {
+    const loadProfilePro = async () => {
+      const json = await AsyncStorage.getItem('userProfilePro');
+      if (json) {
+        const proData = JSON.parse(json);
+        setUserData(proData);
+      }
+    };
+    loadProfilePro();
+  }, []);
 
   if (!userData) {
     return (
       <View style={styles.screen}>
         <Text style={{ color: '#fff' }}>Cargando perfil...</Text>
+      </View>
+    );
+  }
+
+  if (userData.membershipType !== 'pro') {
+    return (
+      <View style={styles.screen}>
+        <Text style={{ color: '#fff', textAlign: 'center', marginTop: 100 }}>
+          Esta sección es exclusiva para cuentas Pro 🏆
+        </Text>
       </View>
     );
   }
@@ -48,22 +70,19 @@ export default function ProfileProScreen({ navigation }) {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-
-        {/* Botón Editar */}
         <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfile')}>
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
 
-        {/* Foto de perfil */}
         <Image source={{ uri: userData.profilePhoto }} style={styles.profileImage} />
-
-        {/* Nombre y Categoría */}
         <Text style={styles.name}>{userData.name}</Text>
-<Text style={styles.category}>
-  {(userData.category && Array.isArray(userData.category)) ? userData.category.join(', ') : ''}
-</Text>
+        
+        {userData.category && (
+  <Text style={styles.category}>{userData.category}</Text>
+)}
 
-        {/* Contacto */}
+
+
         <View style={styles.contactContainer}>
           <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
             <Ionicons name="mail" size={20} color="#D8A353" />
@@ -80,29 +99,27 @@ export default function ProfileProScreen({ navigation }) {
             <Text style={styles.contactText}>{userData.instagram}</Text>
           </TouchableOpacity>
         </View>
+
         <View style={styles.infoBox}>
-  {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
-  {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
-  {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
-  {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
-  {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
-  {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
-  {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
-  {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
-  {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
-  {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
-  {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
-  {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
-  {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
-</View>
+          {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
+          {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
+          {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
+          {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
+          {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
+          {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
+          {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
+          {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
+          {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
+          {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
+          {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
+          {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
+          {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
+        </View>
 
-
-        {/* Descripción */}
-        {userData.description ? (
+        {userData.description && (
           <Text style={styles.description}>{userData.description}</Text>
-        ) : null}
+        )}
 
-        {/* Fotos y Videos */}
         <View style={styles.galleryContainer}>
           {userData.bookPhotos && userData.bookPhotos.map((uri, index) => (
             <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
@@ -113,20 +130,19 @@ export default function ProfileProScreen({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
-        {userData.profileVideo && (
-  <Video
-    source={{ uri: userData.profileVideo }}
-    useNativeControls
-    resizeMode="contain"
-    style={styles.video}
-  />
-)}
 
-        {/* Botón Contactaral Whatsapp */}
+        {userData.profileVideo && (
+          <Video
+            source={{ uri: userData.profileVideo }}
+            useNativeControls
+            resizeMode="contain"
+            style={styles.video}
+          />
+        )}
+
         <TouchableOpacity style={styles.contactButton} onPress={handleWhatsApp}>
           <Text style={styles.contactButtonText}>Contactar al Whatsapp</Text>
         </TouchableOpacity>
-
       </ScrollView>
 
       <BottomBar />
@@ -142,7 +158,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingBottom: 120,
-    paddingTop: 40,
+    paddingTop: 50,
   },
   profileImage: {
     width: 120,
@@ -150,7 +166,7 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     borderColor: '#D8A353',
     borderWidth: 2,
-    marginBottom: 10,
+    marginBottom: 0,
   },
   name: {
     fontSize: 20,
@@ -159,13 +175,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   category: {
-    fontSize: 14,
     color: '#D8A353',
-    marginBottom: 20,
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 5,
   },
+  
   contactContainer: {
     width: '80%',
     marginBottom: 20,
+    marginTop: 5,
   },
   contactItem: {
     flexDirection: 'row',
@@ -222,13 +241,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  viewBookButton: {
-    marginTop: 15,
-  },
-  viewBookText: {
-    color: '#CCCCCC',
-    textDecorationLine: 'underline',
-  },
   editButton: {
     position: 'absolute',
     top: 40,
@@ -256,6 +268,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D8A353',
     marginVertical: 15,
-  }
-  
+  },
 });
