@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Linking } from 'react-native';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
@@ -7,6 +7,7 @@ import { AntDesign } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Animated } from 'react-native';
 
 export default function ProfileProScreen({ navigation }) {
   const { userData, setUserData } = useUser();
@@ -30,7 +31,19 @@ export default function ProfileProScreen({ navigation }) {
       </View>
     );
   }
-
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [isEnlarged, setIsEnlarged] = useState(false);
+  
+  const handleProfilePhotoPress = () => {
+    Animated.timing(scaleAnim, {
+      toValue: isEnlarged ? 1 : 1.6,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsEnlarged(!isEnlarged);
+    });
+  };
+  
   if (userData.membershipType !== 'pro') {
     return (
       <View style={styles.screen}>
@@ -74,7 +87,13 @@ export default function ProfileProScreen({ navigation }) {
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
 
-        <Image source={{ uri: userData.profilePhoto }} style={styles.profileImage} />
+        <TouchableOpacity onPress={handleProfilePhotoPress}>
+  <Animated.Image
+    source={{ uri: userData.profilePhoto }}
+    style={[styles.profileImage, { transform: [{ scale: scaleAnim }] }]}
+  />
+</TouchableOpacity>
+
         <Text style={styles.name}>{userData.name}</Text>
         
         {userData.category && (
@@ -101,20 +120,25 @@ export default function ProfileProScreen({ navigation }) {
         </View>
 
         <View style={styles.infoBox}>
-          {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
-          {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
-          {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
-          {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
-          {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
-          {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
-          {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
-          {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
-          {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
-          {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
-          {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
-          {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
-          {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
-        </View>
+  {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
+  {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
+  {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
+  {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
+  {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
+  {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
+  {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
+  {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
+  {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
+  {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
+  {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
+  {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
+  {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
+  {userData.country && <Text style={styles.infoText}>País: {userData.country}</Text>}
+  {userData.city && <Text style={styles.infoText}>Ciudad: {userData.city}</Text>}
+  {userData.address && <Text style={styles.infoText}>Dirección: {userData.address}</Text>}
+  {userData.commune && <Text style={styles.infoText}>Comuna: {userData.commune}</Text>}
+</View>
+
 
         {userData.description && (
           <Text style={styles.description}>{userData.description}</Text>

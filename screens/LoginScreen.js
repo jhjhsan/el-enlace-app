@@ -1,9 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Alert,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '../contexts/UserContext';
+import { saveUserProfile } from '../utils/profileStorage';
 
 export default function LoginScreen({ navigation }) {
+  const { setUserData } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,8 +34,12 @@ export default function LoginScreen({ navigation }) {
         return;
       }
 
-      await AsyncStorage.setItem('userProfile', JSON.stringify(storedUser));
-      navigation.replace('Dashboard');
+      const success = await saveUserProfile(storedUser, 'free', setUserData);
+      if (success) {
+        navigation.replace('Dashboard');
+      } else {
+        Alert.alert('Error', 'No se pudo acceder. Intenta nuevamente.');
+      }
     } catch (error) {
       console.log(error);
       Alert.alert('Error', 'No se pudo acceder. Intenta nuevamente.');
@@ -33,18 +48,13 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Logo */}
-      <Image
-        source={require('../assets/logo.png')}
-        style={styles.logo}
-      />
+      <Image source={require('../assets/logo.png')} style={styles.logo} />
 
       <Text style={styles.title}>Inicio de sesión</Text>
       <Text style={styles.subtitle}>
         Inicia sesión con tu cuenta <Text style={{ fontWeight: 'bold', color: '#BF872E' }}>EL ENLACE</Text>.
       </Text>
 
-      {/* Input de correo */}
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
@@ -63,7 +73,6 @@ export default function LoginScreen({ navigation }) {
         />
       </View>
 
-      {/* Input de contraseña */}
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
@@ -78,17 +87,14 @@ export default function LoginScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Olvidé contraseña */}
       <TouchableOpacity>
         <Text style={styles.forgotPassword}>Olvidé mi contraseña</Text>
       </TouchableOpacity>
 
-      {/* Botón iniciar sesión */}
       <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
         <Text style={styles.loginButtonText}>INICIAR SESIÓN</Text>
       </TouchableOpacity>
 
-      {/* Registrarse */}
       <TouchableOpacity onPress={() => navigation.navigate('Register')}>
         <Text style={styles.registerText}>
           ¿No tienes cuenta? <Text style={{ color: '#BF872E' }}>Regístrate</Text>

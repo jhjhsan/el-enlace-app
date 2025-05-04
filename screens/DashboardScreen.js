@@ -61,7 +61,6 @@ export default function DashboardScreen({ navigation }) {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
-
         <Text style={styles.userName}>{userName}</Text>
 
         {membershipType === 'pro' ? (
@@ -89,24 +88,6 @@ export default function DashboardScreen({ navigation }) {
           >
             <Text style={styles.buttonText}>Explorar perfiles</Text>
           </TouchableOpacity>
-
-          {membershipType === 'pro' ? (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => navigation.navigate('Publish')}
-            >
-              <Text style={styles.buttonText}>Publicar un servicio</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.button, { opacity: 0.5 }]}
-              onPress={() =>
-                Alert.alert('Solo usuarios Pro', 'Debes tener una membresía Pro para publicar servicios.')
-              }
-            >
-              <Text style={styles.buttonText}>🔒 Publicar un servicio</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         <Text style={styles.categoriesTitle}>Categorías destacadas</Text>
@@ -168,17 +149,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: -5,
     marginBottom: 5,
-  },
-  title: {
-    color: '#D8A353',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: -5,
-  },
-  subtitle: {
-    color: '#CCCCCC',
-    fontSize: 14,
-    marginBottom: 10,
   },
   carouselImage: {
     width: width - 40,

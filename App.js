@@ -1,21 +1,22 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { SafeAreaView, StyleSheet, StatusBar, Platform } from 'react-native';
 import RootNavigator from './navigation/RootNavigator';
 import { UserProvider } from './contexts/UserContext';
 
 export default function App() {
   return (
-    <View style={styles.appContainer}>
-      <UserProvider>
+    <UserProvider>
+      <SafeAreaView style={styles.container}>
         <RootNavigator />
-      </UserProvider>
-    </View>
+      </SafeAreaView>
+    </UserProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  appContainer: {
+  container: {
     flex: 1,
-    backgroundColor: '#000', // fondo negro global para prevenir destellos
+    backgroundColor: '#000',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
 });

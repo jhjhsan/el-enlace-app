@@ -1,3 +1,5 @@
+// PublishScreen.js actualizado para manejar publicaciones normales y promocionales
+
 import React, { useState } from 'react';
 import {
   View,
@@ -8,9 +10,11 @@ import {
   Image,
   ScrollView,
   Alert,
+  Switch,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import BottomBar from '../components/BottomBar';
+import { savePostToDatabase } from '../utils/firebase'; // función que guardarás en utils/firebase.js
 
 export default function PublishScreen() {
   const [title, setTitle] = useState('');
@@ -19,6 +23,10 @@ export default function PublishScreen() {
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
   const [image, setImage] = useState(null);
+  const [isPromotional, setIsPromotional] = useState(false);
+  const [budget, setBudget] = useState('');
+  const [durationDays, setDurationDays] = useState('');
+  const [sponsor, setSponsor] = useState('');
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -31,13 +39,48 @@ export default function PublishScreen() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title || !description || !category) {
       Alert.alert('Error', 'Completa los campos obligatorios.');
       return;
     }
-    Alert.alert('Publicado', 'Tu servicio ha sido enviado correctamente.');
-    // Aquí iría la lógica para guardar en base de datos
+
+    const post = {
+      id: Date.now().toString(),
+      title,
+      description,
+      category,
+      location,
+      date,
+      image,
+      type: isPromotional ? 'promocional' : 'normal',
+      createdBy: 'user_demo', // este valor debe venir del usuario autenticado
+    };
+
+    if (isPromotional) {
+      post.promoted = true;
+      post.budget = Number(budget);
+      post.durationDays = Number(durationDays);
+      post.sponsor = sponsor;
+    }
+
+    try {
+      await savePostToDatabase(post);
+      Alert.alert('Publicado', 'Tu publicación fue enviada correctamente.');
+      // limpiar campos
+      setTitle('');
+      setDescription('');
+      setCategory('');
+      setLocation('');
+      setDate('');
+      setImage(null);
+      setIsPromotional(false);
+      setBudget('');
+      setDurationDays('');
+      setSponsor('');
+    } catch (err) {
+      Alert.alert('Error', 'No se pudo guardar la publicación.');
+    }
   };
 
   return (
@@ -47,60 +90,33 @@ export default function PublishScreen() {
 
         <Text style={styles.title}>Publicar un servicio</Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Título del servicio"
-          placeholderTextColor="#999"
-          value={title}
-          onChangeText={setTitle}
-        />
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Descripción"
-          placeholderTextColor="#999"
-          value={description}
-          onChangeText={setDescription}
-          multiline
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Categoría (ej: Actor, Catering...)"
-          placeholderTextColor="#999"
-          value={category}
-          onChangeText={setCategory}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Ubicación (opcional)"
-          placeholderTextColor="#999"
-          value={location}
-          onChangeText={setLocation}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Fecha de inicio (opcional)"
-          placeholderTextColor="#999"
-          value={date}
-          onChangeText={setDate}
-        />
+        <TextInput style={styles.input} placeholder="Título del servicio" placeholderTextColor="#999" value={title} onChangeText={setTitle} />
+        <TextInput style={[styles.input, styles.textArea]} placeholder="Descripción" placeholderTextColor="#999" value={description} onChangeText={setDescription} multiline />
+        <TextInput style={styles.input} placeholder="Categoría (ej: Actor, Catering...)" placeholderTextColor="#999" value={category} onChangeText={setCategory} />
+        <TextInput style={styles.input} placeholder="Ubicación (opcional)" placeholderTextColor="#999" value={location} onChangeText={setLocation} />
+        <TextInput style={styles.input} placeholder="Fecha de inicio (opcional)" placeholderTextColor="#999" value={date} onChangeText={setDate} />
 
         <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
           <Text style={styles.uploadText}>📸 Subir imagen</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.uploadButton, { opacity: 0.5 }]}>
-          <Text style={styles.uploadText}>🎬 Subir video promocional</Text>
-        </TouchableOpacity>
+        <View style={styles.switchContainer}>
+          <Text style={styles.switchLabel}>¿Es una publicación promocional?</Text>
+          <Switch value={isPromotional} onValueChange={setIsPromotional} />
+        </View>
 
-        <Text style={styles.note}>
-          ⚠️ El video debe durar máximo 90 segundos y pesar menos de 40 MB.
-        </Text>
+        {isPromotional && (
+          <>
+            <TextInput style={styles.input} placeholder="Presupuesto (CLP)" placeholderTextColor="#999" value={budget} onChangeText={setBudget} keyboardType="numeric" />
+            <TextInput style={styles.input} placeholder="Duración en días" placeholderTextColor="#999" value={durationDays} onChangeText={setDurationDays} keyboardType="numeric" />
+            <TextInput style={styles.input} placeholder="Patrocinador / Marca" placeholderTextColor="#999" value={sponsor} onChangeText={setSponsor} />
+          </>
+        )}
 
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
           <Text style={styles.submitText}>Publicar servicio</Text>
         </TouchableOpacity>
       </ScrollView>
-
       <BottomBar />
     </View>
   );
@@ -119,8 +135,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 10,
+    marginVertical: 10,
   },
   title: {
     color: '#D8A353',
@@ -152,11 +167,15 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     fontWeight: 'bold',
   },
-  note: {
-    color: '#FFD700',
-    fontSize: 12,
-    marginBottom: 15,
-    textAlign: 'center',
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  switchLabel: {
+    color: '#FFF',
+    fontSize: 14,
   },
   submitButton: {
     backgroundColor: '#D8A353',

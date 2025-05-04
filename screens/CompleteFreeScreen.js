@@ -10,9 +10,9 @@ import {
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
+import { saveUserProfile } from '../utils/profileStorage'; // nueva función centralizada
 
 export default function CompleteFreeScreen({ navigation }) {
   const { setUserData } = useUser();
@@ -59,23 +59,20 @@ export default function CompleteFreeScreen({ navigation }) {
       return;
     }
 
-    const freeProfile = {
+    const profileData = {
       name,
       email,
       description,
       profilePhoto,
       bookPhotos,
-      membershipType: 'free',
     };
 
-    try {
-      await AsyncStorage.setItem('userProfileFree', JSON.stringify(freeProfile));
-      await AsyncStorage.setItem('userProfile', JSON.stringify(freeProfile));
-      setUserData(freeProfile);
+    const success = await saveUserProfile(profileData, 'free', setUserData);
+
+    if (success) {
       navigation.replace('Profile');
-    } catch (err) {
+    } else {
       Alert.alert('Error al guardar', 'Ocurrió un error al guardar el perfil.');
-      console.log(err);
     }
   };
 

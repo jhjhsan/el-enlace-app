@@ -12,7 +12,6 @@ export default function SplashScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Animación giratoria
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -23,32 +22,39 @@ export default function SplashScreen() {
 
     const loadUser = async () => {
       try {
-        const json =
-          (await AsyncStorage.getItem('userProfilePro')) ||
-          (await AsyncStorage.getItem('userProfile'));
-        if (json) {
-          const profile = JSON.parse(json);
-          setUserData(profile);
+        const pro = await AsyncStorage.getItem('userProfilePro');
+        const free = await AsyncStorage.getItem('userProfile');
+        const profile = pro || free;
+
+        if (profile) {
+          setUserData(JSON.parse(profile));
           setIsLoggedIn(true);
+        } else {
+          setUserData(null);
+          setIsLoggedIn(false);
         }
+
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+        }).start(() => {
+          if (profile) {
+            navigation.replace('Dashboard');
+          } else {
+            navigation.replace('Login');
+          }
+        });
+
       } catch (err) {
         console.warn('Error leyendo sesión:', err);
+        setUserData(null);
+        setIsLoggedIn(false);
+        navigation.replace('Login');
       }
     };
 
-    const timer = setTimeout(async () => {
-      await loadUser();
-
-      // Fade elegante antes de navegar
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }).start(() => {
-        navigation.replace('MainApp'); // Ahora va al stack completo
-      });
-    }, 2000);
-
+    const timer = setTimeout(loadUser, 2000);
     return () => clearTimeout(timer);
   }, []);
 

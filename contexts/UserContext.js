@@ -1,4 +1,3 @@
-// contexts/UserContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -8,7 +7,7 @@ export const UserProvider = ({ children }) => {
   const [userData, setUserData] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // Cargar el perfil desde AsyncStorage al iniciar
+  // Cargar datos del usuario desde AsyncStorage al iniciar la app
   useEffect(() => {
     const loadUserFromStorage = async () => {
       try {
@@ -27,6 +26,8 @@ export const UserProvider = ({ children }) => {
         }
       } catch (error) {
         console.log('Error cargando datos del usuario:', error);
+        setUserData(null);
+        setIsLoggedIn(false);
       }
     };
 

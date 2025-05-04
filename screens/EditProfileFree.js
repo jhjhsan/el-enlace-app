@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { saveUserProfile } from '../utils/profileStorage';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -32,7 +33,6 @@ export default function EditProfileFree({ navigation }) {
   const [open, setOpen] = useState(false);
   const [zIndex, setZIndex] = useState(1000);
 
-  // Cargar perfil desde AsyncStorage al entrar
   useEffect(() => {
     const loadProfile = async () => {
       try {
@@ -111,7 +111,6 @@ export default function EditProfileFree({ navigation }) {
     "Técnico de grúa",
     "Vestuarista"
   ];
-  
 
   const categoryItems = categorias.map(cat => ({ label: cat, value: cat }));
 
@@ -132,20 +131,26 @@ export default function EditProfileFree({ navigation }) {
       Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 3 fotos.');
       return;
     }
-
+  
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 1,
     });
-
+  
     if (!result.canceled && result.assets.length > 0) {
       const uris = result.assets.map(a => a.uri);
       const total = [...bookPhotos, ...uris].slice(0, 3);
       setBookPhotos(total);
     }
   };
-
+  
+  const handleDeletePhoto = (index) => {
+    const updated = [...bookPhotos];
+    updated.splice(index, 1);
+    setBookPhotos(updated);
+  };
+  
   const handleSave = async () => {
     if (selectedCategories.length === 0) {
       Alert.alert('Campo requerido', 'Debes seleccionar al menos una categoría.');
@@ -159,16 +164,15 @@ export default function EditProfileFree({ navigation }) {
       description,
       profilePhoto,
       bookPhotos,
-      membershipType: 'free',
     };
 
-    try {
-      await AsyncStorage.setItem('userProfileFree', JSON.stringify(profile));
-      setUserData(profile);
+    const success = await saveUserProfile(profile, 'free', setUserData);
+
+    if (success) {
       Alert.alert('Perfil guardado', 'Tu perfil ha sido actualizado.');
       navigation.navigate('Profile');
-    } catch (err) {
-      console.log('Error al guardar:', err);
+    } else {
+      Alert.alert('Error al guardar', 'Ocurrió un error al guardar tu perfil.');
     }
   };
 
@@ -259,10 +263,16 @@ export default function EditProfileFree({ navigation }) {
 
           <Text style={styles.label}>Fotos del Book (máx 3):</Text>
           <View style={styles.gallery}>
-            {bookPhotos.map((uri, index) => (
-              <Image key={index} source={{ uri }} style={styles.bookImage} />
-            ))}
-          </View>
+  {bookPhotos.map((uri, index) => (
+    <View key={index} style={styles.photoItem}>
+      <Image source={{ uri }} style={styles.bookImage} />
+      <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeletePhoto(index)}>
+        <Text style={styles.deleteButtonText}>🗑️</Text>
+      </TouchableOpacity>
+    </View>
+  ))}
+</View>
+
 
           <TouchableOpacity style={styles.button} onPress={pickBookPhotos}>
             <Text style={styles.buttonText}>Agregar fotos</Text>
@@ -389,4 +399,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 12,
   },
+  photoItem: {
+    position: 'relative',
+    marginHorizontal: 5,
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#000',
+    borderColor: '#D8A353',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 2,
+    zIndex: 2,
+  },
+  deleteButtonText: {
+    color: '#D8A353',
+    fontSize: 14,
+  },
+  
 });

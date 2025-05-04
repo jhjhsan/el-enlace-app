@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  Animated,
 } from 'react-native';
+
 import BottomBar from '../components/BottomBar';
 import { AntDesign } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +20,8 @@ const { width } = Dimensions.get('window');
 
 export default function ProfileScreen({ navigation }) {
   const { userData, setUserData } = useUser();
+
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -45,6 +49,26 @@ export default function ProfileScreen({ navigation }) {
   const email = userData.email || 'Correo no definido';
   const description = userData.description || 'Sin descripción';
   const images = userData.bookPhotos || [];
+  const profileScaleAnim = useRef(new Animated.Value(1)).current;
+  const [profileEnlarged, setProfileEnlarged] = useState(false);
+
+  const handleProfileImagePress = () => {
+    Animated.timing(profileScaleAnim, {
+      toValue: profileEnlarged ? 1 : 1.5,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setProfileEnlarged(!profileEnlarged);
+    });
+  };
+
+  const handleToggleImage = (uri) => {
+    if (selectedImage === uri) {
+      setSelectedImage(null);
+    } else {
+      setSelectedImage(uri);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -53,7 +77,12 @@ export default function ProfileScreen({ navigation }) {
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
 
-        <Image source={userData.profilePhoto ? { uri: userData.profilePhoto } : require('../assets/imagen5.png')} style={styles.profileImage} />
+        <TouchableOpacity onPress={handleProfileImagePress}>
+          <Animated.Image
+            source={userData.profilePhoto ? { uri: userData.profilePhoto } : require('../assets/imagen5.png')}
+            style={[styles.profileImage, { transform: [{ scale: profileScaleAnim }] }]}
+          />
+        </TouchableOpacity>
 
         <Text style={styles.name}>{userName}</Text>
         <Text style={styles.category}>{category}</Text>
@@ -71,7 +100,12 @@ export default function ProfileScreen({ navigation }) {
         <Text style={styles.label}>Fotos:</Text>
         <View style={styles.gallery}>
           {images.map((uri, index) => (
-            <Image key={index} source={{ uri }} style={styles.galleryImage} />
+            <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
+              <Image
+                source={{ uri }}
+                style={selectedImage === uri ? styles.largeImage : styles.galleryImage}
+              />
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
@@ -146,5 +180,11 @@ const styles = StyleSheet.create({
     width: (width * 0.85 - 40) / 3,
     height: 80,
     borderRadius: 10,
+  },
+  largeImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 10,
+    margin: 5,
   },
 });

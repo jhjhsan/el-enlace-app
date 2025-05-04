@@ -12,21 +12,61 @@ import BottomBar from '../components/BottomBar';
 import { useUser } from '../contexts/UserContext';
 
 const categories = [
-  "Actor", "Actriz", "Agencia de casting", "Ambientador", "Animador / presentador",
-  "Artista urbano", "Asistente de cámara", "Asistente de dirección", "Asistente de producción",
-  "Asistente de vestuario", "Autos clásicos para escenas", "Autos personales",
-  "Bailarín / bailarina", "Camiones de arte para rodajes", "Camarógrafo",
-  "Caracterizador (maquillaje FX)", "Casas rodantes para producción", "Coffee break / snacks",
-  "Colorista", "Community manager", "Continuista", "Coordinador de locaciones",
-  "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
-  "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
-  "Estudio fotográfico", "Extra", "Fotógrafo de backstage", "Grúas para filmación",
-  "Iluminador", "Ilustrador / storyboarder", "Maquillista", "Microfonista", "Modelo",
-  "Modelo publicitario", "Motos o bicicletas para escenas", "Niño actor", "Operador de drone",
-  "Peluquero / estilista", "Postproductor", "Productor", "Servicios de catering", "Sonidista",
-  "Stage manager", "Técnico de efectos especiales", "Técnico de grúa",
-  "Transporte de producción", "Transporte de talentos", "Vans de producción",
-  "Vestuarista", "Otros / No especificado"
+  "Actor",
+    "Actriz",
+    "Agencia de casting",
+    "Ambientador",
+    "Animador / presentador",
+    "Artista urbano",
+    "Asistente de cámara",
+    "Asistente de dirección",
+    "Asistente de producción",
+    "Asistente de vestuario",
+    "Autos clásicos para escenas",
+    "Autos personales",
+    "Bailarín / bailarina",
+    "Camiones de arte para rodajes",
+    "Camarógrafo",
+    "Caracterizador (maquillaje FX)",
+    "Casas rodantes para producción",
+    "Coffee break / snacks",
+    "Colorista",
+    "Community manager",
+    "Continuista",
+    "Coordinador de locaciones",
+    "Creador de contenido digital",
+    "Decorador de set",
+    "Diseñador de arte",
+    "Diseñador gráfico",
+    "Doble de acción",
+    "Editor de video",
+    "Escenógrafo",
+    "Estudio fotográfico",
+    "Extra",
+    "Fotógrafo de backstage",
+    "Grúas para filmación",
+    "Iluminador",
+    "Ilustrador / storyboarder",
+    "Maquillista",
+    "Microfonista",
+    "Modelo",
+    "Modelo publicitario",
+    "Motos o bicicletas para escenas",
+    "Niño actor",
+    "Operador de drone",
+    "Peluquero / estilista",
+    "Postproductor",
+    "Productor",
+    "Servicios de catering",
+    "Sonidista",
+    "Stage manager",
+    "Técnico de efectos especiales",
+    "Técnico de grúa",
+    "Transporte de producción",
+    "Transporte de talentos",
+    "Vans de producción",
+    "Vestuarista",
+    "Otros / No especificado"
 ];
 
 export default function ExploreProfilesScreen({ navigation }) {
@@ -56,23 +96,24 @@ export default function ExploreProfilesScreen({ navigation }) {
         />
       </View>
 
-      {/* Contenido scrollable separado */}
-      <View style={styles.content}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* Contenido scrollable: categorías filtradas */}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.categoryList}>
           {filteredCategories.map((cat, index) => (
             <TouchableOpacity
-              key={index}
-              style={styles.categoryButton}
-              onPress={() => navigation.navigate('FilteredProfiles', { category: cat })}
-            >
-              <Text style={styles.categoryText}>{cat}</Text>
-            </TouchableOpacity>
+            key={index}
+            style={styles.categoryButton}
+            onPress={() => navigation.navigate('FilteredProfiles', { category: cat })}
+          >
+            <Text style={styles.categoryText}>{cat}</Text>
+          </TouchableOpacity>
+          
           ))}
           {filteredCategories.length === 0 && (
             <Text style={styles.noResultsText}>No se encontraron resultados.</Text>
           )}
-        </ScrollView>
-      </View>
+        </View>
+      </ScrollView>
 
       {/* Barra inferior fija */}
       <BottomBar navigation={navigation} membershipType={userData?.membershipType} />
@@ -80,11 +121,17 @@ export default function ExploreProfilesScreen({ navigation }) {
   );
 }
 
+
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
-    paddingTop: 40,
+    paddingTop: 40, // espacio para no quedar pegado arriba
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 100,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -96,7 +143,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     backgroundColor: '#000',
-    height: 50,
+    height: 55,
   },
   searchIcon: {
     marginRight: 8,
@@ -107,13 +154,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 8,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingBottom: 20, // espacio antes de BottomBar
-  },
-  scrollContent: {
-    paddingBottom: 40,
+  categoryList: {
+    paddingBottom: 30,
   },
   categoryButton: {
     borderWidth: 1,
@@ -132,7 +174,9 @@ const styles = StyleSheet.create({
   noResultsText: {
     color: '#888',
     textAlign: 'center',
-    marginTop: 40,
+    marginTop: 20,
     fontStyle: 'italic',
   },
+  
 });
+

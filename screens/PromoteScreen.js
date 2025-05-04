@@ -1,37 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-export default function PublishMenuScreen({ navigation }) {
+export default function PromoteScreen({ navigation }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>¿Qué deseas hacer?</Text>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('Publish')}
-      >
-        <Text style={styles.buttonText}>📢 Publicar un servicio</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('CompleteProfile')}
-      >
-        <Text style={styles.buttonText}>🎭 Publicar perfil profesional</Text>
-      </TouchableOpacity>
+      <Text style={styles.title}>¿Qué deseas promocionar?</Text>
 
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate('PromoteProfile')}
       >
-        <Text style={styles.buttonText}>👑 Promocionar mi perfil</Text>
+        <Text style={styles.buttonText}>🚀 Promocionar mi perfil</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate('PromotePost')}
       >
-        <Text style={styles.buttonText}>📣 Promocionar una publicación</Text>
+        <Text style={styles.buttonText}>📢 Promocionar una publicación</Text>
       </TouchableOpacity>
     </View>
   );

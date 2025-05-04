@@ -7,7 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomBar from '../components/BottomBar';
 import * as FileSystem from 'expo-file-system';
 import DropDownPicker from 'react-native-dropdown-picker';
-
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 export default function EditProfileScreen({ navigation }) {
@@ -36,7 +37,26 @@ export default function EditProfileScreen({ navigation }) {
   const [profileVideo, setProfileVideo] = useState(userData?.profileVideo || null);
   const [open, setOpen] = useState(false);
   const [zIndex, setZIndex] = useState(1000);
+  const [country, setCountry] = useState(userData?.country || '');
+  const [city, setCity] = useState(userData?.city || '');
+  const [address, setAddress] = useState(userData?.address || '');
+  const [commune, setCommune] = useState(userData?.commune || '');
 
+  useFocusEffect(
+    useCallback(() => {
+      const loadProfilePhotos = async () => {
+        const json = await AsyncStorage.getItem('userProfilePro');
+        if (json) {
+          const profile = JSON.parse(json);
+          setBookPhotos(profile.bookPhotos || []);
+          setProfilePhoto(profile.profilePhoto || null);
+        }
+      };
+  
+      loadProfilePhotos();
+    }, [])
+  );
+  
   const categorias = [
     "Actor",
     "Actriz",
@@ -186,7 +206,12 @@ export default function EditProfileScreen({ navigation }) {
       bookPhotos,
       profileVideo,
       membershipType: 'pro',
-    };
+      country,
+      city,
+      address,
+      commune,
+
+      };
 
     try {
       await AsyncStorage.setItem('userProfilePro', JSON.stringify(updatedProfile));
@@ -231,6 +256,37 @@ export default function EditProfileScreen({ navigation }) {
           onChangeText={setName}
           placeholderTextColor="#aaa"
         />
+<TextInput
+  style={styles.input}
+  placeholder="País"
+  value={country}
+  onChangeText={setCountry}
+  placeholderTextColor="#aaa"
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Ciudad"
+  value={city}
+  onChangeText={setCity}
+  placeholderTextColor="#aaa"
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Dirección"
+  value={address}
+  onChangeText={setAddress}
+  placeholderTextColor="#aaa"
+/>
+<TextInput
+  style={styles.input}
+  placeholder="Comuna"
+  value={commune}
+  onChangeText={setCommune}
+  placeholderTextColor="#aaa"
+/>
+
 
         <View style={[styles.dropdownWrapper, { zIndex }]}>
           <DropDownPicker

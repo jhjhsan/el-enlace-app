@@ -5,7 +5,7 @@ import { Video } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { saveUserProfile } from '../utils/profileStorage';
 
 
 export default function CompleteProfileScreen({ navigation }) {
@@ -36,7 +36,10 @@ export default function CompleteProfileScreen({ navigation }) {
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const bannerOpacity = useState(new Animated.Value(0))[0];
   const [profileVideo, setProfileVideo] = useState(userData?.profileVideo || null);
-
+  const [country, setCountry] = useState(userData?.country || '');
+  const [city, setCity] = useState(userData?.city || '');
+  const [address, setAddress] = useState(userData?.address || '');
+  
   // Lista de categorías (reemplaza con tus categorías si las tienes)
   const categoriesList = [
     "Actor",
@@ -164,14 +167,12 @@ export default function CompleteProfileScreen({ navigation }) {
   };
 
   const handleSave = async () => {
-    // 1) Validación mínima
     if (!name || !profilePhoto || category.length === 0) {
       alert('Completa los campos obligatorios antes de continuar.');
       return;
     }
   
-    // 2) Armar objeto de perfil
-    const updatedProfile = {
+    const profileData = {
       profilePhoto,
       name,
       sex,
@@ -191,17 +192,18 @@ export default function CompleteProfileScreen({ navigation }) {
       phone,
       instagram,
       bookPhotos,
+      profileVideo,
       category,
+      country,
+      city,
+      address,
+      
     };
   
-    try {
-      // 3) Guardar en AsyncStorage
-      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+    const success = await saveUserProfile(profileData, 'pro', setUserData);
   
-      // 4) Actualizar contexto
-      setUserData(updatedProfile);
-  
-      // 5) Mostrar banner de éxito
+    if (success) {
+      // Mostrar animación de éxito y navegar
       setShowSuccessBanner(true);
       Animated.sequence([
         Animated.timing(bannerOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -209,15 +211,13 @@ export default function CompleteProfileScreen({ navigation }) {
         Animated.timing(bannerOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
       ]).start(() => {
         setShowSuccessBanner(false);
-        // 6) Navegar a ProfilePro
         navigation.navigate('ProfilePro');
       });
-  
-    } catch (err) {
-      console.error('Error guardando perfil:', err);
+    } else {
       alert('Hubo un problema al guardar tu perfil. Intenta de nuevo.');
     }
   };
+  
   
 
   const filteredCategories = categoriesList.filter(cat =>
@@ -368,9 +368,32 @@ export default function CompleteProfileScreen({ navigation }) {
           placeholderTextColor="#aaa"
           value={instagram}
           onChangeText={setInstagram}
+        /> 
+        <TextInput
+          style={styles.input}
+          placeholder="País"
+          value={country}
+          onChangeText={setCountry}
+          placeholderTextColor="#aaa"
         />
-
-        <TouchableOpacity style={styles.bookButton} onPress={pickBookPhotos}>
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Ciudad"
+          value={city}
+          onChangeText={setCity}
+          placeholderTextColor="#aaa"
+        />
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Dirección"
+          value={address}
+          onChangeText={setAddress}
+          placeholderTextColor="#aaa"
+        />
+        
+         <TouchableOpacity style={styles.bookButton} onPress={pickBookPhotos}>
           <Text style={styles.bookButtonText}>Agregar fotos al Book</Text>
         </TouchableOpacity>
        

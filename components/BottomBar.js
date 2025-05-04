@@ -1,14 +1,33 @@
-import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { Ionicons, Entypo, Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function BottomBar() {
   const navigation = useNavigation();
   const { userData } = useUser();
-
   const membershipType = userData?.membershipType;
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('userNotifications');
+        const notifications = stored ? JSON.parse(stored) : [];
+        const unreadCount = notifications.filter(n => !n.read).length;
+        setNotificationCount(unreadCount);
+      } catch (error) {
+        console.log('Error al cargar notificaciones:', error);
+      }
+    };
+
+    const interval = setInterval(fetchNotifications, 5000); // Actualiza cada 5 segundos
+    fetchNotifications();
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <View style={styles.bottomBar}>
@@ -34,8 +53,13 @@ export default function BottomBar() {
         <Feather name="plus" size={24} color="#D8A353" />
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
+      <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={{ position: 'relative' }}>
         <Ionicons name="notifications-outline" size={24} color="#D8A353" />
+        {notificationCount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{notificationCount}</Text>
+          </View>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.navigate('Menu')}>
@@ -61,5 +85,22 @@ const styles = StyleSheet.create({
     borderColor: '#1B1B1B',
     borderRadius: 1,
     padding: 4,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    backgroundColor: 'red',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });

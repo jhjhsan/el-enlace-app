@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { saveUserProfile } from '../utils/profileStorage'; // ✅ Importado correctamente
 
 export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState('');
@@ -21,11 +21,20 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    const userData = { name, email, password };
+    const baseUserData = {
+      name,
+      email,
+      password,
+      membershipType: 'free',
+    };
 
     try {
-      await AsyncStorage.setItem('userData', JSON.stringify(userData));
-      navigation.replace('CompleteFree'); // Redirige al formulario de perfil gratuito
+      const success = await saveUserProfile(baseUserData, 'free');
+      if (success) {
+        navigation.replace('CompleteFree'); // Redirige al formulario de perfil gratuito
+      } else {
+        Alert.alert('Error', 'Hubo un problema al guardar los datos.');
+      }
     } catch (err) {
       console.log(err);
       Alert.alert('Error', 'Hubo un problema al guardar los datos.');
