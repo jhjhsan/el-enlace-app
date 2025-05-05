@@ -10,9 +10,10 @@ import {
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import DropDownPicker from 'react-native-dropdown-picker';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
-import { saveUserProfile } from '../utils/profileStorage'; // nueva función centralizada
+import { saveUserProfile } from '../utils/profileStorage';
 
 export default function CompleteFreeScreen({ navigation }) {
   const { setUserData } = useUser();
@@ -21,7 +22,14 @@ export default function CompleteFreeScreen({ navigation }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [description, setDescription] = useState('');
+  const [age, setAge] = useState('');
+  const [region, setRegion] = useState('');
+  const [sex, setSex] = useState(null);
+  const [ethnicity, setEthnicity] = useState(null);
   const [bookPhotos, setBookPhotos] = useState([]);
+
+  const [openSex, setOpenSex] = useState(false);
+  const [openEthnicity, setOpenEthnicity] = useState(false);
 
   const pickProfilePhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -54,7 +62,7 @@ export default function CompleteFreeScreen({ navigation }) {
   };
 
   const handleSave = async () => {
-    if (!name || !email || !description || !profilePhoto) {
+    if (!name || !email || !description || !profilePhoto || !age || !sex || !ethnicity || !region) {
       Alert.alert('Completa los campos obligatorios');
       return;
     }
@@ -63,6 +71,10 @@ export default function CompleteFreeScreen({ navigation }) {
       name,
       email,
       description,
+      age,
+      sex,
+      ethnicity,
+      region,
       profilePhoto,
       bookPhotos,
     };
@@ -104,6 +116,60 @@ export default function CompleteFreeScreen({ navigation }) {
           onChangeText={setEmail}
           keyboardType="email-address"
         />
+        <TextInput
+          style={styles.input}
+          placeholder="Edad*"
+          placeholderTextColor="#aaa"
+          value={age}
+          onChangeText={setAge}
+          keyboardType="numeric"
+        />
+
+        <DropDownPicker
+          open={openSex}
+          setOpen={setOpenSex}
+          value={sex}
+          setValue={setSex}
+          items={[
+            { label: 'Hombre', value: 'hombre' },
+            { label: 'Mujer', value: 'mujer' },
+            { label: 'Otro / Prefiere no decirlo', value: 'otro' },
+          ]}
+          placeholder="Selecciona tu sexo*"
+          style={styles.dropdown}
+          dropDownContainerStyle={{ backgroundColor: '#1B1B1B' }}
+          textStyle={{ color: '#fff' }}
+          containerStyle={{ width: '80%', marginBottom: 10 }}
+        />
+
+        <DropDownPicker
+          open={openEthnicity}
+          setOpen={setOpenEthnicity}
+          value={ethnicity}
+          setValue={setEthnicity}
+          items={[
+            { label: 'Afrodescendiente', value: 'afrodescendiente' },
+            { label: 'Caucásico', value: 'caucasico' },
+            { label: 'Latino', value: 'latino' },
+            { label: 'Asiático', value: 'asiatico' },
+            { label: 'Indígena', value: 'indigena' },
+            { label: 'Otro', value: 'otro' },
+          ]}
+          placeholder="Selecciona tu etnia*"
+          style={styles.dropdown}
+          dropDownContainerStyle={{ backgroundColor: '#1B1B1B' }}
+          textStyle={{ color: '#fff' }}
+          containerStyle={{ width: '80%', marginBottom: 10 }}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Región / Ciudad*"
+          placeholderTextColor="#aaa"
+          value={region}
+          onChangeText={setRegion}
+        />
+
         <TextInput
           style={[styles.input, { height: 100 }]}
           placeholder="Descripción*"
@@ -175,6 +241,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#D8A353',
+  },
+  dropdown: {
+    backgroundColor: '#1B1B1B',
+    borderColor: '#D8A353',
+    borderRadius: 10,
   },
   bookButton: {
     backgroundColor: '#D8A353',

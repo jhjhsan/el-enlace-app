@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Ionicons, Entypo, Feather } from '@expo/vector-icons';
+import { Ionicons, Entypo, Feather, FontAwesome } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,8 +8,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function BottomBar() {
   const navigation = useNavigation();
   const { userData } = useUser();
-  const membershipType = userData?.membershipType;
+  const [membership, setMembership] = useState(userData?.membershipType || 'free');
   const [notificationCount, setNotificationCount] = useState(0);
+
+  useEffect(() => {
+    const fetchMembership = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('userProfile');
+        if (stored) {
+          const user = JSON.parse(stored);
+          if (user?.membershipType) {
+            setMembership(user.membershipType);
+          }
+        }
+      } catch (e) {
+        console.log('Error leyendo membershipType:', e);
+      }
+    };
+
+    fetchMembership();
+  }, []);
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -29,19 +47,29 @@ export default function BottomBar() {
     return () => clearInterval(interval);
   }, []);
 
+  const goToProfile = () => {
+    if (membership === 'elite') {
+      navigation.navigate('ProfileElite');
+    } else if (membership === 'pro') {
+      navigation.navigate('ProfilePro');
+    } else {
+      navigation.navigate('Profile');
+    }
+  };
+
   return (
     <View style={styles.bottomBar}>
-      <TouchableOpacity
-        onPress={() =>
-          navigation.navigate(membershipType === 'pro' ? 'ProfilePro' : 'Profile')
-        }
-      >
-        <View style={membershipType === 'pro' ? styles.proIconContainer : null}>
-          <Ionicons
-            name={membershipType === 'pro' ? 'person' : 'person-outline'}
-            size={24}
-            color="#D8A353"
-          />
+      <TouchableOpacity onPress={goToProfile}>
+        <View style={membership === 'pro' || membership === 'elite' ? styles.proIconContainer : null}>
+          {membership === 'elite' ? (
+            <FontAwesome name="star" size={24} color="#D8A353" />
+          ) : (
+            <Ionicons
+              name={membership === 'pro' ? 'person' : 'person-outline'}
+              size={24}
+              color="#D8A353"
+            />
+          )}
         </View>
       </TouchableOpacity>
 

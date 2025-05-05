@@ -126,6 +126,7 @@ export default function ProfileProScreen({ navigation }) {
   {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
   {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
   {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
+  {userData.ethnicity && <Text style={styles.infoText}>Etnia: {userData.ethnicity}</Text>}
   {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
   {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
   {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
@@ -137,6 +138,9 @@ export default function ProfileProScreen({ navigation }) {
   {userData.city && <Text style={styles.infoText}>Ciudad: {userData.city}</Text>}
   {userData.address && <Text style={styles.infoText}>Dirección: {userData.address}</Text>}
   {userData.commune && <Text style={styles.infoText}>Comuna: {userData.commune}</Text>}
+  {userData.region && <Text style={styles.infoText}>Región: {userData.region}</Text>}
+  
+
 </View>
 
 

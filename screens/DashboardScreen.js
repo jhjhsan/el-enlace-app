@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   FlatList,
   Dimensions,
-  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomBar from '../components/BottomBar';
@@ -65,8 +64,12 @@ export default function DashboardScreen({ navigation }) {
 
         {membershipType === 'pro' ? (
           <Text style={styles.proBadge}> Miembro Pro 🏆</Text>
+        ) : membershipType === 'elite' ? (
+          <TouchableOpacity onPress={() => navigation.navigate('Subscription')}>
+            <Text style={styles.proBadge}> Miembro Elite 👑</Text>
+          </TouchableOpacity>
         ) : (
-          <Text style={styles.freeBadge}> Miembro Free  🎬 </Text>
+          <Text style={styles.freeBadge}> Miembro Free 🎬</Text>
         )}
 
         <FlatList
@@ -108,20 +111,28 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         {membershipType === 'free' ? (
-          <TouchableOpacity
-            style={styles.disabledButton}
-            onPress={() => navigation.navigate('Subscription')}
-          >
-            <Text style={styles.disabledButtonText}>🔒 Membresía Pro</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.proButton}
-            onPress={() => navigation.navigate('Subscription')}
-          >
-            <Text style={styles.proButtonText}>Miembro Pro 🏆</Text>
-          </TouchableOpacity>
-        )}
+  <TouchableOpacity
+    style={styles.disabledButton}
+    onPress={() => navigation.navigate('Subscription')}
+  >
+    <Text style={styles.disabledButtonText}>🔓 Ver planes de membresía</Text>
+  </TouchableOpacity>
+) : membershipType === 'pro' ? (
+  <TouchableOpacity
+    style={styles.disabledButton}
+    onPress={() => navigation.navigate('Subscription')}
+  >
+    <Text style={styles.disabledButtonText}>🔒 Membresía Elite</Text>
+  </TouchableOpacity>
+) : (
+  <TouchableOpacity
+    style={styles.eliteTextContainer}
+    onPress={() => navigation.navigate('Subscription')}
+  >
+    <Text style={styles.eliteText}>👑 Miembro Elite</Text>
+  </TouchableOpacity>
+)}
+
       </ScrollView>
 
       <BottomBar membershipType={membershipType} />
@@ -239,5 +250,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 15,
+  },
+  eliteTextContainer: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#D8A353',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    marginTop: 30,
+    marginBottom: 40,
+    alignSelf: 'center',
+    opacity: 0.7,
+  },
+  eliteText: {
+    color: '#D8A353',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

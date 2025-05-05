@@ -30,8 +30,16 @@ export default function EditProfileFree({ navigation }) {
   const [description, setDescription] = useState('');
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [bookPhotos, setBookPhotos] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [zIndex, setZIndex] = useState(1000);
+  const [sexo, setSexo] = useState('');
+  const [edad, setEdad] = useState('');
+  const [etnia, setEtnia] = useState(null);
+  const [regionCiudad, setRegionCiudad] = useState(null);
+  const [openCategories, setOpenCategories] = useState(false);
+  const [openEtnia, setOpenEtnia] = useState(false);
+  const [openRegion, setOpenRegion] = useState(false);
+  const [zIndexCategories, setZIndexCategories] = useState(1000);
+  const [zIndexEtnia, setZIndexEtnia] = useState(800);
+  const [zIndexRegion, setZIndexRegion] = useState(900);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -45,6 +53,10 @@ export default function EditProfileFree({ navigation }) {
           setDescription(profile.description || '');
           setProfilePhoto(profile.profilePhoto || null);
           setBookPhotos(profile.bookPhotos || []);
+          setSexo(profile.sexo || '');
+          setEdad(profile.edad || '');
+          setEtnia(profile.etnia || null);
+          setRegionCiudad(profile.regionCiudad || null);
         }
       } catch (err) {
         console.log('Error al cargar perfil:', err);
@@ -114,6 +126,34 @@ export default function EditProfileFree({ navigation }) {
 
   const categoryItems = categorias.map(cat => ({ label: cat, value: cat }));
 
+  const etniaItems = [
+    { label: 'Afrodescendiente', value: 'afrodescendiente' },
+    { label: 'Caucásico', value: 'caucasico' },
+    { label: 'Latino', value: 'latino' },
+    { label: 'Asiático', value: 'asiatico' },
+    { label: 'Indígena', value: 'indigena' },
+    { label: 'Otro', value: 'otro' },
+  ];
+
+  const regionItems = [
+    { label: 'Arica y Parinacota', value: 'arica-y-parinacota' },
+    { label: 'Tarapacá', value: 'tarapaca' },
+    { label: 'Antofagasta', value: 'antofagasta' },
+    { label: 'Atacama', value: 'atacama' },
+    { label: 'Coquimbo', value: 'coquimbo' },
+    { label: 'Valparaíso', value: 'valparaiso' },
+    { label: 'Región Metropolitana', value: 'región metropolitana' },
+    { label: 'Libertador General Bernardo O\'Higgins', value: 'libertador-general-bernardo-ohiggins' },
+    { label: 'Maule', value: 'maule' },
+    { label: 'Ñuble', value: 'nuble' },
+    { label: 'Biobío', value: 'biobio' },
+    { label: 'La Araucanía', value: 'la-araucania' },
+    { label: 'Los Ríos', value: 'los-rios' },
+    { label: 'Los Lagos', value: 'los-lagos' },
+    { label: 'Aysén del General Carlos Ibáñez del Campo', value: 'aysen-del-general-carlos-ibanez-del-campo' },
+    { label: 'Magallanes y de la Antártida Chilena', value: 'magallanes-y-de-la-antartida-chilena' },
+  ];
+
   const pickProfilePhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -164,6 +204,10 @@ export default function EditProfileFree({ navigation }) {
       description,
       profilePhoto,
       bookPhotos,
+      sexo,
+      edad,
+      etnia,
+      regionCiudad,
     };
 
     const success = await saveUserProfile(profile, 'free', setUserData);
@@ -185,7 +229,7 @@ export default function EditProfileFree({ navigation }) {
         <ScrollView
           contentContainerStyle={[
             styles.container,
-            open ? { paddingBottom: 1900 } : { paddingBottom: 950 },
+            openCategories || openEtnia || openRegion ? { paddingBottom: 1900 } : { paddingBottom: 950 },
           ]}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled={true}
@@ -208,17 +252,80 @@ export default function EditProfileFree({ navigation }) {
             placeholderTextColor="#aaa"
           />
 
-          <View style={[styles.dropdownWrapper, { zIndex }]}>
+          <TextInput
+            style={styles.input}
+            placeholder="Sexo"
+            value={sexo}
+            onChangeText={setSexo}
+            placeholderTextColor="#aaa"
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Edad"
+            value={edad}
+            onChangeText={setEdad}
+            placeholderTextColor="#aaa"
+            keyboardType="numeric"
+          />
+
+          <View style={[styles.dropdownWrapper, { zIndex: zIndexEtnia }]}>
+            <DropDownPicker
+              open={openEtnia}
+              value={etnia}
+              items={etniaItems}
+              setOpen={(val) => {
+                setOpenEtnia(val);
+                setZIndexEtnia(val ? 1800 : 800);
+              }}
+              setValue={setEtnia}
+              placeholder="Selecciona tu etnia"
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              textStyle={{ color: '#D8A353', fontSize: 13 }}
+              labelStyle={{ color: '#D8A353' }}
+              placeholderStyle={{ color: '#888' }}
+              itemStyle={{ paddingVertical: 6 }}
+              arrowIconStyle={{ tintColor: '#D8A353' }}
+              listMode="SCROLLVIEW"
+              dropDownDirection="AUTO"
+            />
+          </View>
+
+          <View style={[styles.dropdownWrapper, { zIndex: zIndexRegion }]}>
+            <DropDownPicker
+              open={openRegion}
+              value={regionCiudad}
+              items={regionItems}
+              setOpen={(val) => {
+                setOpenRegion(val);
+                setZIndexRegion(val ? 1900 : 900);
+              }}
+              setValue={setRegionCiudad}
+              placeholder="Selecciona tu región"
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              textStyle={{ color: '#D8A353', fontSize: 13 }}
+              labelStyle={{ color: '#D8A353' }}
+              placeholderStyle={{ color: '#888' }}
+              itemStyle={{ paddingVertical: 6 }}
+              arrowIconStyle={{ tintColor: '#D8A353' }}
+              listMode="SCROLLVIEW"
+              dropDownDirection="AUTO"
+            />
+          </View>
+
+          <View style={[styles.dropdownWrapper, { zIndex: zIndexCategories }]}>
             <DropDownPicker
               multiple={true}
               min={0}
               max={5}
-              open={open}
+              open={openCategories}
               value={selectedCategories}
               items={categoryItems}
               setOpen={(val) => {
-                setOpen(val);
-                setZIndex(val ? 2000 : 1000);
+                setOpenCategories(val);
+                setZIndexCategories(val ? 2000 : 1000);
               }}
               setValue={setSelectedCategories}
               placeholder="Selecciona tu(s) categoría(s)"
@@ -263,16 +370,15 @@ export default function EditProfileFree({ navigation }) {
 
           <Text style={styles.label}>Fotos del Book (máx 3):</Text>
           <View style={styles.gallery}>
-  {bookPhotos.map((uri, index) => (
-    <View key={index} style={styles.photoItem}>
-      <Image source={{ uri }} style={styles.bookImage} />
-      <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeletePhoto(index)}>
-        <Text style={styles.deleteButtonText}>🗑️</Text>
-      </TouchableOpacity>
-    </View>
-  ))}
-</View>
-
+            {bookPhotos.map((uri, index) => (
+              <View key={index} style={styles.photoItem}>
+                <Image source={{ uri }} style={styles.bookImage} />
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeletePhoto(index)}>
+                  <Text style={styles.deleteButtonText}>🗑️</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
 
           <TouchableOpacity style={styles.button} onPress={pickBookPhotos}>
             <Text style={styles.buttonText}>Agregar fotos</Text>
@@ -418,5 +524,4 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     fontSize: 14,
   },
-  
 });

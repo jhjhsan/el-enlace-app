@@ -20,8 +20,9 @@ const { width } = Dimensions.get('window');
 
 export default function ProfileScreen({ navigation }) {
   const { userData, setUserData } = useUser();
-
   const [selectedImage, setSelectedImage] = useState(null);
+  const profileScaleAnim = useRef(new Animated.Value(1)).current;
+  const [profileEnlarged, setProfileEnlarged] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -44,13 +45,18 @@ export default function ProfileScreen({ navigation }) {
     );
   }
 
-  const userName = userData.name || 'Usuario';
-  const category = userData.category || 'Categoría no definida';
-  const email = userData.email || 'Correo no definido';
-  const description = userData.description || 'Sin descripción';
-  const images = userData.bookPhotos || [];
-  const profileScaleAnim = useRef(new Animated.Value(1)).current;
-  const [profileEnlarged, setProfileEnlarged] = useState(false);
+  const {
+    name = 'Usuario',
+    category = 'Categoría no definida',
+    email = 'Correo no definido',
+    description = 'Sin descripción',
+    bookPhotos = [],
+    profilePhoto,
+    edad,
+    sexo,
+    etnia,
+    regionCiudad,
+  } = userData;
 
   const handleProfileImagePress = () => {
     Animated.timing(profileScaleAnim, {
@@ -79,27 +85,23 @@ export default function ProfileScreen({ navigation }) {
 
         <TouchableOpacity onPress={handleProfileImagePress}>
           <Animated.Image
-            source={userData.profilePhoto ? { uri: userData.profilePhoto } : require('../assets/imagen5.png')}
+            source={profilePhoto ? { uri: profilePhoto } : require('../assets/imagen5.png')}
             style={[styles.profileImage, { transform: [{ scale: profileScaleAnim }] }]}
           />
         </TouchableOpacity>
 
-        <Text style={styles.name}>{userName}</Text>
+        <Text style={styles.name}>{name}</Text>
         <Text style={styles.category}>{category}</Text>
 
-        <Text style={styles.label}>Correo:</Text>
-        <View style={styles.descriptionBox}>
-          <Text style={styles.text}>{email}</Text>
-        </View>
+        <View style={styles.infoBox}><Text style={styles.label}>Correo:</Text><Text style={styles.text}>{email}</Text></View>
+        <View style={styles.infoBox}><Text style={styles.label}>Edad:</Text><Text style={styles.text}>{edad || 'No definida'}</Text></View>
+        <View style={styles.infoBox}><Text style={styles.label}>Sexo:</Text><Text style={styles.text}>{sexo || 'No definido'}</Text></View>
+        <View style={styles.infoBox}><Text style={styles.label}>Etnia:</Text><Text style={styles.text}>{etnia || 'No definida'}</Text></View>
+        <View style={styles.infoBox}><Text style={styles.label}>Región:</Text><Text style={styles.text}>{regionCiudad || 'No definida'}</Text></View>
 
-        <Text style={styles.label}>Descripción:</Text>
-        <View style={styles.descriptionBox}>
-          <Text style={styles.text}>{description}</Text>
-        </View>
-
-        <Text style={styles.label}>Fotos:</Text>
+        <Text style={styles.sectionTitle}>Fotos</Text>
         <View style={styles.gallery}>
-          {images.map((uri, index) => (
+          {bookPhotos.map((uri, index) => (
             <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
               <Image
                 source={{ uri }}
@@ -149,25 +151,30 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     marginBottom: 10,
   },
+  infoBox: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    width: '85%',
+  },
   label: {
-    alignSelf: 'flex-start',
-    marginLeft: 40,
-    marginTop: 20,
     color: '#D8A353',
     fontWeight: 'bold',
     fontSize: 14,
+    marginBottom: 4,
   },
   text: {
     color: '#FFFFFF',
     fontSize: 14,
-    textAlign: 'left',
   },
-  descriptionBox: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 10,
-    padding: 12,
-    marginHorizontal: 40,
-    marginTop: 5,
+  sectionTitle: {
+    alignSelf: 'flex-start',
+    marginLeft: 40,
+    marginTop: 40,
+    color: '#D8A353',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   gallery: {
     flexDirection: 'row',

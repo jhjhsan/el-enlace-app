@@ -23,6 +23,9 @@ import ExplorePostsScreen from '../screens/ExplorePostsScreen';
 import PromoteScreen from '../screens/PromoteScreen';
 import PromoteProfileScreen from '../screens/PromoteProfileScreen';
 import PromotePostScreen from '../screens/PromotePostScreen';
+import CastingFilterBuilder from '../screens/CastingFilterBuilder';
+import ProfileEliteScreen from '../screens/ProfileEliteScreen';
+import CastingDetailScreen from '../screens/CastingDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -40,6 +43,7 @@ export default function AppNavigator() {
       <Stack.Screen name="ExploreProfiles" component={ExploreProfilesScreen} />
       <Stack.Screen name="Subscription" component={SubscriptionScreen} />
       <Stack.Screen name="PublishMenu" component={PublishMenuScreen} />
+      <Stack.Screen name="CastingFilterBuilder" component={CastingFilterBuilder} />
       <Stack.Screen name="ProfilePro" component={ProfileProScreen} />
       <Stack.Screen name="EditProfileFree" component={EditProfileFree} /> 
       <Stack.Screen name="FilteredProfiles" component={FilteredProfilesScreen} />
@@ -50,7 +54,9 @@ export default function AppNavigator() {
       <Stack.Screen name="Promote" component={PromoteScreen} />
       <Stack.Screen name="PromoteProfile" component={PromoteProfileScreen} />
       <Stack.Screen name="PromotePost" component={PromotePostScreen} />
-
+      <Stack.Screen name="ProfileElite" component={ProfileEliteScreen} />
+      <Stack.Screen name="CastingDetail" component={CastingDetailScreen} />
+    
     </Stack.Navigator>
   );
 }

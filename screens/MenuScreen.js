@@ -18,40 +18,35 @@ export default function MenuScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-
         <Text style={styles.title}>Menú de usuario</Text>
 
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('ViewPosts')}>
-          <Text style={styles.buttonText}>📋 Ver mis publicaciones</Text>
+          <Text style={styles.buttonText}>📋 Mis castings y servicios</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Promote')}>
-          <Text style={styles.buttonText}>🚀 Promocionar </Text>
-        </TouchableOpacity>
+        {/* Eliminado: Botón de promocionar duplicado */}
 
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Subscription')}>
           <Text style={styles.buttonText}>👑 Suscripción y membresía</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('SettingsScreen')}>
-          <Text style={styles.buttonText}>⚙️ Configuración</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Notifications')}>
+          <Text style={styles.buttonText}>🔔 Notificaciones</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() =>
-            Alert.alert('Próximamente', 'Sección de ayuda y soporte en desarrollo.')
-          }>
+          onPress={() => Alert.alert('Próximamente', 'Sección de ayuda y soporte en desarrollo.')}
+        >
           <Text style={styles.buttonText}>🆘 Ayuda y soporte</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#400000', marginTop: 220 }]}
+          style={[styles.button, { backgroundColor: '#400000', marginTop: 300 }]}
           onPress={handleLogout}
         >
           <Text style={[styles.buttonText, { color: '#FFDADA' }]}>🚪 Cerrar sesión</Text>
         </TouchableOpacity>
-
       </ScrollView>
       <BottomBar />
     </View>

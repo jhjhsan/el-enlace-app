@@ -11,10 +11,14 @@ export const UserProvider = ({ children }) => {
   useEffect(() => {
     const loadUserFromStorage = async () => {
       try {
+        const eliteProfile = await AsyncStorage.getItem('userProfileElite');
         const proProfile = await AsyncStorage.getItem('userProfilePro');
         const freeProfile = await AsyncStorage.getItem('userProfile');
 
-        if (proProfile) {
+        if (eliteProfile) {
+          setUserData(JSON.parse(eliteProfile));
+          setIsLoggedIn(true);
+        } else if (proProfile) {
           setUserData(JSON.parse(proProfile));
           setIsLoggedIn(true);
         } else if (freeProfile) {
