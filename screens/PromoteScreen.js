@@ -1,24 +1,30 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 
 export default function PromoteScreen({ navigation }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>¿Qué deseas promocionar?</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>¿Qué deseas promocionar?</Text>
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('PromoteProfile')}
-      >
-        <Text style={styles.buttonText}>🚀 Promocionar mi perfil</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate('PromoteProfile')}
+        >
+          <Text style={styles.buttonText}>🚀 Promocionar mi perfil</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('PromotePost')}
-      >
-        <Text style={styles.buttonText}>📢 Promocionar una publicación</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate('PromotePost')}
+        >
+          <Text style={styles.buttonText}>📢 Promocionar una publicación</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>⬅ Volver</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -27,15 +33,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  content: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
+    paddingBottom: 100, 
   },
   title: {
     fontSize: 24,
     color: '#D8A353',
     fontWeight: 'bold',
-    marginBottom: 40,
+    marginBottom: 120,
     textAlign: 'center',
   },
   button: {
@@ -53,5 +62,13 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  back: {
+    marginTop: 30,
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
+    textAlign: 'center',
   },
 });

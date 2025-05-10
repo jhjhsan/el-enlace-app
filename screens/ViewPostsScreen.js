@@ -101,6 +101,16 @@ export default function ViewPostsScreen({ navigation }) {
               {post.isPromotional && (
                 <Text style={styles.promotionalText}>⭐ Publicación Promocional</Text>
               )}
+
+              {/* Botón de editar */}
+              <TouchableOpacity
+                onPress={() => navigation.navigate('EditPost', { post })}
+                style={styles.editButton}
+              >
+                <Text style={styles.editText}>✏️ Editar</Text>
+              </TouchableOpacity>
+
+              {/* Botón de eliminar */}
               <TouchableOpacity
                 onPress={() => deletePost(index)}
                 style={styles.deleteButton}
@@ -110,6 +120,11 @@ export default function ViewPostsScreen({ navigation }) {
             </View>
           ))
         )}
+
+        {/* Flecha de volver clásica */}
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>⬅ Volver</Text>
+        </TouchableOpacity>
       </ScrollView>
       <BottomBar navigation={navigation} />
     </View>
@@ -186,6 +201,17 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 5,
   },
+  editButton: {
+    marginTop: 10,
+    paddingVertical: 6,
+    backgroundColor: '#333',
+    borderRadius: 5,
+  },
+  editText: {
+    color: '#D8A353',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
   deleteButton: {
     marginTop: 10,
     paddingVertical: 6,
@@ -195,5 +221,13 @@ const styles = StyleSheet.create({
   deleteText: {
     color: '#fff',
     textAlign: 'center',
+  },
+  back: {
+    color: '#aaa',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
+    textAlign: 'center',
+    marginTop: 10,
   },
 });

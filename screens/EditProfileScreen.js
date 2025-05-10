@@ -1,5 +1,5 @@
 import { Video } from 'expo-av';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Image, Dimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useUser } from '../contexts/UserContext';
@@ -47,18 +47,52 @@ export default function EditProfileScreen({ navigation }) {
   const [zIndexEthnicity, setZIndexEthnicity] = useState(900);
   const [zIndexRegion, setZIndexRegion] = useState(800);
 
+  useEffect(() => {
+    const checkStoredVideo = async () => {
+      try {
+        const json = await AsyncStorage.getItem('userProfileElite');
+        if (json) {
+          const profile = JSON.parse(json);
+          const videoPath = profile.profileVideo;
+          if (videoPath) {
+            const fileInfo = await FileSystem.getInfoAsync(videoPath);
+            if (fileInfo.exists) {
+              setProfileVideo(videoPath);
+            } else {
+              console.log('⚠️ El video no se encuentra disponible en el sistema de archivos.');
+              setProfileVideo(null);
+            }
+          }
+        }
+      } catch (err) {
+        console.log('Error verificando el video:', err);
+      }
+    };
+  
+    checkStoredVideo();
+  }, []);
+  
+
   const categorias = [
     "Actor",
     "Actriz",
+    "Agencia de casting",
+    "Agencia de modelos",
     "Ambientador",
-    "Animador/Presentador",
+    "Animador / presentador",
+    "Artista urbano",
     "Asistente de cámara",
     "Asistente de dirección",
     "Asistente de producción",
     "Asistente de vestuario",
-    "Bailarín",
-    "Caracterizador (FX maquillaje)",
+    "Autos clásicos para escenas",
+    "Autos personales",
+    "Bailarín / bailarina",
+    "Camiones de arte para rodajes",
     "Camarógrafo",
+    "Caracterizador (maquillaje FX)",
+    "Casas rodantes para producción",
+    "Coffee break / snacks",
     "Colorista",
     "Community manager",
     "Continuista",
@@ -68,41 +102,35 @@ export default function EditProfileScreen({ navigation }) {
     "Diseñador de arte",
     "Diseñador gráfico",
     "Doble de acción",
-    "Dueño de locación",
     "Editor de video",
     "Escenógrafo",
+    "Estudio fotográfico",
     "Extra",
     "Fotógrafo de backstage",
+    "Grúas para filmación",
     "Iluminador",
-    "Ilustrador/Storyboarder",
+    "Ilustrador / storyboarder",
     "Maquillista",
     "Microfonista",
     "Modelo",
     "Modelo publicitario",
+    "Motos o bicicletas para escenas",
     "Niño actor",
     "Operador de drone",
-    "Peluquero/Estilista",
-    "Perteneciente a una agencia de casting",
+    "Peluquero / estilista",
     "Postproductor",
     "Productor",
-    "Propietario de auto clásico para escenas",
-    "Propietario de auto personal para escenas",
-    "Propietario de camión de arte",
-    "Propietario de casa rodante",
-    "Propietario de grúa para filmación",
-    "Propietario de moto o bicicleta para escenas",
-    "Propietario de estudio fotográfico",
-    "Propietario de van de producción",
-    "Proveedor de coffee break/snacks",
-    "Proveedor de servicios de catering",
-    "Proveedor de transporte de producción",
-    "Proveedor de transporte de talentos",
+    "Promotoras",
+    "Servicios de catering",
     "Sonidista",
     "Stage manager",
     "Técnico de efectos especiales",
     "Técnico de grúa",
+    "Transporte de producción",
+    "Transporte de talentos",
+    "Vans de producción",
     "Vestuarista",
-    "Otro/No especificado",
+    "Otros / No especificado"
   ];
 
   const ethnicityItems = [
@@ -200,7 +228,7 @@ export default function EditProfileScreen({ navigation }) {
       return;
     }
     console.log('REGIÓN A GUARDAR:', region);
-    
+
     const updatedProfile = {
       profilePhoto,
       name,
@@ -233,7 +261,8 @@ export default function EditProfileScreen({ navigation }) {
     };
 
     try {
-      await AsyncStorage.setItem('userProfilePro', JSON.stringify(updatedProfile));
+      await AsyncStorage.setItem('userProfileElite', JSON.stringify(userProfilePro));
+
       setUserData(updatedProfile);
       navigation.navigate('ProfilePro');
     } catch (err) {

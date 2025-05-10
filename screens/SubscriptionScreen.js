@@ -33,7 +33,7 @@ export default function SubscriptionScreen({ navigation }) {
         const updatedUser = { ...user, membershipType: plan };
         await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUser));
         setMembershipType(plan);
-        navigation.replace('Dashboard');
+        navigation.replace('CompleteProfile');
       }
     } catch (error) {
       console.warn('Error actualizando membresía:', error);
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   },
   back: {
     color: '#CCCCCC',
-    fontSize: 14,
+    fontSize: 16,
     textDecorationLine: 'underline',
     marginTop: 15,
   },

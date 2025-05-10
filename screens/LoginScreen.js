@@ -5,101 +5,138 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Alert,
+  Modal,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
-import { saveUserProfile } from '../utils/profileStorage';
+import { loginUser } from '../utils/auth';
 
 export default function LoginScreen({ navigation }) {
-  const { setUserData } = useUser();
+  const { setUserData, setIsLoggedIn } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const isValidEmail = (email) => {
-    const regex = /\S+@\S+\.\S+/;
-    return regex.test(email);
-  };
+  const [showModal, setShowModal] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Por favor ingresa tu email y contraseña.');
+      return;
+    }
+
     try {
-      const json = await AsyncStorage.getItem('userData');
-      const storedUser = JSON.parse(json);
+      const user = await loginUser(email, password);
+      await AsyncStorage.setItem('sessionActive', 'true'); // ✅ Aquí está la clave
+      setUserData(user);
+      setIsLoggedIn(true);
+    } catch (error) {
+      console.error('Error al iniciar sesión:', error);
+      Alert.alert('Error', error.message);
+    }
+  };
 
-      if (!storedUser || storedUser.email !== email || storedUser.password !== password) {
-        Alert.alert('Acceso denegado', 'Correo o contraseña incorrectos.');
-        return;
-      }
+  const handleRecoverPassword = async () => {
+    if (!recoveryEmail) {
+      Alert.alert('Campo vacío', 'Ingresa un correo válido.');
+      return;
+    }
 
-      const success = await saveUserProfile(storedUser, 'free', setUserData);
-      if (success) {
-        navigation.replace('Dashboard');
+    try {
+      const storedUsers = await AsyncStorage.getItem('allUsers');
+      const users = storedUsers ? JSON.parse(storedUsers) : [];
+
+      const user = users.find(
+        (u) => u.email.toLowerCase() === recoveryEmail.trim().toLowerCase()
+      );
+
+      if (user) {
+        Alert.alert('Contraseña recuperada', `Tu contraseña es: ${user.password}`);
       } else {
-        Alert.alert('Error', 'No se pudo acceder. Intenta nuevamente.');
+        Alert.alert('No encontrado', 'Ese correo no está registrado.');
       }
     } catch (error) {
-      console.log(error);
-      Alert.alert('Error', 'No se pudo acceder. Intenta nuevamente.');
+      console.log('Error en recuperación:', error);
+      Alert.alert('Error', 'No se pudo recuperar la contraseña.');
+    } finally {
+      setShowModal(false);
+      setRecoveryEmail('');
     }
   };
 
   return (
     <View style={styles.container}>
-      <Image source={require('../assets/logo.png')} style={styles.logo} />
+      <Text style={styles.title}>Iniciar sesión</Text>
 
-      <Text style={styles.title}>Inicio de sesión</Text>
-      <Text style={styles.subtitle}>
-        Inicia sesión con tu cuenta <Text style={{ fontWeight: 'bold', color: '#BF872E' }}>EL ENLACE</Text>.
-      </Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Correo electrónico"
+        placeholderTextColor="#999"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        value={email}
+        onChangeText={setEmail}
+      />
 
-      <View style={styles.inputContainer}>
+      <View style={styles.passwordContainer}>
         <TextInput
           style={styles.input}
-          placeholder="CORREO ELECTRÓNICO"
-          placeholderTextColor="#CCCCCC"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <Ionicons
-          name="checkmark-circle"
-          size={24}
-          color={isValidEmail(email) ? '#BF872E' : '#555555'}
-          style={styles.iconRight}
-        />
-      </View>
-
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="CONTRASEÑA"
-          placeholderTextColor="#CCCCCC"
+          placeholder="Contraseña"
+          placeholderTextColor="#999"
+          secureTextEntry={!showPassword}
           value={password}
           onChangeText={setPassword}
-          secureTextEntry={!showPassword}
         />
-        <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconRight}>
+        <TouchableOpacity
+          onPress={() => setShowPassword(!showPassword)}
+          style={styles.iconRight}
+        >
           <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color="#CCCCCC" />
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity>
-        <Text style={styles.forgotPassword}>Olvidé mi contraseña</Text>
+      <TouchableOpacity style={styles.button} onPress={handleLogin}>
+        <Text style={styles.buttonText}>INGRESAR</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-        <Text style={styles.loginButtonText}>INICIAR SESIÓN</Text>
+      <TouchableOpacity onPress={() => setShowModal(true)}>
+        <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-        <Text style={styles.registerText}>
-          ¿No tienes cuenta? <Text style={{ color: '#BF872E' }}>Regístrate</Text>
-        </Text>
+        <Text style={styles.registerText}>¿No tienes cuenta? Regístrate</Text>
       </TouchableOpacity>
+
+      <Modal
+        visible={showModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Recuperar contraseña</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ingresa tu correo"
+              placeholderTextColor="#999"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={recoveryEmail}
+              onChangeText={setRecoveryEmail}
+            />
+            <TouchableOpacity style={styles.button} onPress={handleRecoverPassword}>
+              <Text style={styles.buttonText}>Recuperar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowModal(false)}>
+              <Text style={styles.cancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -107,66 +144,83 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#000',
     padding: 20,
     justifyContent: 'center',
   },
-  logo: {
-    width: 180,
-    height: 180,
-    resizeMode: 'contain',
-    marginBottom: 20,
-    alignSelf: 'center',
-  },
   title: {
+    color: '#D8A353',
     fontSize: 24,
-    color: '#FFFFFF',
     fontWeight: 'bold',
-    marginBottom: 5,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#CCCCCC',
     marginBottom: 30,
     textAlign: 'center',
   },
-  inputContainer: {
-    marginBottom: 20,
-    position: 'relative',
-  },
   input: {
     backgroundColor: '#1A1A1A',
-    color: '#FFFFFF',
+    color: '#fff',
     borderRadius: 10,
     padding: 15,
-    paddingRight: 50,
     fontSize: 16,
+    borderColor: '#D8A353',
+    borderWidth: 1,
+    marginBottom: 15,
+  },
+  passwordContainer: {
+    position: 'relative',
+    marginBottom: 15,
   },
   iconRight: {
     position: 'absolute',
     right: 15,
     top: 15,
   },
-  forgotPassword: {
-    color: '#CCCCCC',
-    textAlign: 'right',
-    marginBottom: 30,
-  },
-  loginButton: {
-    backgroundColor: '#BF872E',
+  button: {
+    backgroundColor: '#D8A353',
     padding: 15,
     borderRadius: 10,
-    marginBottom: 20,
+    marginBottom: 10,
   },
-  loginButtonText: {
-    color: '#FFFFFF',
+  buttonText: {
+    color: '#000',
+    fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
-    fontWeight: 'bold',
   },
   registerText: {
     color: '#CCCCCC',
     textAlign: 'center',
+    textDecorationLine: 'underline',
+    marginTop: 10,
+  },
+  forgotText: {
+    color: '#CCCCCC',
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+    marginBottom: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: '#000000aa',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: '#111',
+    padding: 20,
+    borderRadius: 10,
+    width: '85%',
+  },
+  modalTitle: {
+    color: '#D8A353',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  cancelText: {
+    color: '#888',
+    marginTop: 15,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
 });

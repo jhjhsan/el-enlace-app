@@ -117,6 +117,9 @@ export default function PromotePostScreen({ navigation }) {
       <TouchableOpacity style={styles.promoteButton} onPress={handlePromote}>
         <Text style={styles.promoteText}>💳 Pagar y promocionar</Text>
       </TouchableOpacity>
+      <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>⬅ Volver</Text>
+        </TouchableOpacity>
     </View>
   );
 }
@@ -215,5 +218,13 @@ const styles = StyleSheet.create({
   promoteText: {
     color: '#000',
     fontWeight: 'bold',
+  },
+  back: {
+    marginTop: 30,
+    color: '#aaa',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
+    textAlign: 'center',
   },
 });

@@ -27,10 +27,18 @@ export default function ProfileScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       const loadUser = async () => {
-        const json = await AsyncStorage.getItem('userProfileFree');
-        if (json) {
-          const user = JSON.parse(json);
-          setUserData(user);
+        try {
+          let json = await AsyncStorage.getItem('userProfileFree');
+          if (!json) {
+            json = await AsyncStorage.getItem('userProfile');
+          }
+          if (json) {
+            const user = JSON.parse(json);
+            setUserData(user);
+            console.log('📦 Datos cargados en perfil:', user);
+          }
+        } catch (e) {
+          console.log('❌ Error cargando perfil:', e);
         }
       };
       loadUser();
@@ -47,15 +55,11 @@ export default function ProfileScreen({ navigation }) {
 
   const {
     name = 'Usuario',
-    category = 'Categoría no definida',
     email = 'Correo no definido',
-    description = 'Sin descripción',
-    bookPhotos = [],
+    edad = 'No definida',
+    sexo = 'No definido',
     profilePhoto,
-    edad,
-    sexo,
-    etnia,
-    regionCiudad,
+    bookPhotos = [],
   } = userData;
 
   const handleProfileImagePress = () => {
@@ -83,33 +87,51 @@ export default function ProfileScreen({ navigation }) {
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={handleProfileImagePress}>
-          <Animated.Image
-            source={profilePhoto ? { uri: profilePhoto } : require('../assets/imagen5.png')}
-            style={[styles.profileImage, { transform: [{ scale: profileScaleAnim }] }]}
-          />
-        </TouchableOpacity>
+        {profilePhoto ? (
+          <TouchableOpacity onPress={handleProfileImagePress}>
+            <Animated.Image
+              source={{ uri: profilePhoto }}
+              style={[styles.profileImage, { transform: [{ scale: profileScaleAnim }] }]}
+            />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.noPhoto}>
+            <Text style={styles.noPhotoText}>Sin foto de perfil</Text>
+          </View>
+        )}
 
         <Text style={styles.name}>{name}</Text>
-        <Text style={styles.category}>{category}</Text>
 
-        <View style={styles.infoBox}><Text style={styles.label}>Correo:</Text><Text style={styles.text}>{email}</Text></View>
-        <View style={styles.infoBox}><Text style={styles.label}>Edad:</Text><Text style={styles.text}>{edad || 'No definida'}</Text></View>
-        <View style={styles.infoBox}><Text style={styles.label}>Sexo:</Text><Text style={styles.text}>{sexo || 'No definido'}</Text></View>
-        <View style={styles.infoBox}><Text style={styles.label}>Etnia:</Text><Text style={styles.text}>{etnia || 'No definida'}</Text></View>
-        <View style={styles.infoBox}><Text style={styles.label}>Región:</Text><Text style={styles.text}>{regionCiudad || 'No definida'}</Text></View>
-
-        <Text style={styles.sectionTitle}>Fotos</Text>
-        <View style={styles.gallery}>
-          {bookPhotos.map((uri, index) => (
-            <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
-              <Image
-                source={{ uri }}
-                style={selectedImage === uri ? styles.largeImage : styles.galleryImage}
-              />
-            </TouchableOpacity>
-          ))}
+        <View style={styles.infoBox}>
+          <Text style={styles.label}>Correo:</Text>
+          <Text style={styles.text}>{email}</Text>
         </View>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.label}>Edad:</Text>
+          <Text style={styles.text}>{edad}</Text>
+        </View>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.label}>Sexo:</Text>
+          <Text style={styles.text}>{sexo}</Text>
+        </View>
+
+        {bookPhotos.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Book de Fotos:</Text>
+            <View style={styles.gallery}>
+              {bookPhotos.map((uri, index) => (
+                <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
+                  <Image
+                    source={{ uri }}
+                    style={selectedImage === uri ? styles.largeImage : styles.galleryImage}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       <BottomBar />
@@ -140,16 +162,27 @@ const styles = StyleSheet.create({
     borderColor: '#D8A353',
     marginTop: 60,
   },
+  noPhoto: {
+    width: 100,
+    height: 100,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: '#D8A353',
+    marginTop: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
+  },
+  noPhotoText: {
+    color: '#888',
+    fontSize: 12,
+    textAlign: 'center',
+  },
   name: {
     fontSize: 20,
     color: '#FFF',
     fontWeight: 'bold',
     marginTop: 10,
-  },
-  category: {
-    fontSize: 18,
-    color: '#CCCCCC',
-    marginBottom: 10,
   },
   infoBox: {
     backgroundColor: '#1A1A1A',

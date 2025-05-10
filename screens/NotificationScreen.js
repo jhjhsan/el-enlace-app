@@ -1,4 +1,3 @@
-// screens/NotificationScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -6,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
 import BottomBar from '../components/BottomBar';
 
@@ -19,8 +19,17 @@ const icons = {
 
 export default function NotificationScreen() {
   const [notifications, setNotifications] = useState([]);
+  const [membershipType, setMembershipType] = useState(null);
 
   useEffect(() => {
+    const fetchUser = async () => {
+      const json = await AsyncStorage.getItem('userProfile');
+      if (json) {
+        const user = JSON.parse(json);
+        setMembershipType(user?.membershipType || 'free');
+      }
+    };
+
     const fetchNotifications = async () => {
       const dummyData = [
         { id: '1', icon: 'mensaje', text: 'Agencia XYZ te ha enviado una nueva solicitud', time: 'hace 1 h' },
@@ -32,6 +41,7 @@ export default function NotificationScreen() {
       setNotifications(dummyData);
     };
 
+    fetchUser();
     fetchNotifications();
   }, []);
 
@@ -51,12 +61,20 @@ export default function NotificationScreen() {
         <Text style={styles.title}>Notificaciones</Text>
       </View>
 
-      <FlatList
-        data={notifications}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-      />
+      {membershipType === 'free' ? (
+        <View style={styles.noticeBox}>
+          <Text style={styles.noticeText}>
+            🔒 Esta funcionalidad está disponible solo para miembros Pro o Elite. Actualiza tu membresía para recibir notificaciones.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+        />
+      )}
 
       <BottomBar />
     </View>
@@ -107,5 +125,18 @@ const styles = StyleSheet.create({
   time: {
     color: '#888',
     fontSize: 12,
+  },
+  noticeBox: {
+    backgroundColor: '#1B1B1B',
+    borderRadius: 10,
+    margin: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+  },
+  noticeText: {
+    color: '#D8A353',
+    textAlign: 'center',
+    fontSize: 14,
   },
 });

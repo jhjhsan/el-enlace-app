@@ -47,7 +47,32 @@ export default function EditProfileScreen({ navigation }) {
   const [zIndexEthnicity, setZIndexEthnicity] = useState(900);
   const [zIndexRegion, setZIndexRegion] = useState(800);
 
-  const categorias = [
+  useEffect(() => {
+    const checkStoredVideo = async () => {
+      try {
+        const json = await AsyncStorage.getItem('userProfileElite');
+        if (json) {
+          const profile = JSON.parse(json);
+          const videoPath = profile.profileVideo;
+          if (videoPath) {
+            const fileInfo = await FileSystem.getInfoAsync(videoPath);
+            if (fileInfo.exists) {
+              setProfileVideo(videoPath);
+            } else {
+              console.log('⚠️ El video no se encuentra disponible en el sistema de archivos.');
+              setProfileVideo(null);
+            }
+          }
+        }
+      } catch (err) {
+        console.log('Error verificando el video:', err);
+      }
+    };
+  
+    checkStoredVideo();
+  }, []);
+  
+ const categorias = [
     "Actor",
     "Actriz",
     "Ambientador",
@@ -176,8 +201,8 @@ export default function EditProfileScreen({ navigation }) {
   };
 
   const pickBookPhotos = async () => {
-    if (bookPhotos.length >= 12) {
-      alert('Solo puedes subir hasta 12 fotos.');
+    if (bookPhotos.length >= 20) {
+      alert('Solo puedes subir hasta 20 fotos.');
       return;
     }
 
@@ -189,7 +214,7 @@ export default function EditProfileScreen({ navigation }) {
 
     if (!result.canceled && result.assets.length > 0) {
       const uris = result.assets.map(asset => asset.uri);
-      const totalFotos = [...bookPhotos, ...uris].slice(0, 12);
+      const totalFotos = [...bookPhotos, ...uris].slice(0, 20);
       setBookPhotos(totalFotos);
     }
   };
@@ -200,7 +225,7 @@ export default function EditProfileScreen({ navigation }) {
       return;
     }
     console.log('REGIÓN A GUARDAR:', region);
-    
+
     const updatedProfile = {
       profilePhoto,
       name,
@@ -223,7 +248,7 @@ export default function EditProfileScreen({ navigation }) {
       instagram,
       bookPhotos,
       profileVideo,
-      membershipType: 'pro',
+      membershipType: 'elite',
       country,
       city,
       address,
@@ -233,11 +258,12 @@ export default function EditProfileScreen({ navigation }) {
     };
 
     try {
-      await AsyncStorage.setItem('userProfilePro', JSON.stringify(updatedProfile));
+        await AsyncStorage.setItem('userProfileElite', JSON.stringify(updatedProfile));
+
       setUserData(updatedProfile);
-      navigation.navigate('ProfilePro');
+      navigation.navigate('ProfileElite');
     } catch (err) {
-      console.log('Error al guardar:', err);
+        console.log('Error al guardar perfil elite:', err);
     }
   };
 
@@ -412,14 +438,14 @@ export default function EditProfileScreen({ navigation }) {
           ))}
         </View>
 
-        <Text style={styles.photoCounter}>📷 {bookPhotos.length} / 12 fotos subidas</Text>
+        <Text style={styles.photoCounter}>📷 {bookPhotos.length} / 20 fotos subidas</Text>
 
         <TouchableOpacity style={styles.bookButton} onPress={pickBookPhotos}>
           <Text style={styles.bookButtonText}>Agregar fotos al Book</Text>
         </TouchableOpacity>
 
         <Text style={{ color: profileVideo ? '#D8A353' : '#888', marginTop: 10 }}>
-          🎥 {profileVideo ? '1 video subido' : 'Ningún video cargado aún'}
+          🎥 {profileVideo ? '3 video subido' : 'Ningún video cargado aún'}
         </Text>
 
         {profileVideo && (

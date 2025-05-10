@@ -1,4 +1,3 @@
-// screens/RegisterScreen.js
 import React, { useState } from 'react';
 import {
   View,
@@ -8,37 +7,94 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { saveUserProfile } from '../utils/profileStorage'; // ✅ Importado correctamente
+import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '../contexts/UserContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RegisterScreen({ navigation }) {
+  const { setUserData } = useUser();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState('');
+
+  const isValidEmail = (email) => {
+    const regex = /\S+@\S+\.\S+/;
+    return regex.test(email);
+  };
+
+  const evaluatePasswordStrength = (password) => {
+    const hasLetters = /[a-zA-Z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecial = /[^a-zA-Z0-9]/.test(password);
+    const isLong = password.length >= 8;
+
+    if (hasLetters && hasNumbers && hasSpecial && isLong) return 'Fuerte';
+    if ((hasLetters && hasNumbers && isLong) || (hasLetters && hasSpecial && isLong)) return 'Media';
+    return 'Débil';
+  };
+
+  const handlePasswordChange = (text) => {
+    setPassword(text);
+    setPasswordStrength(evaluatePasswordStrength(text));
+  };
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !confirmPassword) {
       Alert.alert('Error', 'Por favor completa todos los campos.');
       return;
     }
-
-    const baseUserData = {
-      name,
-      email,
-      password,
+  
+    if (!isValidEmail(email)) {
+      Alert.alert('Error', 'Correo no válido.');
+      return;
+    }
+  
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Las contraseñas no coinciden.');
+      return;
+    }
+  
+    const newUser = {
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password: password.trim(),
       membershipType: 'free',
     };
-
+  
     try {
-      const success = await saveUserProfile(baseUserData, 'free');
-      if (success) {
-        navigation.replace('CompleteFree'); // Redirige al formulario de perfil gratuito
-      } else {
-        Alert.alert('Error', 'Hubo un problema al guardar los datos.');
+      const storedUsers = await AsyncStorage.getItem('allUsers');
+      const users = storedUsers ? JSON.parse(storedUsers) : [];
+  
+      const emailExists = users.some((u) => u.email === newUser.email);
+      if (emailExists) {
+        Alert.alert('Error', 'Este correo ya está registrado.');
+        return;
       }
-    } catch (err) {
-      console.log(err);
-      Alert.alert('Error', 'Hubo un problema al guardar los datos.');
+  
+      users.push(newUser);
+      await AsyncStorage.setItem('allUsers', JSON.stringify(users));
+      await AsyncStorage.setItem('userData', JSON.stringify(newUser));
+      await AsyncStorage.setItem('fromRegister', 'true'); // ✅ Bandera para formulario
+      await AsyncStorage.setItem('sessionActive', 'true'); // ✅ Esto activa sesión persistente
+  
+      setUserData(newUser);
+      navigation.replace('FormularioFree');
+  
+    } catch (error) {
+      console.error('Error al registrar:', error);
+      Alert.alert('Error', 'No se pudo registrar el usuario.');
     }
+
+  };
+
+  const getStrengthColor = () => {
+    if (passwordStrength === 'Fuerte') return '#00ff99';
+    if (passwordStrength === 'Media') return '#ffcc00';
+    return '#ff4444';
   };
 
   return (
@@ -53,24 +109,55 @@ export default function RegisterScreen({ navigation }) {
         onChangeText={setName}
       />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Correo electrónico"
-        placeholderTextColor="#999"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Correo electrónico"
+          placeholderTextColor="#999"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <Ionicons
+          name="checkmark-circle"
+          size={24}
+          color={isValidEmail(email) ? '#D8A353' : '#555'}
+          style={styles.iconRight}
+        />
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Contraseña"
-        placeholderTextColor="#999"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Contraseña"
+          placeholderTextColor="#999"
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={handlePasswordChange}
+        />
+        <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconRight}>
+          <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color="#ccc" />
+        </TouchableOpacity>
+      </View>
+
+      {password.length > 0 && (
+        <Text style={[styles.strengthLabel, { color: getStrengthColor() }]}>Seguridad: {passwordStrength}</Text>
+      )}
+
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Repetir contraseña"
+          placeholderTextColor="#999"
+          secureTextEntry={!showConfirmPassword}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+        />
+        <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconRight}>
+          <Ionicons name={showConfirmPassword ? "eye-off" : "eye"} size={24} color="#ccc" />
+        </TouchableOpacity>
+      </View>
 
       <TouchableOpacity style={styles.button} onPress={handleRegister}>
         <Text style={styles.buttonText}>REGISTRARSE</Text>
@@ -102,10 +189,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     borderRadius: 10,
     padding: 15,
-    marginBottom: 15,
+    paddingRight: 50,
     fontSize: 16,
     borderColor: '#D8A353',
     borderWidth: 1,
+    marginBottom: 10,
+  },
+  inputContainer: {
+    marginBottom: 10,
+    position: 'relative',
+  },
+  iconRight: {
+    position: 'absolute',
+    right: 15,
+    top: 15,
   },
   button: {
     backgroundColor: '#D8A353',
@@ -124,5 +221,10 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     textAlign: 'center',
     textDecorationLine: 'underline',
+  },
+  strengthLabel: {
+    marginBottom: 10,
+    fontWeight: 'bold',
+    marginLeft: 5,
   },
 });

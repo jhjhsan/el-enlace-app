@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,7 @@ import {
   FlatList,
   Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomBar from '../components/BottomBar';
-import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 
 const { width } = Dimensions.get('window');
@@ -27,25 +25,10 @@ const images = [
 export default function DashboardScreen({ navigation }) {
   const scrollRef = useRef(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [userName, setUserName] = useState('');
-  const [membershipType, setMembershipType] = useState('free');
-  const { setUserData } = useUser();
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadUser = async () => {
-        const json = await AsyncStorage.getItem('userProfile');
-        if (json) {
-          const user = JSON.parse(json);
-          setUserName(user.name || 'Usuario');
-          setMembershipType(user.membershipType || 'free');
-          setUserData(user);
-          console.log('Loaded user:', user);
-        }
-      };
-      loadUser();
-    }, [setUserData])
-  );
+  const { userData } = useUser();
+  const userName = userData?.name || 'Usuario';
+  const membershipType = userData?.membershipType || 'free';
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -111,28 +94,27 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         {membershipType === 'free' ? (
-  <TouchableOpacity
-    style={styles.disabledButton}
-    onPress={() => navigation.navigate('Subscription')}
-  >
-    <Text style={styles.disabledButtonText}>🔓 Ver planes de membresía</Text>
-  </TouchableOpacity>
-) : membershipType === 'pro' ? (
-  <TouchableOpacity
-    style={styles.disabledButton}
-    onPress={() => navigation.navigate('Subscription')}
-  >
-    <Text style={styles.disabledButtonText}>🔒 Membresía Elite</Text>
-  </TouchableOpacity>
-) : (
-  <TouchableOpacity
-    style={styles.eliteTextContainer}
-    onPress={() => navigation.navigate('Subscription')}
-  >
-    <Text style={styles.eliteText}>👑 Miembro Elite</Text>
-  </TouchableOpacity>
-)}
-
+          <TouchableOpacity
+            style={styles.disabledButton}
+            onPress={() => navigation.navigate('Subscription')}
+          >
+            <Text style={styles.disabledButtonText}>🔓 Ver planes de membresía</Text>
+          </TouchableOpacity>
+        ) : membershipType === 'pro' ? (
+          <TouchableOpacity
+            style={styles.disabledButton}
+            onPress={() => navigation.navigate('Subscription')}
+          >
+            <Text style={styles.disabledButtonText}>🔒 Membresía Elite</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.eliteTextContainer}
+            onPress={() => navigation.navigate('Subscription')}
+          >
+            <Text style={styles.eliteText}>👑 Miembro Elite</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       <BottomBar membershipType={membershipType} />
@@ -203,22 +185,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     marginVertical: 5,
-  },
-  proButton: {
-    backgroundColor: '#000',
-    borderRadius: 10,
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    marginTop: 30,
-    marginBottom: 40,
-  },
-  proButtonText: {
-    color: '#D8A353',
-    fontWeight: 'bold',
-    fontSize: 14,
-    textAlign: 'center',
   },
   disabledButton: {
     backgroundColor: '#1A1A1A',

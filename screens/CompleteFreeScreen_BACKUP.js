@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,23 +15,20 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
+import { saveUserProfile } from '../utils/profileStorage'; // ✅ Importación correcta
 import DropDownPicker from 'react-native-dropdown-picker';
-import { saveUserProfile } from '../utils/profileStorage';
-
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
-export default function EditProfileFree({ navigation }) {
-  const { setUserData } = useUser();
-  const [profilePhoto, setProfilePhoto] = useState(null);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [edad, setEdad] = useState('');
-  const [sexo, setSexo] = useState('');
+export default function CompleteFreeScreen({ navigation }) {
+  const { userData, setUserData, setIsLoggedIn } = useUser();
+  const [profilePhoto, setProfilePhoto] = useState(userData?.profilePhoto || null);
+  const [name, setName] = useState(userData?.name || '');
+  const [email, setEmail] = useState(userData?.email || '');
   const [bookPhotos, setBookPhotos] = useState([]);
-
+  const [sexo, setSexo] = useState('');
+  const [edad, setEdad] = useState('');
   const [openSexo, setOpenSexo] = useState(false);
-  const [zIndexSexo, setZIndexSexo] = useState(1000);
 
   const sexoItems = [
     { label: 'Hombre', value: 'Hombre' },
@@ -39,24 +36,23 @@ export default function EditProfileFree({ navigation }) {
   ];
 
   useEffect(() => {
-    const loadUserData = async () => {
+    const loadProfile = async () => {
       try {
-        const json = await AsyncStorage.getItem('userProfileFree');
-        if (json) {
-          const savedData = JSON.parse(json);
-          setProfilePhoto(savedData.profilePhoto || null);
-          setName(savedData.name || '');
-          setEmail(savedData.email || '');
-          setEdad(savedData.edad || '');
-          setSexo(savedData.sexo || '');
-          setBookPhotos(savedData.bookPhotos || []);
+        const storedProfile = await AsyncStorage.getItem('userProfileFree');
+        if (storedProfile) {
+          const profile = JSON.parse(storedProfile);
+          setName(profile.name || '');
+          setEmail(profile.email || '');
+          setProfilePhoto(profile.profilePhoto || null);
+          setBookPhotos(profile.bookPhotos || []);
+          setSexo(profile.sexo || '');
+          setEdad(profile.edad || '');
         }
-      } catch (error) {
-        console.log('Error al cargar los datos:', error);
+      } catch (err) {
+        console.log('Error al cargar perfil:', err);
       }
     };
-
-    loadUserData();
+    loadProfile();
   }, []);
 
   const pickProfilePhoto = async () => {
@@ -65,7 +61,6 @@ export default function EditProfileFree({ navigation }) {
       allowsEditing: true,
       quality: 1,
     });
-
     if (!result.canceled && result.assets.length > 0) {
       setProfilePhoto(result.assets[0].uri);
     }
@@ -76,13 +71,11 @@ export default function EditProfileFree({ navigation }) {
       Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 3 fotos.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 1,
     });
-
     if (!result.canceled && result.assets.length > 0) {
       const uris = result.assets.map((a) => a.uri);
       const total = [...bookPhotos, ...uris].slice(0, 3);
@@ -97,29 +90,52 @@ export default function EditProfileFree({ navigation }) {
   };
 
   const handleSave = async () => {
-    if (!name || !email || !profilePhoto || bookPhotos.length < 1) {
-      Alert.alert('Campos requeridos', 'Completa todos los campos antes de guardar.');
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!name || !email || !profilePhoto || bookPhotos.length < 3) {
+      Alert.alert('Error', 'Completa todos los campos requeridos (*).');
       return;
     }
-  
-    const profile = {
-      profilePhoto,
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Ingresa un correo válido.');
+      return;
+    }
+
+    const fullProfileData = {
+      ...userData,
       name,
       email,
-      edad,
-      sexo,
+      profilePhoto,
       bookPhotos,
+      sexo,
+      edad,
     };
-  
+
     try {
-      await saveUserProfile(profile, 'free'); // ❌ No activa sesión al editar
-      navigation.navigate('Profile');
-    } catch (err) {
-      console.log('Error al guardar perfil:', err);
-      Alert.alert('Error', 'No se pudo guardar el perfil.');
-    }
+        // Guarda todo
+        await AsyncStorage.setItem('userProfileFree', JSON.stringify(fullProfileData));
+        await AsyncStorage.setItem('userProfile', JSON.stringify(fullProfileData));
+        await AsyncStorage.setItem(
+          'userData',
+          JSON.stringify({
+            email,
+            membershipType: 'free',
+            name,
+            profilePhoto,
+            sexo,
+            edad,
+          })
+        );
+      
+        setUserData(fullProfileData);
+        setIsLoggedIn(true);
+        console.log('✅ Perfil FREE guardado correctamente');
+      } catch (error) {
+        console.error('❌ Error al guardar perfil:', error);
+        Alert.alert('Error', 'Ocurrió un error al guardar el perfil.');
+      }
+      
+      
   };
-  
 
   return (
     <KeyboardAvoidingView
@@ -127,65 +143,44 @@ export default function EditProfileFree({ navigation }) {
       style={{ flex: 1, backgroundColor: '#000' }}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.requiredNote}>* Campos requeridos</Text>
+        <Text style={styles.requerido}>* Campos obligatorios</Text>
 
-        <TouchableOpacity onPress={pickProfilePhoto}>
-          {profilePhoto ? (
+        {profilePhoto ? (
+          <View style={styles.photoContainer}>
             <Image source={{ uri: profilePhoto }} style={styles.profileImage} />
-          ) : (
+            <TouchableOpacity style={styles.deleteButtonPhoto} onPress={() => setProfilePhoto(null)}>
+              <Text style={styles.deleteText}>Eliminar foto</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={pickProfilePhoto}>
             <View style={styles.placeholder}>
-              <Text style={styles.placeholderText}>Agregar foto de perfil</Text>
+              <Text style={styles.placeholderText}>Agregar foto de perfil *</Text>
             </View>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
-        <TextInput
-          style={styles.input}
-          placeholder="Nombre completo*"
-          value={name}
-          onChangeText={setName}
-          placeholderTextColor="#aaa"
-        />
+        <TextInput style={styles.input} placeholder="Nombre completo *" placeholderTextColor="#aaa" value={name} onChangeText={setName} />
+        <TextInput style={styles.input} placeholder="Correo electrónico *" placeholderTextColor="#aaa" value={email} onChangeText={setEmail} keyboardType="email-address" />
+        <TextInput style={styles.input} placeholder="Edad" value={edad} onChangeText={setEdad} placeholderTextColor="#aaa" keyboardType="numeric" />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Correo electrónico*"
-          value={email}
-          onChangeText={setEmail}
-          placeholderTextColor="#aaa"
-          keyboardType="email-address"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Edad"
-          value={edad}
-          onChangeText={setEdad}
-          placeholderTextColor="#aaa"
-          keyboardType="numeric"
-        />
-
-        <View style={{ zIndex: zIndexSexo, width: '80%', marginBottom: 10 }}>
+        <View style={{ zIndex: 1000, width: '100%', marginBottom: 10 }}>
           <DropDownPicker
             open={openSexo}
             value={sexo}
             items={sexoItems}
-            setOpen={(val) => {
-              setOpenSexo(val);
-              setZIndexSexo(val ? 2000 : 1000);
-            }}
+            setOpen={setOpenSexo}
             setValue={setSexo}
             placeholder="Selecciona tu sexo"
             style={styles.dropdown}
             dropDownContainerStyle={styles.dropdownContainer}
-            textStyle={{ color: '#D8A353', fontSize: 13 }}
-            labelStyle={{ color: '#D8A353' }}
-            placeholderStyle={{ color: '#888' }}
             listMode="SCROLLVIEW"
+            textStyle={{ color: '#D8A353' }}
+            placeholderStyle={{ color: '#888' }}
           />
         </View>
 
-        <Text style={styles.label}>Fotos del Book (máx 3)*:</Text>
+        <Text style={styles.label}>Fotos del Book (máx 3): *</Text>
         <View style={styles.gallery}>
           {bookPhotos.map((uri, index) => (
             <View key={index} style={styles.photoItem}>
@@ -211,48 +206,78 @@ export default function EditProfileFree({ navigation }) {
 
 const styles = StyleSheet.create({
   container: {
+    paddingTop: 60,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    paddingVertical: 40,
-    backgroundColor: '#000',
   },
-  requiredNote: {
-    color: '#D8A353',
-    marginBottom: 10,
+  requerido: {
+    color: '#888',
     fontSize: 12,
-  },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: '#D8A353',
-    marginBottom: 15,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
   },
   placeholder: {
-    width: 100,
-    height: 100,
+    width: 120,
+    height: 120,
     borderRadius: 60,
     backgroundColor: '#1B1B1B',
     justifyContent: 'center',
     alignItems: 'center',
     borderColor: '#D8A353',
     borderWidth: 2,
-    marginBottom: 15,
+    marginBottom: 20,
   },
   placeholderText: {
-    color: '#CCCCCC',
+    color: '#ccc',
     textAlign: 'center',
-    fontSize: 12,
+    fontSize: 13,
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderColor: '#D8A353',
+    borderWidth: 2,
+    marginBottom: 10,
+  },
+  photoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  deleteButtonPhoto: {
+    backgroundColor: '#D8A353',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  deleteText: {
+    color: '#000',
+    fontWeight: 'bold',
   },
   input: {
-    width: '80%',
-    backgroundColor: '#1B1B1B',
+    width: '100%',
+    backgroundColor: '#1A1A1A',
     color: '#fff',
     borderRadius: 10,
-    padding: 10,
-    marginBottom: 10,
-    borderWidth: 1,
+    padding: 15,
+    fontSize: 16,
     borderColor: '#D8A353',
+    borderWidth: 1,
+    marginBottom: 15,
+  },
+  saveButton: {
+    backgroundColor: '#D8A353',
+    padding: 15,
+    borderRadius: 10,
+    width: '100%',
+    marginTop: 10,
+  },
+  saveButtonText: {
+    color: '#000',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    fontSize: 16,
   },
   label: {
     color: '#D8A353',
@@ -260,7 +285,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     alignSelf: 'flex-start',
-    marginLeft: '10%',
+    marginLeft: 0,
     marginTop: 15,
   },
   gallery: {
@@ -304,26 +329,13 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     fontSize: 14,
   },
-  saveButton: {
-    backgroundColor: '#D8A353',
-    paddingVertical: 15,
-    borderRadius: 10,
-    width: '80%',
-    marginTop: 20,
-  },
-  saveButtonText: {
-    color: '#000',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    fontSize: 16,
-  },
   dropdown: {
-    backgroundColor: '#1B1B1B',
+    backgroundColor: '#1A1A1A',
     borderColor: '#D8A353',
   },
   dropdownContainer: {
     backgroundColor: '#000',
     borderColor: '#D8A353',
-    maxHeight: 300,
+    zIndex: 1000,
   },
 });

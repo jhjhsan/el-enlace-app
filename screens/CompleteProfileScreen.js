@@ -6,7 +6,7 @@ import * as FileSystem from 'expo-file-system';
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
 import { saveUserProfile } from '../utils/profileStorage';
-
+import DropDownPicker from 'react-native-dropdown-picker';
 
 export default function CompleteProfileScreen({ navigation }) {
   const { userData, setUserData } = useUser();
@@ -30,7 +30,8 @@ export default function CompleteProfileScreen({ navigation }) {
   const [phone, setPhone] = useState(userData?.phone || '');
   const [instagram, setInstagram] = useState(userData?.instagram || '');
   const [bookPhotos, setBookPhotos] = useState(userData?.bookPhotos || []);
-  const [category, setCategory] = useState(userData?.category || []);
+  const [category, setCategory] = useState(
+    Array.isArray(userData?.category) ? userData.category : []);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [searchCategory, setSearchCategory] = useState('');
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
@@ -39,113 +40,163 @@ export default function CompleteProfileScreen({ navigation }) {
   const [country, setCountry] = useState(userData?.country || '');
   const [city, setCity] = useState(userData?.city || '');
   const [address, setAddress] = useState(userData?.address || '');
+  const [ethnicity, setEthnicity] = useState(userData?.ethnicity || '');
+  const [region, setRegion] = useState(userData?.region || '');
+  const [openEthnicity, setOpenEthnicity] = useState(false);
+  const [openRegion, setOpenRegion] = useState(false);
+  const [zIndexEthnicity, setZIndexEthnicity] = useState(900);
+  const [zIndexRegion, setZIndexRegion] = useState(800);
+  
+  const ethnicityItems = [
+    { label: 'Afrodescendiente', value: 'afrodescendiente' },
+    { label: 'Caucásico', value: 'caucasico' },
+    { label: 'Latino', value: 'latino' },
+    { label: 'Asiático', value: 'asiatico' },
+    { label: 'Indígena', value: 'indigena' },
+    { label: 'Otro', value: 'otro' },
+  ];
+  
+  const regionItems = [
+    { label: 'Arica y Parinacota', value: 'arica-y-parinacota' },
+    { label: 'Tarapacá', value: 'tarapaca' },
+    { label: 'Antofagasta', value: 'antofagasta' },
+    { label: 'Atacama', value: 'atacama' },
+    { label: 'Coquimbo', value: 'coquimbo' },
+    { label: 'Valparaíso', value: 'valparaiso' },
+    { label: 'Región Metropolitana', value: 'región metropolitana' },
+    { label: 'Libertador General Bernardo O\'Higgins', value: 'libertador-general-bernardo-ohiggins' },
+    { label: 'Maule', value: 'maule' },
+    { label: 'Ñuble', value: 'nuble' },
+    { label: 'Biobío', value: 'biobio' },
+    { label: 'La Araucanía', value: 'la-araucania' },
+    { label: 'Los Ríos', value: 'los-rios' },
+    { label: 'Los Lagos', value: 'los-lagos' },
+    { label: 'Aysén del General Carlos Ibáñez del Campo', value: 'aysen-del-general-carlos-ibanez-del-campo' },
+    { label: 'Magallanes y de la Antártida Chilena', value: 'magallanes-y-de-la-antartida-chilena' },
+  ];
+  
   
   // Lista de categorías (reemplaza con tus categorías si las tienes)
   const categoriesList = [
-    "Actor",
-    "Actriz",
-    "Agencia de casting",
-    "Ambientador",
-    "Animador / presentador",
-    "Artista urbano",
-    "Asistente de cámara",
-    "Asistente de dirección",
-    "Asistente de producción",
-    "Asistente de vestuario",
-    "Autos clásicos para escenas",
-    "Autos personales",
-    "Bailarín / bailarina",
-    "Camiones de arte para rodajes",
-    "Camarógrafo",
-    "Caracterizador (maquillaje FX)",
-    "Casas rodantes para producción",
-    "Coffee break / snacks",
-    "Colorista",
-    "Community manager",
-    "Continuista",
-    "Coordinador de locaciones",
-    "Creador de contenido digital",
-    "Decorador de set",
-    "Diseñador de arte",
-    "Diseñador gráfico",
-    "Doble de acción",
-    "Editor de video",
-    "Escenógrafo",
-    "Estudio fotográfico",
-    "Extra",
-    "Fotógrafo de backstage",
-    "Grúas para filmación",
-    "Iluminador",
-    "Ilustrador / storyboarder",
-    "Maquillista",
-    "Microfonista",
-    "Modelo",
-    "Modelo publicitario",
-    "Motos o bicicletas para escenas",
-    "Niño actor",
-    "Operador de drone",
-    "Peluquero / estilista",
-    "Postproductor",
-    "Productor",
-    "Servicios de catering",
-    "Sonidista",
-    "Stage manager",
-    "Técnico de efectos especiales",
-    "Técnico de grúa",
-    "Transporte de producción",
-    "Transporte de talentos",
-    "Vans de producción",
-    "Vestuarista",
-    "Otros / No especificado"
+  "Actor",
+  "Actriz",
+  "Agencia de casting",
+  "Agencia de modelos",
+  "Ambientador",
+  "Animador / presentador",
+  "Artista urbano",
+  "Asistente de cámara",
+  "Asistente de dirección",
+  "Asistente de producción",
+  "Asistente de vestuario",
+  "Autos clásicos para escenas",
+  "Autos personales",
+  "Bailarín / bailarina",
+  "Camiones de arte para rodajes",
+  "Camarógrafo",
+  "Caracterizador (maquillaje FX)",
+  "Casas rodantes para producción",
+  "Coffee break / snacks",
+  "Colorista",
+  "Community manager",
+  "Continuista",
+  "Coordinador de locaciones",
+  "Creador de contenido digital",
+  "Decorador de set",
+  "Diseñador de arte",
+  "Diseñador gráfico",
+  "Doble de acción",
+  "Editor de video",
+  "Escenógrafo",
+  "Estudio fotográfico",
+  "Extra",
+  "Fotógrafo de backstage",
+  "Grúas para filmación",
+  "Iluminador",
+  "Ilustrador / storyboarder",
+  "Maquillista",
+  "Microfonista",
+  "Modelo",
+  "Modelo publicitario",
+  "Motos o bicicletas para escenas",
+  "Niño actor",
+  "Operador de drone",
+  "Peluquero / estilista",
+  "Postproductor",
+  "Productor",
+  "Promotoras",
+  "Servicios de catering",
+  "Sonidista",
+  "Stage manager",
+  "Técnico de efectos especiales",
+  "Técnico de grúa",
+  "Transporte de producción",
+  "Transporte de talentos",
+  "Vans de producción",
+  "Vestuarista",
+  "Otros / No especificado"
   ];
 
+  const pickProfilePhoto = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        setProfilePhoto(uri);
+      }
+    } catch (error) {
+      console.log('Error al seleccionar la foto de perfil:', error);
+      alert('Error al seleccionar la foto. Intenta nuevamente.');
+    }
+  };
+
   const pickBookPhotos = async () => {
-    // Si ya hay 12 fotos, avisamos y salimos
     if (bookPhotos.length >= 12) {
       alert('Solo puedes subir hasta 12 fotos.');
       return;
     }
-  
-    // Abrimos el selector de imágenes
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 1,
     });
-  
-    // Si el usuario seleccionó al menos una
+
     if (!result.canceled && result.assets.length > 0) {
       const uris = result.assets.map(asset => asset.uri);
-      // Unimos las nuevas URIs a las existentes y cortamos a 12
       const totalFotos = [...bookPhotos, ...uris].slice(0, 12);
       setBookPhotos(totalFotos);
     }
   };
-  
+
   const pickProfileVideo = async () => {
     if (profileVideo) {
       alert('Ya has subido un video. Elimínalo si deseas subir otro.');
       return;
     }
-  
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       quality: 1,
     });
-  
+
     if (!result.canceled && result.assets.length > 0) {
       const videoAsset = result.assets[0];
       const uri = videoAsset.uri;
-  
-      // Validar si la URI es compatible
+
       if (!uri.startsWith('file://')) {
         alert('El archivo no se puede acceder. Intenta seleccionar un video compatible.');
         return;
       }
-  
+
       const fileName = uri.split('/').pop();
       const newPath = `${FileSystem.documentDirectory}${fileName}`;
-  
+
       try {
         await FileSystem.copyAsync({
           from: uri,
@@ -158,8 +209,7 @@ export default function CompleteProfileScreen({ navigation }) {
       }
     }
   };
-  
-  
+
   const toggleCategory = (cat) => {
     setCategory(prev =>
       prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
@@ -171,7 +221,8 @@ export default function CompleteProfileScreen({ navigation }) {
       alert('Completa los campos obligatorios antes de continuar.');
       return;
     }
-  
+    console.log('REGIÓN A GUARDAR:', region);
+    
     const profileData = {
       profilePhoto,
       name,
@@ -197,13 +248,13 @@ export default function CompleteProfileScreen({ navigation }) {
       country,
       city,
       address,
-      
+      ethnicity,
+      region,
     };
-  
+
     const success = await saveUserProfile(profileData, 'pro', setUserData);
-  
+
     if (success) {
-      // Mostrar animación de éxito y navegar
       setShowSuccessBanner(true);
       Animated.sequence([
         Animated.timing(bannerOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -217,8 +268,6 @@ export default function CompleteProfileScreen({ navigation }) {
       alert('Hubo un problema al guardar tu perfil. Intenta de nuevo.');
     }
   };
-  
-  
 
   const filteredCategories = categoriesList.filter(cat =>
     cat.toLowerCase().includes(searchCategory.toLowerCase())
@@ -392,32 +441,73 @@ export default function CompleteProfileScreen({ navigation }) {
           onChangeText={setAddress}
           placeholderTextColor="#aaa"
         />
-        
-         <TouchableOpacity style={styles.bookButton} onPress={pickBookPhotos}>
+        <View style={[styles.dropdownWrapper, { zIndex: zIndexRegion }]}>
+          <DropDownPicker
+            open={openRegion}
+            value={region}
+            items={regionItems}
+            setOpen={(val) => {
+              setOpenRegion(val);
+              setZIndexRegion(val ? 2000 : 800);
+            }}
+            setValue={setRegion}
+            placeholder="Selecciona tu región"
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropdownContainer}
+            textStyle={{ color: '#D8A353', fontSize: 13 }}
+            labelStyle={{ color: '#D8A353' }}
+            placeholderStyle={{ color: '#888' }}
+            itemStyle={{ paddingVertical: 6 }}
+            arrowIconStyle={{ tintColor: '#D8A353' }}
+            listMode="SCROLLVIEW"
+            dropDownDirection="AUTO"
+          />
+        </View>
+
+<View style={[styles.dropdownWrapper, { zIndex: zIndexEthnicity }]}>
+  <DropDownPicker
+    open={openEthnicity}
+    value={ethnicity}
+    items={ethnicityItems}
+    setOpen={(val) => {
+      setOpenEthnicity(val);
+      setZIndexEthnicity(val ? 2000 : 900);
+    }}
+    setValue={setEthnicity}
+    placeholder="Selecciona tu etnia"
+    style={styles.dropdown}
+    dropDownContainerStyle={styles.dropdownContainer}
+    textStyle={{ color: '#D8A353', fontSize: 13 }}
+    labelStyle={{ color: '#D8A353' }}
+    placeholderStyle={{ color: '#888' }}
+    listMode="SCROLLVIEW"
+  />
+</View>
+
+        <TouchableOpacity style={styles.bookButton} onPress={pickBookPhotos}>
           <Text style={styles.bookButtonText}>Agregar fotos al Book</Text>
         </TouchableOpacity>
        
         {profileVideo && (
-  <View style={styles.videoPreviewContainer}>
-    <Video
-      source={{ uri: profileVideo }}
-      useNativeControls
-      resizeMode="cover"
-      style={styles.videoPreview}
-    />
-    <TouchableOpacity
-      style={styles.deleteVideoButton}
-      onPress={() => setProfileVideo(null)}
-    >
-      <Text style={styles.deleteVideoText}>🗑️ Eliminar Video</Text>
-    </TouchableOpacity>
-  </View>
-)}
-
+          <View style={styles.videoPreviewContainer}>
+            <Video
+              source={{ uri: profileVideo }}
+              useNativeControls
+              resizeMode="cover"
+              style={styles.videoPreview}
+            />
+            <TouchableOpacity
+              style={styles.deleteVideoButton}
+              onPress={() => setProfileVideo(null)}
+            >
+              <Text style={styles.deleteVideoText}>🗑️ Eliminar Video</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.bookButton} onPress={pickProfileVideo}>
-  <Text style={styles.bookButtonText}>Subir Video de Presentación</Text>
-</TouchableOpacity>
+          <Text style={styles.bookButtonText}>Subir Video de Presentación</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.categorySelector}
@@ -482,7 +572,7 @@ export default function CompleteProfileScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
-  container: { alignItems: 'center', paddingBottom: 120, paddingTop: 40 },
+  container: { alignItems: 'center', paddingBottom: 150, paddingTop: 40 },
   profilePlaceholder: {
     width: 120,
     height: 120,
@@ -633,6 +723,20 @@ const styles = StyleSheet.create({
   deleteVideoText: {
     color: '#D8A353',
     fontSize: 14,
-    textAlign: 'center'
-  }
+    textAlign: 'center',
+  },
+  dropdownWrapper: {
+    width: '80%',
+    marginBottom: 10,
+    alignSelf: 'center',
+  },
+  dropdown: {
+    backgroundColor: '#1B1B1B',
+    borderColor: '#D8A353',
+  },
+  dropdownContainer: {
+    backgroundColor: '#000',
+    borderColor: '#D8A353',
+    maxHeight: 700, // 👈 Asegúrate de que esto esté dentro del objeto
+  },
 });

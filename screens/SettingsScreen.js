@@ -1,21 +1,20 @@
+// screens/SettingsScreen.js
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
-export default function PromoteProfileScreen() {
+export default function SettingsScreen() {
   const navigation = useNavigation();
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>📢 Promocionar Perfil</Text>
-        <Text style={styles.subtitle}>
-          Aquí podrás destacar tu perfil para llegar a más agencias y productoras.
-        </Text>
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>⚙️ Configuración de Cuenta</Text>
         <Text style={styles.info}>
-          Esta funcionalidad estará disponible pronto con opciones de pago y duración personalizada.
+          Aquí podrás personalizar opciones relacionadas con tu cuenta. Esta sección estará disponible próximamente.
         </Text>
 
+        {/* Flecha de volver */}
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>⬅ Volver</Text>
         </TouchableOpacity>
@@ -25,37 +24,30 @@ export default function PromoteProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: '#000',
   },
-  content: {
+  container: {
     padding: 20,
-    paddingBottom: 100,
-    justifyContent: 'center',
+    paddingBottom: 120,
     alignItems: 'center',
   },
   title: {
+    fontSize: 22,
     color: '#D8A353',
-    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
   },
-  subtitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
   info: {
-    color: '#CCCCCC',
+    color: '#ccc',
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 10,
+    marginBottom: 40,
   },
   back: {
-    marginTop: 30,
+    marginTop: 500,
     color: '#aaa',
     fontSize: 16,
     fontWeight: 'bold',

@@ -10,10 +10,9 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
-import { getWeeklyServicePostCount, registerServicePost } from '../utils/postLimits';
 import DropDownPicker from 'react-native-dropdown-picker';
 
-export default function PublishScreen({ navigation }) {
+export default function PublishCastingScreen({ navigation }) {
   const { userData } = useUser();
 
   const [title, setTitle] = useState('');
@@ -21,50 +20,19 @@ export default function PublishScreen({ navigation }) {
   const [category, setCategory] = useState(null);
   const [open, setOpen] = useState(false);
 
-  const serviceCategories = [
-    { label: 'Ambientador', value: 'Ambientador' },
-    { label: 'Asistente de cámara', value: 'Asistente de cámara' },
-    { label: 'Asistente de dirección', value: 'Asistente de dirección' },
-    { label: 'Asistente de producción', value: 'Asistente de producción' },
-    { label: 'Asistente de vestuario', value: 'Asistente de vestuario' },
-    { label: 'Autos clásicos para escenas', value: 'Autos clásicos para escenas' },
-    { label: 'Autos personales', value: 'Autos personales' },
-    { label: 'Camiones de arte para rodajes', value: 'Camiones de arte para rodajes' },
-    { label: 'Camarógrafo', value: 'Camarógrafo' },
-    { label: 'Caracterizador (maquillaje FX)', value: 'Caracterizador (maquillaje FX)' },
-    { label: 'Casas rodantes para producción', value: 'Casas rodantes para producción' },
-    { label: 'Coffee break / snacks', value: 'Coffee break / snacks' },
-    { label: 'Colorista', value: 'Colorista' },
-    { label: 'Community manager', value: 'Community manager' },
-    { label: 'Continuista', value: 'Continuista' },
-    { label: 'Coordinador de locaciones', value: 'Coordinador de locaciones' },
-    { label: 'Creador de contenido digital', value: 'Creador de contenido digital' },
-    { label: 'Decorador de set', value: 'Decorador de set' },
-    { label: 'Diseñador de arte', value: 'Diseñador de arte' },
-    { label: 'Diseñador gráfico', value: 'Diseñador gráfico' },
-    { label: 'Editor de video', value: 'Editor de video' },
-    { label: 'Escenógrafo', value: 'Escenógrafo' },
-    { label: 'Estudio fotográfico', value: 'Estudio fotográfico' },
-    { label: 'Fotógrafo de backstage', value: 'Fotógrafo de backstage' },
-    { label: 'Grúas para filmación', value: 'Grúas para filmación' },
-    { label: 'Iluminador', value: 'Iluminador' },
-    { label: 'Ilustrador / storyboarder', value: 'Ilustrador / storyboarder' },
-    { label: 'Maquillista', value: 'Maquillista' },
-    { label: 'Microfonista', value: 'Microfonista' },
-    { label: 'Motos o bicicletas para escenas', value: 'Motos o bicicletas para escenas' },
-    { label: 'Operador de drone', value: 'Operador de drone' },
-    { label: 'Peluquero / estilista', value: 'Peluquero / estilista' },
-    { label: 'Postproductor', value: 'Postproductor' },
-    { label: 'Productor', value: 'Productor' },
-    { label: 'Servicios de catering', value: 'Servicios de catering' },
-    { label: 'Sonidista', value: 'Sonidista' },
-    { label: 'Stage manager', value: 'Stage manager' },
-    { label: 'Técnico de efectos especiales', value: 'Técnico de efectos especiales' },
-    { label: 'Técnico de grúa', value: 'Técnico de grúa' },
-    { label: 'Transporte de producción', value: 'Transporte de producción' },
-    { label: 'Transporte de talentos', value: 'Transporte de talentos' },
-    { label: 'Vans de producción', value: 'Vans de producción' },
-    { label: 'Vestuarista', value: 'Vestuarista' },
+  const castingCategories = [
+    { label: 'Actor', value: 'Actor' },
+    { label: 'Actriz', value: 'Actriz' },
+    { label: 'Agencia de casting', value: 'Agencia de casting' },
+    { label: 'Animador / presentador', value: 'Animador / presentador' },
+    { label: 'Artista urbano', value: 'Artista urbano' },
+    { label: 'Bailarín / bailarina', value: 'Bailarín / bailarina' },
+    { label: 'Doble de acción', value: 'Doble de acción' },
+    { label: 'Extra', value: 'Extra' },
+    { label: 'Modelo', value: 'Modelo' },
+    { label: 'Modelo publicitario', value: 'Modelo publicitario' },
+    { label: 'Niño actor', value: 'Niño actor' },
+    { label: 'Niña actriz', value: 'Niña actriz' },
   ];
 
   const handlePublish = async () => {
@@ -88,23 +56,12 @@ export default function PublishScreen({ navigation }) {
       return;
     }
 
-    if (userData?.membershipType === 'pro') {
-      const count = await getWeeklyServicePostCount();
-      if (count >= 3) {
-        Alert.alert(
-          'Límite alcanzado',
-          'Tu plan Pro permite publicar hasta 3 servicios por semana.'
-        );
-        return;
-      }
-    }
-
     const newPost = {
       id: Date.now().toString(),
       title,
       description,
       category,
-      type: 'servicio',
+      type: 'casting',
       date: new Date().toISOString().split('T')[0],
       isPromotional: false,
       creatorId: userData?.id || '',
@@ -117,11 +74,7 @@ export default function PublishScreen({ navigation }) {
       const updatedPosts = [...posts, newPost];
       await AsyncStorage.setItem('posts', JSON.stringify(updatedPosts));
 
-      if (userData?.membershipType === 'pro') {
-        await registerServicePost();
-      }
-
-      Alert.alert('✅ Servicio publicado', 'Tu publicación se ha guardado exitosamente.');
+      Alert.alert('✅ Casting publicado', 'Tu publicación se ha guardado exitosamente.');
       navigation.navigate('ViewPosts');
     } catch (error) {
       console.error('Error al guardar publicación:', error);
@@ -132,10 +85,10 @@ export default function PublishScreen({ navigation }) {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>📝 Publicar Servicio</Text>
+        <Text style={styles.title}>📝 Publicar Casting</Text>
 
         <TextInput
-          placeholder="Ej: Servicio de maquillaje para rodaje"
+          placeholder="Ej: Buscamos actriz para corto publicitario"
           placeholderTextColor="#888"
           style={styles.input}
           value={title}
@@ -143,7 +96,7 @@ export default function PublishScreen({ navigation }) {
         />
 
         <TextInput
-          placeholder="Ej: Ofrezco servicio de maquillaje profesional para grabaciones..."
+          placeholder="Ej: Se necesita actriz entre 25 y 35 años, perfil urbano, rodaje en Santiago, remunerado. Enviar book y video."
           placeholderTextColor="#888"
           style={styles.textarea}
           multiline
@@ -155,7 +108,7 @@ export default function PublishScreen({ navigation }) {
         <DropDownPicker
           open={open}
           value={category}
-          items={serviceCategories}
+          items={castingCategories}
           setOpen={setOpen}
           setValue={setCategory}
           placeholder="Selecciona una categoría"
@@ -192,14 +145,14 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 20,
-    paddingBottom: 140,
+    paddingBottom: 180,
   },
   title: {
     color: '#D8A353',
     fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 40,
   },
   input: {
     backgroundColor: '#1A1A1A',
@@ -234,7 +187,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   back: {
-    marginTop: 40,
+    marginTop: 30,
     color: '#aaa',
     fontSize: 16,
     fontWeight: 'bold',

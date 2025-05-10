@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function SubmitApplicationScreen({ route, navigation }) {
   const { castingId, castingTitle } = route.params || {};
   const [actingVideos, setActingVideos] = useState([null, null, null]);
+  const [userProfile, setUserProfile] = useState(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const json = await AsyncStorage.getItem('userProfile');
+      if (json) setUserProfile(JSON.parse(json));
+    };
+    loadProfile();
+  }, []);
 
   const pickVideo = async (index) => {
     const result = await DocumentPicker.getDocumentAsync({
@@ -22,31 +31,61 @@ export default function SubmitApplicationScreen({ route, navigation }) {
     });
 
     if (result.type === 'success') {
-      const updatedVideos = [...actingVideos];
-      updatedVideos[index] = result.uri;
-      setActingVideos(updatedVideos);
+      const updated = [...actingVideos];
+      updated[index] = result.uri;
+      setActingVideos(updated);
     }
   };
 
   const handleSubmit = async () => {
     const filteredVideos = actingVideos.filter(Boolean);
 
-    try {
-      const applicationData = {
-        castingId: castingId || 'sin-id',
-        castingTitle: castingTitle || 'Sin título',
-        videos: filteredVideos,
-        timestamp: new Date().toISOString(),
-      };
+    if (!userProfile) {
+      Alert.alert('Error', 'Perfil del usuario no disponible.');
+      return;
+    }
 
+    const applicationData = {
+      castingId: castingId || 'sin-id',
+      castingTitle: castingTitle || 'Sin título',
+      timestamp: new Date().toISOString(),
+      videos: filteredVideos,
+      profile: {
+        name: userProfile.name || '',
+        email: userProfile.email || '',
+        age: userProfile.age || '',
+        sex: userProfile.sex || '',
+        height: userProfile.height || '',
+        region: userProfile.region || '',
+        city: userProfile.city || '',
+        address: userProfile.address || '',
+        ethnicity: userProfile.ethnicity || '',
+        phoneNumber: userProfile.phoneNumber || '',
+        instagram: userProfile.instagram || '',
+        profilePhoto: userProfile.profilePhoto || '',
+        presentationVideo: userProfile.presentationVideo || '',
+        bookPhotos: userProfile.bookPhotos || [],
+        categories: userProfile.categories || [],
+      },
+    };
+
+    try {
       const existing = await AsyncStorage.getItem('applications');
       const parsed = existing ? JSON.parse(existing) : [];
+
+      const alreadyApplied = parsed.some(
+        (app) => app.castingId === castingId && app.profile?.email === userProfile.email
+      );
+
+      if (alreadyApplied) {
+        Alert.alert('Ya postulado', 'Ya enviaste una postulación a este casting.');
+        return;
+      }
 
       parsed.push(applicationData);
       await AsyncStorage.setItem('applications', JSON.stringify(parsed));
 
-      console.log('Postulación guardada localmente:', applicationData);
-      Alert.alert('✅ Postulación enviada', 'Tu postulación fue enviada con éxito.');
+      Alert.alert('✅ Postulación enviada', 'Tu postulación fue guardada con éxito.');
       navigation.goBack();
     } catch (error) {
       console.error('Error al guardar postulación:', error);
@@ -76,16 +115,20 @@ export default function SubmitApplicationScreen({ route, navigation }) {
                 style={styles.video}
               />
             ) : (
-              <Text style={styles.placeholder}>Video {index + 1} no cargado</Text>
+              <Text style={styles.placeholder}>Acting {index + 1} no cargado</Text>
             )}
             <TouchableOpacity style={styles.button} onPress={() => pickVideo(index)}>
-              <Text style={styles.buttonText}>Subir Video {index + 1}</Text>
+              <Text style={styles.buttonText}>Subir Acting {index + 1}</Text>
             </TouchableOpacity>
           </View>
         ))}
 
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
           <Text style={styles.submitText}>Enviar postulación</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>⬅ Volver</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -158,5 +201,11 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  back: {
+    color: '#aaa',
+    marginTop: 150,
+    fontSize: 16,
+    textDecorationLine: 'underline',
   },
 });
