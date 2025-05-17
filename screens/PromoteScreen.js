@@ -1,7 +1,33 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function PromoteScreen({ navigation }) {
+  const [membershipType, setMembershipType] = useState('free');
+
+  useEffect(() => {
+    const fetchMembership = async () => {
+      try {
+        const json = await AsyncStorage.getItem('userProfile');
+        if (json) {
+          const user = JSON.parse(json);
+          setMembershipType(user.membershipType || 'free');
+        }
+      } catch (e) {
+        console.log('Error al cargar tipo de cuenta:', e);
+      }
+    };
+
+    fetchMembership();
+  }, []);
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -9,14 +35,34 @@ export default function PromoteScreen({ navigation }) {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate('PromoteProfile')}
+          onPress={() => {
+            if (membershipType === 'free') {
+              Alert.alert(
+                'Función exclusiva',
+                'La promoción de perfil está disponible solo para usuarios Pro o Elite.',
+                [{ text: 'Ver planes', onPress: () => navigation.navigate('Subscription') }]
+              );
+            } else {
+              navigation.navigate('PromoteProfile');
+            }
+          }}
         >
           <Text style={styles.buttonText}>🚀 Promocionar mi perfil</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate('PromotePost')}
+          onPress={() => {
+            if (membershipType === 'free') {
+              Alert.alert(
+                'Función exclusiva',
+                'Solo los usuarios Pro o Elite pueden promocionar publicaciones.',
+                [{ text: 'Ver planes', onPress: () => navigation.navigate('Subscription') }]
+              );
+            } else {
+              navigation.navigate('PromotePost');
+            }
+          }}
         >
           <Text style={styles.buttonText}>📢 Promocionar una publicación</Text>
         </TouchableOpacity>
@@ -38,7 +84,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
-    paddingBottom: 100, 
+    paddingBottom: 100,
   },
   title: {
     fontSize: 24,

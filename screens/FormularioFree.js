@@ -16,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { useUser } from '../contexts/UserContext';
 import { saveUserProfile } from '../utils/profileStorage';
+// Si deseas usar Ionicons en vez de emoji flecha:
+import { Ionicons } from '@expo/vector-icons';
 
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -72,11 +74,22 @@ export default function FormularioFree({ navigation }) {
   };
 
   const handleSave = async () => {
-    if (!name || !email || !profilePhoto || bookPhotos.length < 1) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!name || !email || !profilePhoto || bookPhotos.length < 1 || !sexo || !edad) {
       Alert.alert('Error', 'Completa todos los campos obligatorios.');
       return;
     }
-  
+
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Ingresa un correo válido.');
+      return;
+    }
+
+    if (isNaN(Number(edad))) {
+      Alert.alert('Error', 'Ingresa una edad válida en números.');
+      return;
+    }
+
     const fullProfile = {
       name,
       email,
@@ -86,36 +99,35 @@ export default function FormularioFree({ navigation }) {
       sexo,
       edad,
     };
-  
+
     try {
       const fromRegister = await AsyncStorage.getItem('fromRegister');
-  
+
       if (fromRegister === 'true') {
         await saveUserProfile(
           fullProfile,
           'free',
           setUserData,
           setIsLoggedIn,
-          true // ✅ Activa sesión solo si viene del registro
+          true
         );
-        await AsyncStorage.setItem('sessionActive', 'true'); // ✅ activa persistencia de sesión
+        await AsyncStorage.setItem('sessionActive', 'true');
         await AsyncStorage.removeItem('fromRegister');
         console.log('✅ Perfil guardado y sesión activada tras registro');
       } else {
-        await saveUserProfile(fullProfile, 'free'); // ❌ No activa sesión al editar
+        await saveUserProfile(fullProfile, 'free');
         console.log('📄 Perfil editado sin reactivar sesión');
       }
-  
+
       Alert.alert('Perfil guardado', 'Tus datos fueron actualizados correctamente.');
     } catch (e) {
       console.log('Error al guardar perfil:', e);
       Alert.alert('Error', 'No se pudo guardar el perfil.');
     }
   };
-  
-  
 
   return (
+    
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.inner}>
         <Text style={styles.title}>Formulario Free ✅</Text>
@@ -186,6 +198,9 @@ export default function FormularioFree({ navigation }) {
         <TouchableOpacity style={styles.button} onPress={pickBookPhotos}>
           <Text style={styles.buttonText}>Agregar fotos</Text>
         </TouchableOpacity>
+        <Text style={styles.notice}>
+          * Todos los campos deben estar completos para guardar el perfil
+        </Text>
 
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
           <Text style={styles.saveButtonText}>Guardar perfil</Text>
@@ -317,5 +332,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     fontSize: 16,
+  },
+  notice: {
+    color: '#fff',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 10,
   },
 });

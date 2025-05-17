@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import { getWeeklyServicePostCount, registerServicePost } from '../utils/postLimits';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function PublishScreen({ navigation }) {
   const { userData } = useUser();
@@ -88,15 +89,18 @@ export default function PublishScreen({ navigation }) {
       return;
     }
 
-    if (userData?.membershipType === 'pro') {
-      const count = await getWeeklyServicePostCount();
-      if (count >= 3) {
-        Alert.alert(
-          'Límite alcanzado',
-          'Tu plan Pro permite publicar hasta 3 servicios por semana.'
-        );
-        return;
-      }
+    const count = await getWeeklyServicePostCount();
+    if (
+      (userData?.membershipType === 'pro' && count >= 3) ||
+      (userData?.membershipType === 'free' && count >= 1)
+    ) {
+      Alert.alert(
+        'Límite alcanzado',
+        userData?.membershipType === 'pro'
+          ? 'Tu plan Pro permite publicar hasta 3 servicios por semana.'
+          : 'Tu plan Free permite publicar solo 1 servicio por semana.'
+      );
+      return;
     }
 
     const newPost = {
@@ -117,9 +121,7 @@ export default function PublishScreen({ navigation }) {
       const updatedPosts = [...posts, newPost];
       await AsyncStorage.setItem('posts', JSON.stringify(updatedPosts));
 
-      if (userData?.membershipType === 'pro') {
-        await registerServicePost();
-      }
+      await registerServicePost(); // ✅ aplica para todos
 
       Alert.alert('✅ Servicio publicado', 'Tu publicación se ha guardado exitosamente.');
       navigation.navigate('ViewPosts');
@@ -131,9 +133,14 @@ export default function PublishScreen({ navigation }) {
 
   return (
     <View style={styles.screen}>
+      {/* Flecha profesional arriba a la izquierda */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
+  
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📝 Publicar Servicio</Text>
-
+  
         <TextInput
           placeholder="Ej: Servicio de maquillaje para rodaje"
           placeholderTextColor="#888"
@@ -141,7 +148,7 @@ export default function PublishScreen({ navigation }) {
           value={title}
           onChangeText={setTitle}
         />
-
+  
         <TextInput
           placeholder="Ej: Ofrezco servicio de maquillaje profesional para grabaciones..."
           placeholderTextColor="#888"
@@ -151,7 +158,7 @@ export default function PublishScreen({ navigation }) {
           value={description}
           onChangeText={setDescription}
         />
-
+  
         <DropDownPicker
           open={open}
           value={category}
@@ -163,26 +170,20 @@ export default function PublishScreen({ navigation }) {
           style={{
             backgroundColor: '#1A1A1A',
             borderColor: '#D8A353',
-            zIndex: 1000,
           }}
           dropDownContainerStyle={{
             backgroundColor: '#1A1A1A',
             borderColor: '#D8A353',
-            zIndex: 1000,
           }}
           textStyle={{ color: '#fff' }}
         />
-
+  
         <TouchableOpacity style={styles.publishButton} onPress={handlePublish}>
           <Text style={styles.publishText}>📤 Publicar</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
-  );
+  );  
 }
 
 const styles = StyleSheet.create({
@@ -227,7 +228,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 300,
+    marginTop: 20,
   },
   publishText: {
     color: '#000',
@@ -241,4 +242,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
     textAlign: 'center',
   },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
+  },  
 });

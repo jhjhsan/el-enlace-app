@@ -1,4 +1,3 @@
-// screens/FilteredProfilesScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -6,20 +5,30 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Image,
+  Alert,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import BottomBar from '../components/BottomBar';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function FilteredProfilesScreen({ route, navigation }) {
   const { userData } = useUser();
   const { category } = route.params;
-
   const [profiles, setProfiles] = useState([]);
   const [search, setSearch] = useState('');
+
+  const sanitizeProfileData = (profile) => {
+    const cleaned = { ...profile };
+    if (!cleaned.profilePhoto?.startsWith('http') && !cleaned.profilePhoto?.startsWith('file')) {
+      cleaned.profilePhoto = null;
+    }
+    if (!cleaned.profileVideo?.startsWith('http') && !cleaned.profileVideo?.startsWith('file')) {
+      cleaned.profileVideo = null;
+    }
+    return cleaned;
+  };
 
   useEffect(() => {
     const fetchProfiles = async () => {
@@ -51,11 +60,14 @@ export default function FilteredProfilesScreen({ route, navigation }) {
     p.name?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const isProUser = userData?.membershipType === 'pro';
+  const isProUser = userData?.membershipType !== 'free';
 
   return (
     <View style={styles.container}>
-      {/* Buscador */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={18} color="#D8A353" style={styles.icon} />
         <TextInput
@@ -67,41 +79,41 @@ export default function FilteredProfilesScreen({ route, navigation }) {
         />
       </View>
 
-      {/* Listado de perfiles */}
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {filtered.map((profile, index) => (
-          <View key={index} style={styles.profileCard}>
-            <Image
-              source={{ uri: profile.profilePhoto }}
-              style={styles.avatar}
-            />
+      <FlatList
+        data={filtered}
+        keyExtractor={(item, index) => index.toString()}
+        contentContainerStyle={styles.scroll}
+        ListEmptyComponent={
+          <Text style={styles.noResults}>No se encontraron perfiles.</Text>
+        }
+        renderItem={({ item: profile }) => (
+          <View style={styles.profileCard}>
+            {profile.profilePhoto ? (
+              <Image source={{ uri: profile.profilePhoto }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: '#444', justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ color: '#aaa' }}>👤</Text>
+              </View>
+            )}
             <View style={styles.info}>
               <Text style={styles.name}>{profile.name || 'Usuario'}</Text>
               <Text style={styles.categoryText}>{category}</Text>
             </View>
             <TouchableOpacity
-              style={styles.button}
-              onPress={() => {
-                if (isProUser) {
-                  navigation.navigate('ProfilePro');
-                } else {
-                    navigation.navigate('Subscription');                    // Puedes crear esta pantalla luego
-                }
-              }}
-            >
-              <Text style={styles.buttonText}>
-                {isProUser ? 'Ver perfil' : '🔓 Ver perfil'}
-              </Text>
-            </TouchableOpacity>
+  style={styles.button}
+  onPress={() => {
+    const cleaned = sanitizeProfileData(profile);
+    navigation.navigate('ProfileDetail', {
+      profileData: cleaned,
+      returnTo: 'FilteredProfiles',
+    });
+  }}
+>
+  <Text style={styles.buttonText}>Ver perfil</Text>
+</TouchableOpacity>
           </View>
-        ))}
-
-        {filtered.length === 0 && (
-          <Text style={styles.noResults}>No se encontraron perfiles.</Text>
         )}
-      </ScrollView>
-
-      <BottomBar navigation={navigation} membershipType={userData?.membershipType} />
+      />
     </View>
   );
 }
@@ -110,7 +122,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    paddingTop: 40,
+    paddingTop: 45,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   searchContainer: {
     flexDirection: 'row',

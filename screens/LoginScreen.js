@@ -30,9 +30,19 @@ export default function LoginScreen({ navigation }) {
 
     try {
       const user = await loginUser(email, password);
-      await AsyncStorage.setItem('sessionActive', 'true'); // ✅ Aquí está la clave
-      setUserData(user);
-      setIsLoggedIn(true);
+await AsyncStorage.setItem('sessionActive', 'true');
+
+// 🔽 Obtener el perfil completo desde AsyncStorage
+const storedProfile = await AsyncStorage.getItem('userProfile');
+
+if (storedProfile) {
+  const fullProfile = JSON.parse(storedProfile);
+  setUserData(fullProfile);
+  setIsLoggedIn(true);
+} else {
+  Alert.alert('Error', 'No se pudo cargar el perfil completo.');
+}
+
     } catch (error) {
       console.error('Error al iniciar sesión:', error);
       Alert.alert('Error', error.message);

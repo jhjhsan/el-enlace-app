@@ -28,6 +28,7 @@ export default function RootNavigator() {
     const checkStoredSession = async () => {
       try {
         const userJson = await AsyncStorage.getItem('userData');
+
         if (userJson) {
           const parsed = JSON.parse(userJson);
           if (parsed?.email && parsed?.name) {
@@ -43,7 +44,6 @@ export default function RootNavigator() {
         console.log('❌ Error comprobando sesión:', e);
         setIsLoggedIn(false);
       } finally {
-        // ⏳ Esperamos 1 segundo extra antes de cerrar splash
         setTimeout(() => {
           setCheckingLogin(false);
         }, 1000);

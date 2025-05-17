@@ -9,17 +9,32 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Video } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons'; // ✅ flecha
 
 export default function PostulationHistoryScreen() {
   const navigation = useNavigation();
   const [applications, setApplications] = useState([]);
 
   useEffect(() => {
+    const validateAccess = async () => {
+      const json = await AsyncStorage.getItem('userProfile');
+      if (json) {
+        const user = JSON.parse(json);
+        const membership = user?.membershipType || 'free';
+        if (membership === 'free') {
+          alert('Esta función es exclusiva para usuarios Pro o Elite.');
+          navigation.goBack();
+        }
+      }
+    };
+
+    validateAccess();
+
     const loadApplications = async () => {
       try {
         const stored = await AsyncStorage.getItem('applications');
         const parsed = stored ? JSON.parse(stored) : [];
-        setApplications(parsed.reverse()); // Más recientes primero
+        setApplications(parsed.reverse());
       } catch (error) {
         console.error('Error cargando postulaciones:', error);
       }
@@ -31,8 +46,23 @@ export default function PostulationHistoryScreen() {
 
   return (
     <View style={styles.screen}>
+      {/* ✅ Flecha profesional */}
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{
+          position: 'absolute',
+          top: 15,
+          left: 20,
+          zIndex: 2000,
+        }}
+      >
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>📦 Historial de Postulaciones</Text>
+        <Text style={[styles.title, { marginTop: 40 }]}>
+          📦 Historial de Postulaciones
+        </Text>
 
         {applications.length === 0 ? (
           <Text style={styles.info}>Aún no has realizado ninguna postulación.</Text>
@@ -40,7 +70,7 @@ export default function PostulationHistoryScreen() {
           applications.map((app, index) => (
             <View key={index} style={styles.card}>
               <Text style={styles.label}>🎬 Casting:</Text>
-              <Text style={styles.value}>{app.castingTitle}</Text>
+              <Text style={styles.value}>{app.castingTitle || 'Sin título disponible'}</Text>
 
               <Text style={styles.label}>📅 Fecha:</Text>
               <Text style={styles.value}>
@@ -72,10 +102,6 @@ export default function PostulationHistoryScreen() {
             </View>
           ))
         )}
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -126,13 +152,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D8A353',
     marginBottom: 10,
-  },
-  back: {
-    marginTop: 20,
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
-    textAlign: 'center',
   },
 });

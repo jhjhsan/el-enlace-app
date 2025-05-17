@@ -10,9 +10,12 @@ import {
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUser } from '../contexts/UserContext';
 
 export default function EditPostScreen({ route, navigation }) {
   const { post } = route.params;
+  const { userData } = useUser();
+
   const [title, setTitle] = useState(post?.title || '');
   const [description, setDescription] = useState(post?.description || '');
   const [category, setCategory] = useState(post?.category || '');
@@ -28,7 +31,6 @@ export default function EditPostScreen({ route, navigation }) {
         { label: 'Animador / presentador', value: 'Animador / presentador' },
         { label: 'Modelo', value: 'Modelo' },
         { label: 'Extra', value: 'Extra' },
-        // Agrega más si necesitas
       ]
     : [
         { label: 'Editor de video', value: 'Editor de video' },
@@ -36,7 +38,6 @@ export default function EditPostScreen({ route, navigation }) {
         { label: 'Camarógrafo', value: 'Camarógrafo' },
         { label: 'Sonidista', value: 'Sonidista' },
         { label: 'Productor', value: 'Productor' },
-        // Agrega más si necesitas
       ];
 
   const handleSave = async () => {
@@ -44,6 +45,15 @@ export default function EditPostScreen({ route, navigation }) {
       Alert.alert('Campos requeridos', 'Completa todos los campos antes de guardar.');
       return;
     }
+
+    if (post.creatorEmail !== userData?.email) {
+      Alert.alert('Acceso denegado', 'No puedes editar publicaciones de otros usuarios.');
+      return;
+    }
+    if (post.isPromotional) {
+        Alert.alert('Edición no permitida', 'Las publicaciones promocionales no se pueden editar.');
+        return;
+      }      
 
     try {
       const stored = await AsyncStorage.getItem('posts');

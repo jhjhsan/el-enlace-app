@@ -1,169 +1,431 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Linking, Animated } from 'react-native';
-import { useUser } from '../contexts/UserContext';
-import BottomBar from '../components/BottomBar';
-import { Ionicons, AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Video } from 'expo-av';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Linking,
+  Platform,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUser } from '../contexts/UserContext';
+import { Ionicons, AntDesign, Feather } from '@expo/vector-icons';
+import { Video } from 'expo-av';
+import BottomBar from '../components/BottomBar';
 
 export default function ProfileEliteScreen({ navigation }) {
   const { userData, setUserData } = useUser();
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [profile, setProfile] = useState(null);
 
   useEffect(() => {
-    const loadProfileElite = async () => {
-      const json = await AsyncStorage.getItem('userProfilePro');
+    const loadProfile = async () => {
+      const json = await AsyncStorage.getItem('userProfile');
       if (json) {
-        const eliteData = JSON.parse(json);
-        setUserData(eliteData);
+        const loadedProfile = JSON.parse(json);
+        setProfile(loadedProfile);
+      } else {
+        setProfile({}); // Inicializar como objeto vacío si no hay datos
       }
     };
-    loadProfileElite();
+    loadProfile();
   }, []);
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const [isEnlarged, setIsEnlarged] = useState(false);
-
-  const handleProfilePhotoPress = () => {
-    Animated.timing(scaleAnim, {
-      toValue: isEnlarged ? 1 : 1.6,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setIsEnlarged(!isEnlarged);
-    });
-  };
-
-  const handleContact = (type) => {
-    if (type === 'email' && userData.email) {
-      Linking.openURL(`mailto:${userData.email}`);
-    } else if (type === 'phone' && userData.phone) {
-      Linking.openURL(`tel:${userData.phone}`);
-    } else if (type === 'instagram' && userData.instagram) {
-      const username = userData.instagram.replace('@', '');
-      Linking.openURL(`https://instagram.com/${username}`);
-    }
-  };
-
-  const handleWhatsApp = () => {
-    if (userData.phone) {
-      const number = userData.phone.replace(/\D/g, '');
-      Linking.openURL(`https://wa.me/${number}`);
-    }
-  };
-
-  const handleToggleImage = (uri) => {
-    if (selectedImage === uri) {
-      setSelectedImage(null);
-    } else {
-      setSelectedImage(uri);
-    }
-  };
-
-  if (!userData) {
+  if (!profile) {
     return (
-      <View style={styles.screen}>
-        <Text style={{ color: '#fff' }}>Cargando perfil...</Text>
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Cargando perfil...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfile')}>
-          <AntDesign name="edit" size={24} color="#D8A353" />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleProfilePhotoPress}>
-          <Animated.Image source={{ uri: userData.profilePhoto }} style={[styles.profileImage, { transform: [{ scale: scaleAnim }] }]} />
-        </TouchableOpacity>
-
-        <Text style={styles.name}>{userData.name}</Text>
-        {userData.category && <Text style={styles.category}>{userData.category}</Text>}
-
-        <View style={styles.contactContainer}>
-          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
-            <Ionicons name="mail" size={20} color="#D8A353" />
-            <Text style={styles.contactText}>{userData.email}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
-            <Ionicons name="call" size={20} color="#D8A353" />
-            <Text style={styles.contactText}>{userData.phone}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('instagram')}>
-            <MaterialCommunityIcons name="instagram" size={20} color="#E4405F" />
-            <Text style={styles.contactText}>{userData.instagram}</Text>
-          </TouchableOpacity>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+        {/* Encabezado */}
+        <View style={styles.headerContainer}>
+          <Text style={styles.title}>Perfil de Agencia</Text>
+          <Text style={styles.subtitle}>👑 Cuenta Elite</Text>
+          <TouchableOpacity
+  style={styles.editPill}
+  onPress={() => navigation.navigate('EditProfileElite')}
+>
+  <AntDesign name="edit" size={16} color="#000" />
+  
+</TouchableOpacity>
         </View>
 
-        <View style={styles.infoBox}>
-          {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
-            {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
-            {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
-            {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
-            {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
-            {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
-            {userData.ethnicity && <Text style={styles.infoText}>Etnia: {userData.ethnicity}</Text>}
-            {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
-            {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
-            {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
-            {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
-            {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
-            {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
-            {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
-            {userData.country && <Text style={styles.infoText}>País: {userData.country}</Text>}
-            {userData.city && <Text style={styles.infoText}>Ciudad: {userData.city}</Text>}
-            {userData.address && <Text style={styles.infoText}>Dirección: {userData.address}</Text>}
-            {userData.commune && <Text style={styles.infoText}>Comuna: {userData.commune}</Text>}
-            {userData.region && <Text style={styles.infoText}>Región: {userData.region}</Text>}
+        {/* Sección de Perfil */}
+        <View style={styles.profileSection}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={{ uri: profile.profilePhoto || 'https://via.placeholder.com/120' }} // Fallback si no hay foto
+              style={styles.logo}
+              onError={(e) => console.log('Error loading image:', e.nativeEvent.error)}
+            />
+          </View>
+          {profile.companyType && (
+  <View style={styles.categoryBadge}>
+    <Feather name="briefcase" size={16} color="#D8A353" style={{ marginRight: 6 }} />
+    <Text style={styles.categoryText}>{profile.companyType}</Text>
+  </View>
+)}
+
+          <Text style={styles.agencyName}>{profile.agencyName}</Text>
+          <Text style={styles.representative}>{profile.representative}</Text>
+          <Text style={styles.location}>{profile.city}, {profile.region}</Text>
         </View>
 
-        {userData.description && <Text style={styles.description}>{userData.description}</Text>}
+        {/* Sección de Contacto Visual */}
+        <Text style={[styles.sectionTitle, { marginTop: 0, marginBottom: 10 }]}>Contacto</Text>
+<View style={styles.contactBoxCentered}>
+  {profile.email && (
+    <View style={styles.contactCard}>
+      <Ionicons name="mail" size={20} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.email}</Text>
+    </View>
+  )}
+  {profile.phone && (
+    <View style={styles.contactCard}>
+      <Ionicons name="call" size={20} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.phone}</Text>
+    </View>
+  )}
+  {profile.address && (
+    <View style={styles.contactCard}>
+      <Ionicons name="location" size={20} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.address}</Text>
+    </View>
+  )}
+  {profile.instagram && (
+    <View style={styles.contactCard}>
+      <Ionicons name="logo-instagram" size={20} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.instagram}</Text>
+    </View>
+  )}
+</View>
+        {/* Sección de Descripción */}
+        <Text style={styles.sectionTitle}>Descripción</Text>
+        <View style={styles.descriptionBox}>
+          <Text style={styles.descriptionText}>{profile.description}</Text>
+        </View>
 
-        <View style={styles.galleryContainer}>
-          {userData.bookPhotos?.map((uri, index) => (
-            <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
-              <Image source={{ uri }} style={selectedImage === uri ? styles.largeImage : styles.galleryImage} />
+        {/* Sección de Portafolio */}
+        <Text style={styles.sectionTitle}>Portafolio</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollHorizontal}>
+          {profile.logos?.map((uri, index) => (
+            <TouchableOpacity key={index} style={styles.portfolioCard}>
+              <Image source={{ uri }} style={styles.portfolioImage} />
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
-        {userData.profileVideo && (
-          <Video
-            source={{ uri: userData.profileVideo }}
-            useNativeControls
-            resizeMode="contain"
-            style={styles.video}
-          />
+        {/* Sección de Video */}
+        {profile.profileVideo && (
+          <View style={styles.videoSection}>
+            <Text style={styles.sectionTitle}>Video Institucional</Text>
+            <View style={styles.videoContainer}>
+              <Video
+                source={{ uri: profile.profileVideo }}
+                useNativeControls
+                resizeMode="contain"
+                style={styles.video}
+              />
+            </View>
+          </View>
         )}
-
-        <TouchableOpacity style={styles.contactButton} onPress={handleWhatsApp}>
-          <Text style={styles.contactButtonText}>Contactar al Whatsapp</Text>
-        </TouchableOpacity>
       </ScrollView>
-      <BottomBar />
+      <View style={styles.bottomBarWrapper}>
+  <BottomBar />
+</View>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#000' },
-  container: { alignItems: 'center', paddingBottom: 120, paddingTop: 50 },
-  profileImage: { width: 120, height: 120, borderRadius: 60, borderColor: '#D8A353', borderWidth: 2 },
-  name: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginTop: 10 },
-  category: { color: '#D8A353', fontSize: 16, textAlign: 'center', marginTop: 5 },
-  contactContainer: { width: '80%', marginBottom: 20, marginTop: 5 },
-  contactItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1B1B1B', padding: 10, borderRadius: 8, borderColor: '#D8A353', borderWidth: 1, marginVertical: 5 },
-  contactText: { color: '#CCCCCC', marginLeft: 10 },
-  description: { width: '80%', color: '#CCCCCC', backgroundColor: '#1B1B1B', padding: 10, borderRadius: 10, borderColor: '#D8A353', borderWidth: 1, marginVertical: 15 },
-  galleryContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginVertical: 15 },
-  galleryImage: { width: 70, height: 70, borderRadius: 8, margin: 5 },
-  largeImage: { width: 200, height: 200, borderRadius: 10, margin: 5 },
-  contactButton: { backgroundColor: '#D8A353', borderRadius: 10, paddingVertical: 15, width: '80%', marginTop: 20 },
-  contactButtonText: { color: '#000', fontWeight: 'bold', textAlign: 'center', fontSize: 16 },
-  editButton: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
-  infoBox: { width: '80%', backgroundColor: '#1B1B1B', borderRadius: 10, borderWidth: 1, borderColor: '#D8A353', padding: 10, marginBottom: 20 },
-  infoText: { color: '#CCCCCC', fontSize: 14, marginBottom: 5 },
-  video: { width: '90%', height: 200, borderRadius: 10, borderWidth: 1, borderColor: '#D8A353', marginVertical: 15 },
+    container: {
+        flex: 1,
+        backgroundColor: '#000', 
+        paddingHorizontal: 20,
+      },      
+  loadingText: {
+    color: '#F5F5F5',
+    textAlign: 'center',
+    marginTop: 100,
+    fontSize: 16,
+  },
+  headerContainer: {
+    marginTop: 40,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    color: '#D8A353',
+    fontSize: 24,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textShadowColor: 'rgba(216, 163, 83, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    marginTop: -25,
+  },
+  subtitle: {
+    color: '#B0B0B0',
+    fontSize: 16,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  editButton: {
+    position: 'absolute',
+    top: 0,
+    right: 10,
+    backgroundColor: '#1B1B1B',
+    borderRadius: 50,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    elevation: 4,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+  },  
+  profileSection: {
+    alignItems: 'center',
+    marginVertical: 0,
+  },
+  logoContainer: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 75,
+    padding: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderStyle: 'solid',
+    backgroundImage: 'linear-gradient(#1E1E1E, #1E1E1E), linear-gradient(45deg, #D8A353, #E8C07A)',
+    backgroundOrigin: 'border-box',
+    backgroundClip: 'content-box, border-box',
+    elevation: 5,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: '#D8A353',
+  },
+  agencyName: {
+    color: '#F5F5F5',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 10,
+    letterSpacing: 0.5,
+  },
+  representative: {
+    color: '#B0B0B0',
+    fontSize: 16,
+    marginTop: 4,
+  },
+  location: {
+    color: '#888888',
+    fontSize: 14,
+    marginTop: 0,
+    marginBottom:10,
+    fontStyle: 'italic',
+  },
+  contactBox: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 0,
+    elevation: 4,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(216, 163, 83, 0.2)',
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  iconWrapper: {
+    backgroundColor: 'rgba(216, 163, 83, 0.1)',
+    borderRadius: 20,
+    padding: 8,
+    marginRight: 10,
+  },
+  contactText: {
+    color: '#F5F5F5',
+    fontSize: 15,
+    flex: 1,
+  },
+  sectionTitle: {
+    color: '#D8A353',
+    fontSize: 20,
+    fontWeight: '600',
+    marginVertical: 15,
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(216, 163, 83, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  descriptionBox: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 4,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(216, 163, 83, 0.2)',
+  },
+  descriptionText: {
+    color: '#F5F5F5',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'justify',
+  },
+  scrollHorizontal: {
+    marginVertical: 10,
+  },
+  portfolioCard: {
+    marginRight: 12,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#1E1E1E',
+    elevation: 3,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  portfolioImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(216, 163, 83, 0.3)',
+  },
+  videoSection: {
+    marginVertical: 20,
+  },
+  videoContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderStyle: 'solid',
+    backgroundImage: 'linear-gradient(#1E1E1E, #1E1E1E), linear-gradient(45deg, #D8A353, #E8C07A)',
+    backgroundOrigin: 'border-box',
+    backgroundClip: 'content-box, border-box',
+    elevation: 5,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    padding: 4,
+  },
+  video: {
+    width: '100%',
+    height: 220,
+    borderRadius: 8,
+  },
+  editPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D8A353',
+    alignSelf: 'flex-end',
+    paddingVertical: 6,
+    paddingHorizontal: 13,
+    borderRadius: 30,
+    marginTop: -40,
+    marginRight: 0,
+    elevation: 4,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  editText: {
+    marginLeft: 6,
+    fontWeight: 'bold',
+    color: '#000',
+    fontSize: 14,
+  },  
+  contactBoxCentered: {
+    alignItems: 'center',
+    marginTop: 0,
+    marginBottom: 0,
+    gap: 5,
+  },
+  
+  contactCard: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(216, 163, 83, 0.3)',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    minWidth: '99%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'left',
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  
+  cardIcon: {
+    marginRight: 10,
+  },
+  
+  cardText: {
+    color: '#CCCCCC',
+    fontSize: 15,
+    textAlign: 'center',
+  },  
+  bottomBarWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: '#121212',
+    paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+    paddingTop: 5,
+    zIndex: 10,
+  },  
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#1E1E1E',
+    borderColor: 'rgba(216, 163, 83, 0.4)',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 15,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  categoryText: {
+    color: '#F5F5F5',
+    fontSize: 14,
+    fontWeight: '500',
+  },  
 });

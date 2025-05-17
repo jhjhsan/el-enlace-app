@@ -18,7 +18,6 @@ import { useUser } from '../contexts/UserContext';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { saveUserProfile } from '../utils/profileStorage';
 
-
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 export default function EditProfileFree({ navigation }) {
@@ -101,7 +100,13 @@ export default function EditProfileFree({ navigation }) {
       Alert.alert('Campos requeridos', 'Completa todos los campos antes de guardar.');
       return;
     }
-  
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Correo inválido', 'Por favor ingresa un correo electrónico válido.');
+      return;
+    }
+
     const profile = {
       profilePhoto,
       name,
@@ -109,17 +114,27 @@ export default function EditProfileFree({ navigation }) {
       edad,
       sexo,
       bookPhotos,
+      membershipType: 'free',
     };
-  
+
     try {
-      await saveUserProfile(profile, 'free'); // ❌ No activa sesión al editar
+      await saveUserProfile(profile, 'free');
+      await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
+      await AsyncStorage.setItem('userData', JSON.stringify({
+        email,
+        membershipType: 'free',
+        name,
+        profilePhoto,
+        sexo,
+        edad,
+      }));
+      setUserData(profile);
       navigation.navigate('Profile');
     } catch (err) {
       console.log('Error al guardar perfil:', err);
       Alert.alert('Error', 'No se pudo guardar el perfil.');
     }
   };
-  
 
   return (
     <KeyboardAvoidingView

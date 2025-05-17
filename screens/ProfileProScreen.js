@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Linking } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Linking, Modal, Animated } from 'react-native'; // Importo Modal aquí
 import { useUser } from '../contexts/UserContext';
 import BottomBar from '../components/BottomBar';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,6 @@ import { AntDesign } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Animated } from 'react-native';
 
 export default function ProfileProScreen({ navigation }) {
   const { userData, setUserData } = useUser();
@@ -15,14 +14,18 @@ export default function ProfileProScreen({ navigation }) {
 
   useEffect(() => {
     const loadProfilePro = async () => {
-      const json = await AsyncStorage.getItem('userProfilePro');
-      if (json) {
-        const proData = JSON.parse(json);
-        setUserData(proData);
+      try {
+        const json = await AsyncStorage.getItem('userProfilePro');
+        if (json) {
+          const proData = JSON.parse(json);
+          setUserData(proData);
+        }
+      } catch (e) {
+        console.log('❌ Error al cargar perfil Pro:', e);
       }
     };
     loadProfilePro();
-  }, []);
+  }, [setUserData]);
 
   if (!userData) {
     return (
@@ -31,9 +34,10 @@ export default function ProfileProScreen({ navigation }) {
       </View>
     );
   }
+
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [isEnlarged, setIsEnlarged] = useState(false);
-  
+
   const handleProfilePhotoPress = () => {
     Animated.timing(scaleAnim, {
       toValue: isEnlarged ? 1 : 1.6,
@@ -43,8 +47,8 @@ export default function ProfileProScreen({ navigation }) {
       setIsEnlarged(!isEnlarged);
     });
   };
-  
-  if (userData.membershipType !== 'pro') {
+
+  if (userData && userData.membershipType !== 'pro') {
     return (
       <View style={styles.screen}>
         <Text style={{ color: '#fff', textAlign: 'center', marginTop: 100 }}>
@@ -54,17 +58,6 @@ export default function ProfileProScreen({ navigation }) {
     );
   }
 
-  const handleContact = (type) => {
-    if (type === 'email' && userData.email) {
-      Linking.openURL(`mailto:${userData.email}`);
-    } else if (type === 'phone' && userData.phone) {
-      Linking.openURL(`tel:${userData.phone}`);
-    } else if (type === 'instagram' && userData.instagram) {
-      const instagramUsername = userData.instagram.replace('@', '');
-      Linking.openURL(`https://instagram.com/${instagramUsername}`);
-    }
-  };
-
   const handleWhatsApp = () => {
     if (userData.phone) {
       const phoneNumber = userData.phone.replace(/\D/g, '');
@@ -72,92 +65,100 @@ export default function ProfileProScreen({ navigation }) {
     }
   };
 
-  const handleToggleImage = (uri) => {
-    if (selectedImage === uri) {
-      setSelectedImage(null);
-    } else {
-      setSelectedImage(uri);
-    }
-  };
-
   return (
+    
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfile')}>
+        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('CompleteProfile')}>
           <AntDesign name="edit" size={24} color="#D8A353" />
         </TouchableOpacity>
-
+        {userData.membershipType === 'pro' && (
+  <Text style={styles.proBadge}>Miembro Pro 🏆</Text>
+)}
         <TouchableOpacity onPress={handleProfilePhotoPress}>
-  <Animated.Image
-    source={{ uri: userData.profilePhoto }}
-    style={[styles.profileImage, { transform: [{ scale: scaleAnim }] }]}
-  />
-</TouchableOpacity>
+          <Animated.Image
+            source={{ uri: userData.profilePhoto }}
+            style={[styles.profileImage, { transform: [{ scale: scaleAnim }] }]}
+          />
+        </TouchableOpacity>
+        
 
         <Text style={styles.name}>{userData.name}</Text>
         
         {userData.category && (
-  <Text style={styles.category}>{userData.category}</Text>
-)}
+          <Text style={styles.category}>
+            {Array.isArray(userData.category) ? userData.category.join(', ') : userData.category}
+          </Text>
+        )}
 
+<View style={styles.contactItem}>
+  <Ionicons name="mail" size={20} color="#D8A353" />
+  <Text numberOfLines={1} style={styles.contactText}>
+    {userData.email || 'No disponible'}
+  </Text>
+</View>
 
+<View style={styles.contactItem}>
+  <Ionicons name="call" size={20} color="#D8A353" />
+  <Text numberOfLines={1} style={styles.contactText}>
+    {userData.phone || 'No disponible'}
+  </Text>
+</View>
 
-        <View style={styles.contactContainer}>
-          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
-            <Ionicons name="mail" size={20} color="#D8A353" />
-            <Text style={styles.contactText}>{userData.email}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
-            <Ionicons name="call" size={20} color="#D8A353" />
-            <Text style={styles.contactText}>{userData.phone}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('instagram')}>
-            <MaterialCommunityIcons name="instagram" size={20} color="#E4405F" />
-            <Text style={styles.contactText}>{userData.instagram}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.infoBox}>
-  {userData.sex && <Text style={styles.infoText}>Sexo: {userData.sex}</Text>}
-  {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
-  {userData.height && <Text style={styles.infoText}>Estatura: {userData.height} cm</Text>}
-  {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
-  {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
-  {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
-  {userData.ethnicity && <Text style={styles.infoText}>Etnia: {userData.ethnicity}</Text>}
-  {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
-  {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
-  {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
-  {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
-  {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
-  {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
-  {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
-  {userData.country && <Text style={styles.infoText}>País: {userData.country}</Text>}
-  {userData.city && <Text style={styles.infoText}>Ciudad: {userData.city}</Text>}
-  {userData.address && <Text style={styles.infoText}>Dirección: {userData.address}</Text>}
-  {userData.commune && <Text style={styles.infoText}>Comuna: {userData.commune}</Text>}
-  {userData.region && <Text style={styles.infoText}>Región: {userData.region}</Text>}
-  
-
+<View style={styles.contactItem}>
+  <MaterialCommunityIcons name="instagram" size={20} color="#E4405F" />
+  <Text numberOfLines={1} style={styles.contactText}>
+    {userData.instagram || 'No disponible'}
+  </Text>
 </View>
 
 
-        {userData.description && (
-          <Text style={styles.description}>{userData.description}</Text>
+        <View style={styles.infoBox}>
+          {userData.sexo && <Text style={styles.infoText}>Sexo: {userData.sexo}</Text>}
+          {userData.age && <Text style={styles.infoText}>Edad: {userData.age}</Text>}
+          {userData.estatura && <Text style={styles.infoText}>Estatura: {userData.estatura} cm</Text>}
+          {userData.skinColor && <Text style={styles.infoText}>Color de piel: {userData.skinColor}</Text>}
+          {userData.eyeColor && <Text style={styles.infoText}>Color de ojos: {userData.eyeColor}</Text>}
+          {userData.hairColor && <Text style={styles.infoText}>Color de cabello: {userData.hairColor}</Text>}
+          {userData.ethnicity && <Text style={styles.infoText}>Etnia: {userData.ethnicity}</Text>}
+          {userData.tattoos && <Text style={styles.infoText}>Tatuajes: {userData.tattoos}</Text>}
+          {userData.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {userData.tattoosLocation}</Text>}
+          {userData.piercings && <Text style={styles.infoText}>Piercings: {userData.piercings}</Text>}
+          {userData.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {userData.piercingsLocation}</Text>}
+          {userData.shirtSize && <Text style={styles.infoText}>Talla de camisa: {userData.shirtSize}</Text>}
+          {userData.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {userData.pantsSize}</Text>}
+          {userData.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {userData.shoeSize}</Text>}
+          {userData.country && <Text style={styles.infoText}>País: {userData.country}</Text>}
+          {userData.ciudad && <Text style={styles.infoText}>Ciudad: {userData.ciudad}</Text>}
+          {userData.address && <Text style={styles.infoText}>Dirección: {userData.address}</Text>}
+          {userData.comuna && <Text style={styles.infoText}>Comuna: {userData.comuna}</Text>}
+          {userData.region && <Text style={styles.infoText}>Región: {userData.region}</Text>}
+        </View>
+
+        {userData.bookPhotos && userData.bookPhotos.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bookScroll}>
+            {userData.bookPhotos.map((uri, index) => (
+              <View key={index} style={styles.bookImageWrapper}>
+                <TouchableOpacity onPress={() => setSelectedImage(uri)}>
+                  <Image source={{ uri }} style={styles.bookImage} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
         )}
 
-        <View style={styles.galleryContainer}>
-          {userData.bookPhotos && userData.bookPhotos.map((uri, index) => (
-            <TouchableOpacity key={index} onPress={() => handleToggleImage(uri)}>
-              <Image
-                source={{ uri }}
-                style={selectedImage === uri ? styles.largeImage : styles.galleryImage}
-              />
+        <Modal
+          visible={selectedImage !== null}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setSelectedImage(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.fullscreenContainer} onPress={() => setSelectedImage(null)}>
+              <Image source={{ uri: selectedImage }} style={styles.fullscreenImage} />
             </TouchableOpacity>
-          ))}
-        </View>
+          </View>
+        </Modal>
 
         {userData.profileVideo && (
           <Video
@@ -167,12 +168,7 @@ export default function ProfileProScreen({ navigation }) {
             style={styles.video}
           />
         )}
-
-        <TouchableOpacity style={styles.contactButton} onPress={handleWhatsApp}>
-          <Text style={styles.contactButtonText}>Contactar al Whatsapp</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
+ </ScrollView>
       <BottomBar />
     </View>
   );
@@ -186,7 +182,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingBottom: 120,
-    paddingTop: 50,
+    paddingTop: 35,
   },
   profileImage: {
     width: 120,
@@ -200,15 +196,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
-    marginTop: 10,
+    marginTop: 0,
   },
   category: {
     color: '#D8A353',
-    fontSize: 16,
+    fontSize: 18,
     textAlign: 'center',
-    marginTop: 5,
+    marginTop: 0,
   },
-  
   contactContainer: {
     width: '80%',
     marginBottom: 20,
@@ -218,43 +213,74 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1B1B1B',
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
     borderRadius: 8,
     borderColor: '#D8A353',
     borderWidth: 1,
     marginVertical: 5,
+    width: '80%',
+    maxWidth: 350,
   },
   contactText: {
     color: '#CCCCCC',
     marginLeft: 10,
+    fontSize: 14,
+    flexShrink: 1,
   },
-  description: {
+  
+  infoBox: {
     width: '80%',
-    color: '#CCCCCC',
     backgroundColor: '#1B1B1B',
-    padding: 10,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    padding: 10,
+    marginTop:7,
+    marginBottom: 20,
+  },
+  infoText: {
+    color: '#CCCCCC',
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  bookScroll: {
+    width: '90%',
+    marginBottom: 10,
+  },
+  bookImageWrapper: {
+    position: 'relative',
+    marginRight: 10,
+  },
+  bookImage: {
+    width: 100,
+    height: 140,
+    borderRadius: 8,
     borderColor: '#D8A353',
     borderWidth: 1,
-    marginVertical: 15,
   },
-  galleryContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
-    marginVertical: 15,
+    alignItems: 'center',
   },
-  galleryImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-    margin: 5,
+  fullscreenContainer: {
+    width: '90%',
+    height: '80%',
   },
-  largeImage: {
-    width: 200,
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+  video: {
+    width: '90%',
     height: 200,
     borderRadius: 10,
-    margin: 5,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    marginVertical: 15,
   },
   contactButton: {
     backgroundColor: '#D8A353',
@@ -275,26 +301,12 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 10,
   },
-  infoBox: {
-    width: '80%',
-    backgroundColor: '#1B1B1B',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8A353',
-    padding: 10,
-    marginBottom: 20,
-  },
-  infoText: {
-    color: '#CCCCCC',
-    fontSize: 14,
+  proBadge: {
+    color: '#D8A353',
+    fontSize: 16,
+    marginTop: 0,
     marginBottom: 5,
-  },
-  video: {
-    width: '90%',
-    height: 200,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8A353',
-    marginVertical: 15,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

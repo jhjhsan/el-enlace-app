@@ -1,12 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function PromoteProfileScreen() {
   const navigation = useNavigation();
 
   return (
     <View style={styles.container}>
+      {/* Flecha de volver */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>📢 Promocionar Perfil</Text>
         <Text style={styles.subtitle}>
@@ -15,10 +21,6 @@ export default function PromoteProfileScreen() {
         <Text style={styles.info}>
           Esta funcionalidad estará disponible pronto con opciones de pago y duración personalizada.
         </Text>
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -28,6 +30,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   content: {
     padding: 20,
@@ -53,13 +62,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 10,
-  },
-  back: {
-    marginTop: 30,
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
-    textAlign: 'center',
   },
 });

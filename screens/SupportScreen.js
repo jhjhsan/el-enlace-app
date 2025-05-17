@@ -1,10 +1,31 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import BottomBar from '../components/BottomBar';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { useUser } from '../contexts/UserContext';
 
 export default function SupportScreen() {
+  const { userData } = useUser();
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    if (userData?.membershipType !== 'elite') {
+      Alert.alert(
+        'Soporte prioritario exclusivo',
+        'Esta sección está disponible solo para usuarios Elite.',
+        [{ text: 'Ver planes', onPress: () => navigation.navigate('Subscription') }]
+      );
+      navigation.goBack();
+    }
+  }, [userData]);
+
   return (
     <View style={styles.container}>
+      {/* Flecha de volver */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>🛠️ Ayuda y Soporte</Text>
         <Text style={styles.text}>
@@ -17,7 +38,6 @@ export default function SupportScreen() {
 
         <Text style={styles.text}>Nuestro equipo te responderá lo antes posible. ¡Gracias por usar El Enlace!</Text>
       </ScrollView>
-      <BottomBar />
     </View>
   );
 }
@@ -26,6 +46,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
   },
   content: {
     padding: 20,

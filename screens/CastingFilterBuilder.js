@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,14 @@ import {
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '../contexts/UserContext';
+import { useNavigation } from '@react-navigation/native';
 
-export default function CastingFilterBuilder({ navigation }) {
+export default function CastingFilterBuilder() {
+  const { userData } = useUser();
+  const navigation = useNavigation();
+
   const [sex, setSex] = useState(null);
   const [minAge, setMinAge] = useState('');
   const [maxAge, setMaxAge] = useState('');
@@ -21,6 +27,17 @@ export default function CastingFilterBuilder({ navigation }) {
 
   const [openEtnia, setOpenEtnia] = useState(false);
   const [openSexo, setOpenSexo] = useState(false);
+
+  useEffect(() => {
+    if (userData?.membershipType !== 'elite') {
+      Alert.alert(
+        'Función exclusiva',
+        'Solo los usuarios Elite pueden usar filtros avanzados de casting.',
+        [{ text: 'Ver planes', onPress: () => navigation.navigate('Subscription') }]
+      );
+      navigation.goBack();
+    }
+  }, [userData]);
 
   const etniaOptions = [
     { label: 'Afrodescendiente', value: 'afrodescendiente' },
@@ -65,6 +82,11 @@ export default function CastingFilterBuilder({ navigation }) {
 
   return (
     <View style={styles.screen}>
+      {/* Flecha de volver */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>🎯 Filtros del casting</Text>
 
@@ -140,6 +162,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
   },
   container: {
     padding: 20,

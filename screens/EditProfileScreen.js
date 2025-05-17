@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomBar from '../components/BottomBar';
 import * as FileSystem from 'expo-file-system';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { Ionicons } from '@expo/vector-icons';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -73,7 +74,7 @@ export default function EditProfileScreen({ navigation }) {
   }, []);
   
 
-  const categorias = [
+  categorias = [
     "Actor",
     "Actriz",
     "Agencia de casting",
@@ -277,7 +278,20 @@ export default function EditProfileScreen({ navigation }) {
   };
 
   return (
+    
     <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <TouchableOpacity
+  onPress={() => navigation.goBack()}
+  style={{
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 2000,
+  }}
+>
+  <Ionicons name="arrow-back" size={28} color="#fff" />
+</TouchableOpacity>
+
       <ScrollView
         contentContainerStyle={{
           alignItems: 'center',
@@ -476,15 +490,14 @@ export default function EditProfileScreen({ navigation }) {
           <Text style={styles.saveButtonText}>Guardar Cambios</Text>
         </TouchableOpacity>
       </ScrollView>
-      <BottomBar />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   profileImage: {
-    width: 100,
-    height: 100,
+    width: 120,
+    height: 120,
     borderRadius: 60,
     borderColor: '#D8A353',
     borderWidth: 2,

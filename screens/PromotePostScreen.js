@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,28 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function PromotePostScreen({ navigation }) {
+export default function PromotePostScreen() {
+  const navigation = useNavigation();
   const { userData } = useUser();
   const [posts, setPosts] = useState([]);
   const [selectedPostIndex, setSelectedPostIndex] = useState(null);
   const [duration, setDuration] = useState(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userData?.membershipType === 'free') {
+        Alert.alert(
+          'Función exclusiva',
+          'Solo los usuarios Pro o Elite pueden promocionar publicaciones.',
+          [{ text: 'Ver planes', onPress: () => navigation.navigate('Subscription') }]
+        );
+        navigation.goBack();
+      }
+    }, [userData])
+  );
 
   useEffect(() => {
     const loadPosts = async () => {
@@ -69,6 +85,11 @@ export default function PromotePostScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* Flecha de volver */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <Text style={styles.title}>🌟 Promocionar servicio</Text>
       <Text style={styles.subtitle}>Haz que tu publicación tenga más visibilidad</Text>
 
@@ -117,9 +138,6 @@ export default function PromotePostScreen({ navigation }) {
       <TouchableOpacity style={styles.promoteButton} onPress={handlePromote}>
         <Text style={styles.promoteText}>💳 Pagar y promocionar</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
     </View>
   );
 }
@@ -129,6 +147,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
     padding: 20,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   title: {
     color: '#D8A353',
@@ -218,13 +243,5 @@ const styles = StyleSheet.create({
   promoteText: {
     color: '#000',
     fontWeight: 'bold',
-  },
-  back: {
-    marginTop: 30,
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
-    textAlign: 'center',
   },
 });

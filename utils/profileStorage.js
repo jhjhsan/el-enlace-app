@@ -14,8 +14,13 @@ export const saveUserProfile = async (
       membershipType: membershipType || 'free',
     };
 
-    // Guardar el perfil principal
+    const emailKey = `userProfile_${normalizedData.email}`;
+
+    // Guardar el perfil principal (usuario actual)
     await AsyncStorage.setItem('userProfile', JSON.stringify(normalizedData));
+
+    // ✅ Guardar también con clave única por email
+    await AsyncStorage.setItem(emailKey, JSON.stringify(normalizedData));
 
     // Guardar también según tipo de cuenta
     if (membershipType === 'free') {
@@ -26,19 +31,15 @@ export const saveUserProfile = async (
       await AsyncStorage.setItem('userProfileElite', JSON.stringify(normalizedData));
     }
 
-    // ✅ Solo activar sesión si se indica explícitamente
+    // ✅ Activar sesión si corresponde
     if (explicitlyTriggerSession && setUserData && setIsLoggedIn) {
-      await AsyncStorage.setItem(
-        'userData',
-        JSON.stringify({
-          name: normalizedData.name,
-          email: normalizedData.email,
-        })
-      );
-      setUserData({
+      await AsyncStorage.setItem('userData', JSON.stringify({
         name: normalizedData.name,
         email: normalizedData.email,
-      });
+      }));
+
+      // ✅ CORREGIDO: ahora cargamos todo el perfil en memoria
+      setUserData(normalizedData);
       setIsLoggedIn(true);
       console.log('✅ Sesión activada explícitamente desde saveUserProfile');
     }

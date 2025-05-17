@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { Ionicons, Entypo, Feather, FontAwesome } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -11,23 +11,25 @@ export default function BottomBar() {
   const [membership, setMembership] = useState(userData?.membershipType || 'free');
   const [notificationCount, setNotificationCount] = useState(0);
 
-  useEffect(() => {
-    const fetchMembership = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('userProfile');
-        if (stored) {
-          const user = JSON.parse(stored);
-          if (user?.membershipType) {
-            setMembership(user.membershipType);
+  useFocusEffect(
+    useCallback(() => {
+      const fetchMembership = async () => {
+        try {
+          const stored = await AsyncStorage.getItem('userProfile');
+          if (stored) {
+            const user = JSON.parse(stored);
+            if (user?.membershipType) {
+              setMembership(user.membershipType);
+            }
           }
+        } catch (e) {
+          console.log('Error leyendo membershipType:', e);
         }
-      } catch (e) {
-        console.log('Error leyendo membershipType:', e);
-      }
-    };
+      };
 
-    fetchMembership();
-  }, []);
+      fetchMembership();
+    }, [])
+  );
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -41,7 +43,7 @@ export default function BottomBar() {
       }
     };
 
-    const interval = setInterval(fetchNotifications, 5000); // Actualiza cada 5 segundos
+    const interval = setInterval(fetchNotifications, 5000);
     fetchNotifications();
 
     return () => clearInterval(interval);

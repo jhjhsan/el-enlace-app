@@ -9,7 +9,8 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import uuid from 'react-native-uuid'; // Asegúrate de tener esto instalado
+import uuid from 'react-native-uuid';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function PublishFocusScreen({ navigation }) {
   const [title, setTitle] = useState('');
@@ -46,7 +47,7 @@ export default function PublishFocusScreen({ navigation }) {
       await AsyncStorage.setItem('focusList', JSON.stringify(focusList));
 
       Alert.alert('Éxito', 'La publicación de Focus fue guardada correctamente.');
-      navigation.goBack();
+      navigation.navigate('FocusListScreen');
     } catch (error) {
       console.error('Error guardando el focus:', error);
       Alert.alert('Error', 'No se pudo guardar la publicación.');
@@ -54,46 +55,58 @@ export default function PublishFocusScreen({ navigation }) {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>📢 Publicar Focus Group</Text>
-
-      <Text style={styles.label}>Título del estudio *</Text>
-      <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Ej: Club Social para hombres de 25 a 35" placeholderTextColor="#aaa" />
-
-      <Text style={styles.label}>Requisitos del participante *</Text>
-      <TextInput style={styles.input} value={requirements} onChangeText={setRequirements} placeholder="Ej: Hombres, 25 a 35 años, chilenos, universitarios..." placeholderTextColor="#aaa" />
-
-      <Text style={styles.label}>Fecha y hora *</Text>
-      <TextInput style={styles.input} value={dateTime} onChangeText={setDateTime} placeholder="Ej: Martes a las 18:00 hrs" placeholderTextColor="#aaa" />
-
-      <Text style={styles.label}>Duración estimada</Text>
-      <TextInput style={styles.input} value={duration} onChangeText={setDuration} placeholder="Ej: 1 hora y media" placeholderTextColor="#aaa" />
-
-      <Text style={styles.label}>Pago ofrecido *</Text>
-      <TextInput style={styles.input} value={payment} onChangeText={setPayment} placeholder="Ej: $20.000" placeholderTextColor="#aaa" keyboardType="numeric" />
-
-      <Text style={styles.label}>Forma de pago</Text>
-      <TextInput style={styles.input} value={paymentMethod} onChangeText={setPaymentMethod} placeholder="Ej: Gif card Cencosud, transferencia..." placeholderTextColor="#aaa" />
-
-      <Text style={styles.label}>Descripción adicional</Text>
-      <TextInput style={styles.textarea} value={description} onChangeText={setDescription} multiline numberOfLines={4} placeholder="Otros detalles..." placeholderTextColor="#aaa" />
-
-      <TouchableOpacity style={styles.button} onPress={handleSubmit}>
-        <Text style={styles.buttonText}>✅ Publicar Focus</Text>
+    <View style={styles.screen}>
+      {/* Flecha profesional arriba */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={styles.back}>⬅ Volver</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      <ScrollView style={styles.container}>
+        <Text style={styles.title}>📢 Publicar Focus Group</Text>
+
+        <Text style={styles.label}>Título del estudio *</Text>
+        <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Ej: Club Social para hombres de 25 a 35" placeholderTextColor="#aaa" />
+
+        <Text style={styles.label}>Requisitos del participante *</Text>
+        <TextInput style={styles.input} value={requirements} onChangeText={setRequirements} placeholder="Ej: Hombres, 25 a 35 años, chilenos, universitarios..." placeholderTextColor="#aaa" />
+
+        <Text style={styles.label}>Fecha y hora *</Text>
+        <TextInput style={styles.input} value={dateTime} onChangeText={setDateTime} placeholder="Ej: Martes a las 18:00 hrs" placeholderTextColor="#aaa" />
+
+        <Text style={styles.label}>Duración estimada</Text>
+        <TextInput style={styles.input} value={duration} onChangeText={setDuration} placeholder="Ej: 1 hora y media" placeholderTextColor="#aaa" />
+
+        <Text style={styles.label}>Pago ofrecido *</Text>
+        <TextInput style={styles.input} value={payment} onChangeText={setPayment} placeholder="Ej: $20.000" placeholderTextColor="#aaa" keyboardType="numeric" />
+
+        <Text style={styles.label}>Forma de pago</Text>
+        <TextInput style={styles.input} value={paymentMethod} onChangeText={setPaymentMethod} placeholder="Ej: Gift card Cencosud, transferencia..." placeholderTextColor="#aaa" />
+
+        <Text style={styles.label}>Descripción adicional</Text>
+        <TextInput style={styles.textarea} value={description} onChangeText={setDescription} multiline numberOfLines={4} placeholder="Otros detalles..." placeholderTextColor="#aaa" />
+
+        <TouchableOpacity style={styles.button} onPress={handleSubmit}>
+          <Text style={styles.buttonText}>✅ Publicar Focus</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 2000,
+  },
+  container: {
     padding: 20,
+    paddingTop: 50,
   },
   title: {
     fontSize: 22,
@@ -133,12 +146,5 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  back: {
-    marginTop: 30,
-    fontSize: 16,
-    color: '#aaa',
-    textAlign: 'center',
-    textDecorationLine: 'underline',
   },
 });

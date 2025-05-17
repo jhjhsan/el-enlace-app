@@ -1,17 +1,88 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  Linking,
   Image,
-  Alert,
-  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  Dimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { saveUserProfile } from '../utils/profileStorage';
 
-export default function SubscriptionScreen({ navigation }) {
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.85;
+const SPACER = (width - CARD_WIDTH) / 2;
+
+const plans = [
+    {
+        id: 'free',
+        title: '🎬 Plan Free',
+        price: 'Gratis',
+        benefits: [
+          '✅ Explorar perfiles básicos (sin fotos/videos)',
+          '✅ Postular a castings (2/mes)',
+          '✅ Mensajería básica (1/semana, 100 caracteres)',
+          '✅ Notificaciones inteligentes',
+          '✅ Verificación con correo y CAPTCHA',
+          '✅ Publicar hasta 2 servicios por semana',
+          '❌ Ver fotos y videos completos',
+          '❌ Contactar perfiles directamente',
+          '❌ Publicar castings',
+          '❌ Descargar postulaciones',
+          '❌ Filtros avanzados o estadísticas',
+          '❌ Soporte prioritario',
+        ],
+      },      
+  {
+    id: 'pro',
+    title: '🏆 Plan Pro',
+    price: '$2.990 CLP/mes',
+    benefits: [
+      '✅ Todo lo de Free',
+      '✅ Postular a castings y servicios (ilimitado)',
+      '✅ Ver fotos y videos completos de perfiles',
+      '✅ Mensajería interna ilimitada',
+      '✅ Contacto directo (correo, chat, Instagram)',
+      '✅ Acceso a Focus Group',
+      '✅ Historial de postulaciones',
+      '✅ Notificaciones inteligentes de casting',
+      '✅ Publicar servicios (sin límite)',
+      '🔒 Aparecer como anuncio destacado (requiere promoción)',
+      '❌ Publicar castings',
+      '❌ Descargar postulaciones',
+      '❌ Filtros avanzados o estadísticas',
+      '❌ Soporte prioritario',
+    ],
+  },  
+  {
+    id: 'elite',
+    title: '👑 Plan Elite',
+    price: '$7.990 CLP/mes',
+    benefits: [
+      '✅ Todo lo de Pro',
+      '✅ Publicar castings y servicios ilimitados',
+      '✅ Descargar postulaciones en Excel/PDF',
+      '✅ Filtros avanzados por edad, región, habilidades',
+      '✅ Acceso a búsqueda por habilidades específicas',
+      '✅ Envío automático de notificaciones a talentos compatibles',
+      '✅ Uso de IA para leer castings desde .docx/imágenes',
+      '✅ Autocompletar castings con IA (documentos o fotos)',
+      '✅ Aparecer como anuncio destacado (sin pagar)',
+      '✅ Badge dorado y visibilidad destacada',
+      '✅ Soporte prioritario (respuesta en 24h)',
+      '🕒 Próximamente: estadísticas de visitas a tu perfil/castings',
+    ],
+  },  
+];
+
+export default function SubscriptionScreen() {
+  const navigation = useNavigation();
+  const { setUserData, setIsLoggedIn, userData } = useUser();
   const [membershipType, setMembershipType] = useState('free');
 
   useEffect(() => {
@@ -25,160 +96,171 @@ export default function SubscriptionScreen({ navigation }) {
     loadMembership();
   }, []);
 
-  const handlePayment = async (plan) => {
-    try {
-      const json = await AsyncStorage.getItem('userProfile');
-      if (json) {
-        const user = JSON.parse(json);
-        const updatedUser = { ...user, membershipType: plan };
-        await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUser));
-        setMembershipType(plan);
-        navigation.replace('CompleteProfile');
-      }
-    } catch (error) {
-      console.warn('Error actualizando membresía:', error);
+  const handleSelect = async (plan) => {
+    const json = await AsyncStorage.getItem('userProfile');
+    if (!json) return;
+    const user = JSON.parse(json);
+    const updatedUser = { ...user, membershipType: plan };
+
+    await saveUserProfile(updatedUser, plan, setUserData, setIsLoggedIn, true);
+
+    if (plan === 'elite') {
+      navigation.replace('CompleteElite');
+    } else if (plan === 'pro') {
+      navigation.replace('CompleteProfile');
+    } else {
+      navigation.replace('Dashboard');
     }
   };
 
+  const renderPlan = ({ item }) => (
+    <View style={styles.planCard}>
+      <Text style={styles.planTitle}>{item.title}</Text>
+      {item.benefits.map((b, i) => {
+  const isLocked = b.includes('❌');
+  const displayText = isLocked ? b.replace('❌', '🔒') : b;
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Image source={require('../assets/logo.png')} style={styles.logo} />
+    <Text
+      key={i}
+      style={[
+        styles.bullet,
+        { color: isLocked ? '#777' : '#ccc', textAlign: 'left' },
+      ]}
+    >
+      {displayText}
+    </Text>
+  );
+})}
+      <Text style={styles.price}>{item.price}</Text>
 
-      <Text style={styles.title}>📊 Planes de membresía — El Enlace (CLP)</Text>
+      <View style={{ flexGrow: 1 }} />
 
-      <View style={styles.planBox}>
-        <Text style={styles.planTitle}>🎬 Plan Free</Text>
-        <Text style={styles.bullet}>✅ Explorar perfiles</Text>
-        <Text style={styles.bullet}>❌ Ver fotos y videos completos</Text>
-        <Text style={styles.bullet}>❌ Contactar perfiles</Text>
-        <Text style={styles.bullet}>❌ Postular a castings/servicios</Text>
-        <Text style={styles.bullet}>❌ Publicar castings o servicios</Text>
-        <Text style={styles.bullet}>❌ Descargar postulaciones</Text>
-        <Text style={styles.bullet}>💸 Gratis</Text>
-
-        {/* Botón temporal solo para desarrollo */}
+      {item.id === membershipType ? (
+        <View style={styles.activePlan}>
+          <Text style={[styles.buttonText, { color: '#aaa' }]}>🌟 Plan activo</Text>
+        </View>
+      ) : (
         <TouchableOpacity
-  style={[styles.payButton, { backgroundColor: '#444', marginTop: 10 }]}
-  onPress={async () => {
-    try {
-      const json = await AsyncStorage.getItem('userProfile');
-      if (json) {
-        const user = JSON.parse(json);
-        const updatedUser = { ...user, membershipType: 'free' };
-        await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUser));
-        navigation.replace('Dashboard'); // Redirige al Dashboard que ya detecta el tipo
-      }
-    } catch (error) {
-      console.warn('Error forzando cuenta free:', error);
-    }
-  }}
->
-  <Text style={[styles.payButtonText, { color: '#FFF' }]}>➡️ Ir al Dashboard Free (modo test)</Text>
-</TouchableOpacity>
-
-      </View>
-
-      <View style={styles.planBox}>
-        <Text style={styles.planTitle}>🏆 Plan Pro</Text>
-        <Text style={styles.bullet}>✅ Ver fotos y videos completos</Text>
-        <Text style={styles.bullet}>✅ Contactar perfiles</Text>
-        <Text style={styles.bullet}>✅ Postular a castings/servicios</Text>
-        <Text style={styles.bullet}>❌ Publicar castings o servicios</Text>
-        <Text style={styles.bullet}>❌ Descargar postulaciones</Text>
-        <Text style={styles.bullet}>$2.990 CLP</Text>
-        <TouchableOpacity style={styles.payButton} onPress={() => handlePayment('pro')}>
-          <Text style={styles.payButtonText}>💳 Pagar Plan Pro</Text>
+          style={styles.selectButton}
+          onPress={() => {
+            if (item.id === 'pro') {
+              navigation.navigate('PaymentPro');
+            } else if (item.id === 'elite') {
+              navigation.navigate('PaymentElite');
+            } else {
+              handleSelect(item.id); // solo el Free se activa directo
+            }
+          }}          
+        >
+          <Text style={styles.buttonText}>💳 Elegir Plan</Text>
         </TouchableOpacity>
-      </View>
+      )}
+    </View>
+  );
 
-      <View style={styles.planBox}>
-        <Text style={styles.planTitle}>👑 Plan Elite</Text>
-        <Text style={styles.bullet}>✅ Publicar servicios ilimitados</Text>
-        <Text style={styles.bullet}>✅ Contactar talentos directamente</Text>
-        <Text style={styles.bullet}>✅ Ver perfiles completos</Text>
-        <Text style={styles.bullet}>✅ Aparecer en resultados destacados</Text>
-        <Text style={styles.bullet}>✅ Estadísticas de visitas</Text>
-        <Text style={styles.bullet}>✅ Soporte prioritario</Text>
-        <Text style={styles.bullet}>✅ Publicar proyectos</Text>
-        <Text style={styles.bullet}>✅ Descargar postulantes en Excel/PDF</Text>
-        <Text style={styles.bullet}>✅ Badge dorado y banners</Text>
-        <Text style={styles.bullet}>✅ Castings privados y filtros avanzados</Text>
-        <Text style={styles.bullet}>$7.990 CLP</Text>
-        <TouchableOpacity style={styles.payButton} onPress={() => handlePayment('elite')}>
-          <Text style={styles.payButtonText}>💳 Pagar Plan Elite</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.note}>Puedes actualizar tu cuenta en cualquier momento.</Text>
-
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={styles.back}>⬅ Volver</Text>
+  return (
+    <View style={styles.container}>
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}
+      >
+        <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
-    </ScrollView>
+
+      <Image source={require('../assets/logo.png')} style={styles.logo} />
+      <Text style={styles.header}>Planes de Membresía — El Enlace</Text>
+
+      <FlatList
+        data={plans}
+        keyExtractor={(item) => item.id}
+        horizontal
+        snapToInterval={CARD_WIDTH + 20}
+        decelerationRate="fast"
+        contentContainerStyle={styles.carousel}
+        showsHorizontalScrollIndicator={false}
+        initialNumToRender={3}
+        removeClippedSubviews={true}
+        renderItem={renderPlan}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: '#000',
-    padding: 20,
-    alignItems: 'center',
-    paddingBottom: 40,
+    paddingTop: 30,
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 10,
+    width: 140,
+    height: 140,
+    alignSelf: 'center',
+    marginBottom: 0,
   },
-  title: {
-    fontSize: 20,
+  header: {
     color: '#D8A353',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginVertical: 10,
-  },
-  planBox: {
-    backgroundColor: '#1B1B1B',
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    marginBottom: 20,
-  },
-  planTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  carousel: {
+    paddingHorizontal: 10,
+  },
+  planCard: {
+    backgroundColor: '#111',
+    width: CARD_WIDTH,
+    borderColor: '#D8A353',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 15,
+    paddingVertical: 15,
+    marginHorizontal: 10,
+    shadowColor: '#D8A353',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+    minHeight: 100,
+  },
+  planTitle: {
     color: '#D8A353',
+    fontSize: 18,
+    fontWeight: 'bold',
     marginBottom: 10,
     textAlign: 'center',
   },
   bullet: {
-    color: '#FFFFFF',
     fontSize: 13,
-    marginVertical: 2,
+    marginBottom: 8,
+    lineHeight: 18,
   },
-  payButton: {
-    backgroundColor: '#D8A353',
-    paddingVertical: 12,
-    borderRadius: 8,
+  price: {
+    textAlign: 'center',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
     marginTop: 10,
   },
-  payButtonText: {
-    textAlign: 'center',
+  selectButton: {
+    backgroundColor: '#D8A353',
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginTop: 20,
+  },
+  activePlan: {
+    backgroundColor: '#262626',
+    borderColor: '#D8A353',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginTop: 20,
+  },
+  buttonText: {
     color: '#000',
     fontWeight: 'bold',
-  },
-  note: {
-    color: '#CCCCCC',
-    fontSize: 12,
-    marginTop: 10,
     textAlign: 'center',
-  },
-  back: {
-    color: '#CCCCCC',
-    fontSize: 16,
-    textDecorationLine: 'underline',
-    marginTop: 15,
   },
 });

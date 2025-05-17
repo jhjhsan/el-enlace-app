@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
+import { getWeeklyCastingPostCount, registerCastingPost } from '../utils/postLimits';
+import { Ionicons } from '@expo/vector-icons'; // ✅ Importación de ícono
 
 export default function MyCastingsScreen() {
   const navigation = useNavigation();
@@ -31,25 +33,55 @@ export default function MyCastingsScreen() {
   }, [navigation]);
 
   const createTestCasting = async () => {
-    const demoCasting = {
-      id: Date.now().toString(),
-      title: 'Casting de prueba',
-      description: 'Se busca actor para cortometraje ficticio. Grabación en Santiago. Remunerado.',
-      category: 'Actor',
-      type: 'casting',
-      date: new Date().toISOString().split('T')[0],
-      isPromotional: false,
-    };
+    const count = await getWeeklyCastingPostCount();
 
-    const existing = await AsyncStorage.getItem('posts');
-    const parsed = existing ? JSON.parse(existing) : [];
-    parsed.push(demoCasting);
-    await AsyncStorage.setItem('posts', JSON.stringify(parsed));
-    Alert.alert('Casting de prueba creado', 'Ahora puedes verlo en el listado.');
+    if (count >= 1) {
+      Alert.alert(
+        'Límite alcanzado',
+        'Solo puedes publicar 1 casting por semana con el plan Free. Actualiza tu membresía para publicar más.'
+      );
+      return;
+    }
+
+    try {
+      const demoCasting = {
+        id: Date.now().toString(),
+        title: 'Casting de prueba',
+        description: 'Se busca actor para cortometraje ficticio. Grabación en Santiago. Remunerado.',
+        category: 'Actor',
+        type: 'casting',
+        date: new Date().toISOString().split('T')[0],
+        isPromotional: false,
+      };
+
+      const existing = await AsyncStorage.getItem('posts');
+      const parsed = existing ? JSON.parse(existing) : [];
+      parsed.push(demoCasting);
+      await AsyncStorage.setItem('posts', JSON.stringify(parsed));
+
+      await registerCastingPost(); // ✅ registrar la publicación
+      Alert.alert('Casting creado', 'Tu publicación fue guardada con éxito.');
+    } catch (error) {
+      console.error('Error al crear casting:', error);
+      Alert.alert('Error', 'No se pudo crear el casting.');
+    }
   };
 
   return (
     <View style={styles.screen}>
+      {/* ✅ Flecha de volver */}
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{
+          position: 'absolute',
+          top: 15,
+          left: 20,
+          zIndex: 2000,
+        }}
+      >
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📋 Mis Castings</Text>
         <Text style={styles.info}>
@@ -86,10 +118,6 @@ export default function MyCastingsScreen() {
             </TouchableOpacity>
           ))
         )}
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -156,13 +184,5 @@ const styles = StyleSheet.create({
   },
   cardCategory: {
     color: '#aaa',
-  },
-  back: {
-    marginTop: 30,
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
-    textAlign: 'center',
   },
 });

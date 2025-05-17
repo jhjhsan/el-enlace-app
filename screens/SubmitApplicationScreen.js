@@ -10,18 +10,44 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkAndIncrementPostulation } from '../utils/postulationLimiter';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function SubmitApplicationScreen({ route, navigation }) {
   const { castingId, castingTitle } = route.params || {};
   const [actingVideos, setActingVideos] = useState([null, null, null]);
   const [userProfile, setUserProfile] = useState(null);
+  const [remainingPostulations, setRemainingPostulations] = useState(null);
 
   useEffect(() => {
     const loadProfile = async () => {
       const json = await AsyncStorage.getItem('userProfile');
       if (json) setUserProfile(JSON.parse(json));
     };
+
+    const getRemainingPostulations = async () => {
+      try {
+        const data = await AsyncStorage.getItem('freePostulationLimit');
+        if (data) {
+          const parsed = JSON.parse(data);
+          const now = new Date();
+          const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
+          if (parsed.month === currentMonth) {
+            setRemainingPostulations(2 - parsed.count);
+          } else {
+            setRemainingPostulations(2);
+          }
+        } else {
+          setRemainingPostulations(2);
+        }
+      } catch (error) {
+        console.error('Error al obtener postulaciones restantes:', error);
+        setRemainingPostulations(null);
+      }
+    };
+
     loadProfile();
+    getRemainingPostulations();
   }, []);
 
   const pickVideo = async (index) => {
@@ -43,6 +69,25 @@ export default function SubmitApplicationScreen({ route, navigation }) {
     if (!userProfile) {
       Alert.alert('Error', 'Perfil del usuario no disponible.');
       return;
+    }
+
+    const membershipType = userProfile?.membershipType || 'free';
+
+    if (membershipType === 'free') {
+      const { allowed, remaining, error } = await checkAndIncrementPostulation();
+
+      if (error) {
+        Alert.alert('Error', 'No se pudo verificar el límite de postulaciones.');
+        return;
+      }
+
+      if (!allowed) {
+        Alert.alert(
+          'Límite alcanzado',
+          'Solo puedes postularte a 2 castings por mes con el plan Free. Mejora a Pro para postulaciones ilimitadas.'
+        );
+        return;
+      }
     }
 
     const applicationData = {
@@ -95,11 +140,22 @@ export default function SubmitApplicationScreen({ route, navigation }) {
 
   return (
     <View style={styles.screen}>
+      {/* Flecha de volver */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>
           Postulación al casting:{"\n"}
           <Text style={styles.castingTitle}>{castingTitle || 'Sin título'}</Text>
         </Text>
+
+        {userProfile?.membershipType === 'free' && remainingPostulations !== null && (
+          <Text style={styles.remaining}>
+            Postulaciones restantes este mes: {remainingPostulations}
+          </Text>
+        )}
 
         <Text style={styles.note}>
           * Puedes subir hasta 3 videos de actuación. Estos NO se guardarán en tu perfil. Son solo para esta postulación.
@@ -126,10 +182,6 @@ export default function SubmitApplicationScreen({ route, navigation }) {
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
           <Text style={styles.submitText}>Enviar postulación</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -139,6 +191,13 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   container: {
     alignItems: 'center',
@@ -156,6 +215,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'normal',
+  },
+  remaining: {
+    color: '#fff',
+    fontSize: 14,
+    marginTop: 5,
+    marginBottom: 15,
+    textAlign: 'center',
   },
   note: {
     color: '#aaa',
@@ -201,11 +267,5 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  back: {
-    color: '#aaa',
-    marginTop: 150,
-    fontSize: 16,
-    textDecorationLine: 'underline',
   },
 });

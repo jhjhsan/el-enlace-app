@@ -5,15 +5,32 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Image,
   Alert,
 } from 'react-native';
 import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import { exportApplicationsToExcel, exportApplicationsToPDF } from '../utils/exportUtils';
+import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '../contexts/UserContext';
 
-export default function ViewApplicationsScreen({ route, navigation }) {
+export default function ViewApplicationsScreen({ route }) {
   const { castingId } = route.params || {};
   const [applications, setApplications] = useState([]);
+  const navigation = useNavigation();
+  const { userData } = useUser();
+
+  useEffect(() => {
+    if (userData?.membershipType !== 'elite') {
+      Alert.alert(
+        'Función exclusiva',
+        'Solo los usuarios Elite pueden ver y exportar postulaciones.',
+        [{ text: 'Ver planes', onPress: () => navigation.navigate('Subscription') }]
+      );
+      navigation.goBack();
+    }
+  }, [userData]);
 
   useEffect(() => {
     const loadApplications = async () => {
@@ -31,8 +48,21 @@ export default function ViewApplicationsScreen({ route, navigation }) {
     return unsubscribe;
   }, [navigation]);
 
+  const sanitizeProfileData = (profile) => {
+    const cleaned = { ...profile };
+    if (!cleaned.profilePhoto?.startsWith('http') && !cleaned.profilePhoto?.startsWith('file')) {
+      cleaned.profilePhoto = null;
+    }
+    return cleaned;
+  };
+
   return (
     <View style={styles.screen}>
+      {/* Flecha de volver */}
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📥 Postulaciones Recibidas</Text>
         <Text style={styles.counter}>Total: {applications.length}</Text>
@@ -44,6 +74,25 @@ export default function ViewApplicationsScreen({ route, navigation }) {
             <View key={index} style={styles.card}>
               <Text style={styles.label}>🕒 Enviado:</Text>
               <Text style={styles.value}>{new Date(app.timestamp).toLocaleString()}</Text>
+
+              <TouchableOpacity
+                style={styles.profilePreview}
+                onPress={() => {
+                  const cleaned = sanitizeProfileData(app.profile);
+                  navigation.navigate('ProfileDetail', {
+                    profileData: cleaned,
+                    returnTo: 'ViewApplications',
+                  });
+                }}
+              >
+                {app.profile.profilePhoto ? (
+                  <Image source={{ uri: app.profile.profilePhoto }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}><Text>👤</Text></View>
+                )}
+                <Text style={styles.name}>{app.profile.name || 'Sin nombre'}</Text>
+                <Text style={styles.link}>Ver perfil</Text>
+              </TouchableOpacity>
 
               {app.videos?.map((uri, i) => (
                 <Video
@@ -65,10 +114,6 @@ export default function ViewApplicationsScreen({ route, navigation }) {
         <TouchableOpacity style={styles.exportPdfButton} onPress={exportApplicationsToPDF}>
           <Text style={styles.exportPdfText}>🧾 Exportar a PDF</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -78,6 +123,13 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   container: {
     padding: 20,
@@ -118,6 +170,36 @@ const styles = StyleSheet.create({
     color: '#ccc',
     marginBottom: 10,
   },
+  profilePreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  avatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  name: {
+    color: '#fff',
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  link: {
+    color: '#D8A353',
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
   video: {
     width: '100%',
     height: 200,
@@ -147,13 +229,5 @@ const styles = StyleSheet.create({
   exportPdfText: {
     color: '#fff',
     fontWeight: 'bold',
-  },
-  back: {
-    marginTop: 380,
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    textDecorationLine: 'underline',
   },
 });

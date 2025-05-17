@@ -4,10 +4,19 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
+import {
+  Ionicons,
+  MaterialIcons,
+  FontAwesome5,
+  Feather,
+} from '@expo/vector-icons';
 import BottomBar from '../components/BottomBar';
+import BackButton from '../components/BackButton';
+import { useNavigation } from '@react-navigation/native';
 
 const icons = {
   mensaje: <Ionicons name="mail" size={20} color="#D8A353" />,
@@ -20,6 +29,7 @@ const icons = {
 export default function NotificationScreen() {
   const [notifications, setNotifications] = useState([]);
   const [membershipType, setMembershipType] = useState(null);
+  const navigation = useNavigation();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -27,36 +37,46 @@ export default function NotificationScreen() {
       if (json) {
         const user = JSON.parse(json);
         setMembershipType(user?.membershipType || 'free');
+
+        const stored = await AsyncStorage.getItem(`notifications_${user.id}`);
+        const notis = stored ? JSON.parse(stored) : [];
+        setNotifications(notis.reverse());
       }
     };
 
-    const fetchNotifications = async () => {
-      const dummyData = [
-        { id: '1', icon: 'mensaje', text: 'Agencia XYZ te ha enviado una nueva solicitud', time: 'hace 1 h' },
-        { id: '2', icon: 'chat', text: 'Tienes un nuevo mensaje de Casting VIP', time: 'hace 1 h' },
-        { id: '3', icon: 'casting', text: 'Has sido seleccionado para un casting', time: 'hace 1 h' },
-        { id: '4', icon: 'reseña', text: 'Recibiste una nueva reseña', time: 'hace 1 h' },
-        { id: '5', icon: 'terminos', text: 'Actualizamos nuestros términos de uso', time: 'hace 1 h' },
-      ];
-      setNotifications(dummyData);
-    };
-
     fetchUser();
-    fetchNotifications();
   }, []);
 
   const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.icon}>{icons[item.icon]}</View>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={async () => {
+        const allCastings = await AsyncStorage.getItem('posts');
+        const castings = allCastings ? JSON.parse(allCastings) : [];
+        const casting = castings.find(c => c.id === item.castingId);
+
+        if (casting) {
+          navigation.navigate('CastingDetail', { casting });
+        } else {
+          Alert.alert('Casting no encontrado', 'Este casting ya no está disponible.');
+        }
+      }}
+    >
+      <View style={styles.icon}>{icons[item.icon] || icons['casting']}</View>
       <View style={styles.textContainer}>
-        <Text style={styles.message}>{item.text}</Text>
-        <Text style={styles.time}>{item.time}</Text>
+        <Text style={styles.message} numberOfLines={2} ellipsizeMode="tail">
+          {item.message}
+        </Text>
+        <Text style={styles.time}>
+          {new Date(item.date).toLocaleString('es-CL')}
+        </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
+      <BackButton />
       <View style={styles.header}>
         <Text style={styles.title}>Notificaciones</Text>
       </View>
@@ -67,6 +87,8 @@ export default function NotificationScreen() {
             🔒 Esta funcionalidad está disponible solo para miembros Pro o Elite. Actualiza tu membresía para recibir notificaciones.
           </Text>
         </View>
+      ) : notifications.length === 0 ? (
+        <Text style={styles.empty}>No tienes notificaciones aún.</Text>
       ) : (
         <FlatList
           data={notifications}
@@ -138,5 +160,11 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     textAlign: 'center',
     fontSize: 14,
+  },
+  empty: {
+    color: '#888',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 40,
   },
 });

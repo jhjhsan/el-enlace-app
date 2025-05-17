@@ -11,6 +11,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomBar from '../components/BottomBar';
 import { useUser } from '../contexts/UserContext';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function ViewPostsScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
@@ -102,13 +103,15 @@ export default function ViewPostsScreen({ navigation }) {
                 <Text style={styles.promotionalText}>⭐ Publicación Promocional</Text>
               )}
 
-              {/* Botón de editar */}
-              <TouchableOpacity
-                onPress={() => navigation.navigate('EditPost', { post })}
-                style={styles.editButton}
-              >
-                <Text style={styles.editText}>✏️ Editar</Text>
-              </TouchableOpacity>
+              {/* Botón de editar (solo si NO es promocional) */}
+              {!post.isPromotional && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('EditPost', { post })}
+                  style={styles.editButton}
+                >
+                  <Text style={styles.editText}>✏️ Editar</Text>
+                </TouchableOpacity>
+              )}
 
               {/* Botón de eliminar */}
               <TouchableOpacity
@@ -121,10 +124,13 @@ export default function ViewPostsScreen({ navigation }) {
           ))
         )}
 
-        {/* Flecha de volver clásica */}
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
+       <TouchableOpacity
+  onPress={() => navigation.goBack()}
+  style={{ position: 'absolute', top: 0, left: 20, zIndex: 10 }}
+>
+  <Ionicons name="arrow-back" size={28} color="#fff" />
+</TouchableOpacity>
+
       </ScrollView>
       <BottomBar navigation={navigation} />
     </View>
@@ -139,6 +145,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingBottom: 120,
+    marginTop: 30,
   },
   title: {
     color: '#D8A353',

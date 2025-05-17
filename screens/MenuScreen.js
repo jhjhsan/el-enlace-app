@@ -1,68 +1,91 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
+  Modal,
   Linking,
+  Alert,
 } from 'react-native';
 import BottomBar from '../components/BottomBar';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { logout } from '../utils/auth';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function MenuScreen({ navigation }) {
   const { setUserData, setIsLoggedIn, userData } = useUser();
   const membership = userData?.membershipType || 'free';
+  const [newMessagesCount, setNewMessagesCount] = useState(0);
+  const [newNotificationsCount, setNewNotificationsCount] = useState(0);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const checkNewMessages = async () => {
+        const json = await AsyncStorage.getItem('professionalMessages');
+        if (!json) return;
+        const all = JSON.parse(json);
+        const myNew = all.filter(
+          (msg) =>
+            msg.to === userData.email &&
+            !msg.response &&
+            !msg.archived
+        );
+        setNewMessagesCount(myNew.length);
+      };
+
+      const checkNewNotifications = async () => {
+        const profile = await AsyncStorage.getItem('userProfile');
+        if (!profile) return;
+        const user = JSON.parse(profile);
+        const raw = await AsyncStorage.getItem(`notifications_${user.id}`);
+        const all = raw ? JSON.parse(raw) : [];
+        setNewNotificationsCount(all.length);
+      };
+
+      checkNewMessages();
+      checkNewNotifications();
+    }, [])
+  );
+
+  const handleRestricted = () => {
+    setShowUpgradeModal(true);
+  };
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{ position: 'absolute', top: 15, left: 20, zIndex: 10 }}
+      >
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Menú de usuario</Text>
 
-        {/* Mis castings */}
-        <TouchableOpacity
-          style={[styles.button, membership === 'free' && styles.disabledButton]}
-          onPress={() => {
-            if (membership !== 'free') {
-              navigation.navigate('MyCastings');
-            } else {
-              Alert.alert('Función exclusiva', 'Solo disponible para usuarios Pro o Elite.');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {membership === 'free' ? '🔒 📋 Mis castings' : '📋 Mis castings'}
-          </Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MyCastings')}>
+          <Text style={styles.buttonText}>📋 Mis castings</Text>
         </TouchableOpacity>
 
-        {/* Mis servicios */}
-        <TouchableOpacity
-          style={[styles.button, membership === 'free' && styles.disabledButton]}
-          onPress={() => {
-            if (membership !== 'free') {
-              navigation.navigate('MyServices');
-            } else {
-              Alert.alert('Función exclusiva', 'Solo disponible para usuarios Pro o Elite.');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {membership === 'free' ? '🔒 📋 Mis servicios' : '📋 Mis servicios'}
-          </Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MyServices')}>
+          <Text style={styles.buttonText}>📋 Mis servicios</Text>
         </TouchableOpacity>
 
-        {/* Ver Focus Group */}
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('ViewPosts')}>
+          <Text style={styles.buttonText}>📢 Ver publicaciones guardadas</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.button, membership === 'free' && styles.disabledButton]}
           onPress={() => {
-            if (membership !== 'free') {
-              navigation.navigate('FocusListScreen');
-            } else {
-              Alert.alert('Función exclusiva', 'Solo disponible para usuarios Pro o Elite.');
-            }
+            membership !== 'free'
+              ? navigation.navigate('FocusListScreen')
+              : handleRestricted();
           }}
         >
           <Text style={styles.buttonText}>
@@ -70,15 +93,12 @@ export default function MenuScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
 
-        {/* Historial de postulaciones */}
         <TouchableOpacity
           style={[styles.button, membership === 'free' && styles.disabledButton]}
           onPress={() => {
-            if (membership !== 'free') {
-              navigation.navigate('PostulationHistory');
-            } else {
-              Alert.alert('Función exclusiva', 'Solo disponible para usuarios Pro o Elite.');
-            }
+            membership !== 'free'
+              ? navigation.navigate('PostulationHistory')
+              : handleRestricted();
           }}
         >
           <Text style={styles.buttonText}>
@@ -86,27 +106,55 @@ export default function MenuScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
 
-        {/* Ver publicaciones guardadas */}
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('ViewPosts')}>
-          <Text style={styles.buttonText}>📢 Ver publicaciones guardadas</Text>
+        <TouchableOpacity
+          style={[styles.button, membership === 'free' && styles.disabledButton]}
+          onPress={() => {
+            membership !== 'free'
+              ? navigation.navigate('Inbox')
+              : handleRestricted();
+          }}
+        >
+          <Text style={styles.buttonText}>
+            {membership === 'free'
+              ? '🔒 📥 Ver mensajes'
+              : `📥 Ver mensajes${newMessagesCount > 0 ? ` (${newMessagesCount} nuevo${newMessagesCount > 1 ? 's' : ''})` : ''}`}
+          </Text>
         </TouchableOpacity>
 
-        {/* Suscripción y membresía */}
+        <TouchableOpacity
+          style={[styles.button, membership === 'free' && styles.disabledButton]}
+          onPress={() => {
+            membership !== 'free'
+              ? navigation.navigate('Notification')
+              : handleRestricted();
+          }}
+        >
+          <Text style={styles.buttonText}>
+            {membership === 'free'
+              ? '🔒 📢 Ver notificaciones'
+              : `📢 Ver notificaciones${newNotificationsCount > 0 ? ` (${newNotificationsCount} nueva${newNotificationsCount > 1 ? 's' : ''})` : ''}`}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+  style={styles.button}
+  onPress={() => navigation.navigate('MyAds')}
+>
+  <Text style={styles.buttonText}>📊 Ver mis anuncios</Text>
+</TouchableOpacity>
+
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Subscription')}>
           <Text style={styles.buttonText}>👑 Suscripción y membresía</Text>
         </TouchableOpacity>
 
-        {/* Configuración */}
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.buttonText}>⚙️ Configuración de cuenta</Text>
         </TouchableOpacity>
 
-        {/* Ayuda y soporte */}
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('HelpSupport')}>
           <Text style={styles.buttonText}>🆘 Ayuda y soporte</Text>
         </TouchableOpacity>
 
-        {/* Contactar soporte */}
         <TouchableOpacity
           style={styles.button}
           onPress={() =>
@@ -119,33 +167,17 @@ export default function MenuScreen({ navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-  style={[styles.button, { backgroundColor: '#400000', marginTop: 40 }]}
-  onPress={() => {
-    Alert.alert('Cerrar sesión', '¿Estás seguro que deseas salir de tu cuenta?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Cerrar sesión',
-        style: 'destructive',
-        onPress: async () => {
-          await logout(setUserData, setIsLoggedIn);
-        },
-      },
-    ]);
-  }}
->
-  <Text style={[styles.buttonText, { color: '#FFDADA' }]}>🚪 Cerrar sesión</Text>
-</TouchableOpacity>
+          style={[styles.button, { backgroundColor: '#400000', marginTop: 40 }]}
+          onPress={() => setShowLogoutModal(true)}
+        >
+          <Text style={[styles.buttonText, { color: '#FFDADA' }]}>🚪 Cerrar sesión</Text>
+        </TouchableOpacity>
 
-
-        {/* 🧹 Botón reinicio de app */}
         <TouchableOpacity
           style={[styles.button, { backgroundColor: '#222', marginTop: 10 }]}
           onPress={async () => {
             Alert.alert('Advertencia', '¿Seguro que deseas borrar todos los datos locales?', [
-              {
-                text: 'Cancelar',
-                style: 'cancel',
-              },
+              { text: 'Cancelar', style: 'cancel' },
               {
                 text: 'Sí, borrar todo',
                 onPress: async () => {
@@ -160,16 +192,79 @@ export default function MenuScreen({ navigation }) {
           <Text style={[styles.buttonText, { color: '#FF5555' }]}>🧹 Reiniciar app (desarrollo)</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Modal de membresía */}
+      <Modal
+        visible={showUpgradeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowUpgradeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.upgradeModal}>
+            <Text style={styles.upgradeTitle}>🔒 Función exclusiva para miembros Pro o Elite</Text>
+            <Text style={styles.upgradeText}>
+              Mejora tu membresía para acceder a esta funcionalidad premium.
+            </Text>
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={() => {
+                setShowUpgradeModal(false);
+                navigation.navigate('Subscription');
+              }}
+            >
+              <Text style={styles.upgradeButtonText}>💳 Ver planes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowUpgradeModal(false)}>
+              <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de cierre de sesión */}
+      <Modal
+        visible={showLogoutModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLogoutModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.upgradeModal}>
+            <Text style={styles.upgradeTitle}>¿Deseas cerrar sesión?</Text>
+            <Text style={styles.upgradeText}>Tu sesión se cerrará, pero los datos permanecerán guardados en el dispositivo.</Text>
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={async () => {
+                try {
+                  await AsyncStorage.removeItem('userData');
+                  setUserData(null);
+                  setIsLoggedIn(false);
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' }],
+                  });
+                } catch (error) {
+                  console.error('❌ Error al cerrar sesión:', error);
+                }
+              }}
+            >
+              <Text style={styles.upgradeButtonText}>✅ Cerrar sesión</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowLogoutModal(false)}>
+              <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <BottomBar />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  container: { flex: 1, backgroundColor: '#000' },
   content: {
     padding: 20,
     paddingBottom: 140,
@@ -186,9 +281,9 @@ const styles = StyleSheet.create({
     borderColor: '#D8A353',
     borderWidth: 1,
     borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 25,
-    marginBottom: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginBottom: 12,
     width: '100%',
     alignItems: 'center',
   },
@@ -199,5 +294,45 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  upgradeModal: {
+    backgroundColor: '#1B1B1B',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderColor: '#D8A353',
+    borderWidth: 1,
+    marginHorizontal: 30,
+    zIndex: 1000,
+    elevation: 20,
+  },
+  upgradeTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#D8A353',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  upgradeText: {
+    color: '#ccc',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  upgradeButton: {
+    backgroundColor: '#D8A353',
+    paddingVertical: 10,
+    paddingHorizontal: 25,
+    borderRadius: 10,
+  },
+  upgradeButtonText: {
+    color: '#000',
+    fontWeight: 'bold',
   },
 });

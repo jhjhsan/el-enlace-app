@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,51 @@ import {
   Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useUser } from '../contexts/UserContext'; // Asegúrate de que esto esté bien importado
+import { useUser } from '../contexts/UserContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function CastingDetailScreen({ route }) {
   const navigation = useNavigation();
-  const { userData } = useUser(); // Obtenemos el usuario actual desde contexto
+  const { userData } = useUser();
   const { casting } = route.params || {};
+  const [remainingPostulations, setRemainingPostulations] = useState(null);
 
-  // Verifica si el usuario actual es el creador del casting
   const isOwner = casting?.creatorId === userData?.id;
+
+  useEffect(() => {
+    const fetchPostulationLimit = async () => {
+      if (userData?.membershipType === 'free') {
+        try {
+          const data = await AsyncStorage.getItem('freePostulationLimit');
+          const now = new Date();
+          const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
+
+          if (data) {
+            const parsed = JSON.parse(data);
+            if (parsed.month === currentMonth) {
+              setRemainingPostulations(2 - parsed.count);
+            } else {
+              setRemainingPostulations(2);
+            }
+          } else {
+            setRemainingPostulations(2);
+          }
+        } catch (error) {
+          console.error('Error al obtener el límite de postulaciones:', error);
+        }
+      }
+    };
+
+    fetchPostulationLimit();
+  }, [userData]);
 
   return (
     <View style={styles.screen}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>{casting?.title || 'Título del Casting'}</Text>
         <Text style={styles.description}>
@@ -36,7 +69,12 @@ export default function CastingDetailScreen({ route }) {
           <Text style={styles.detailText}>Fecha límite: {casting?.deadline || 'No informada'}</Text>
         </View>
 
-        {/* Botón para usuarios normales */}
+        {!isOwner && userData?.membershipType === 'free' && remainingPostulations !== null && (
+          <Text style={styles.remaining}>
+            Postulaciones restantes este mes: {remainingPostulations}
+          </Text>
+        )}
+
         {!isOwner && (
           <TouchableOpacity
             style={styles.applyButton}
@@ -51,7 +89,6 @@ export default function CastingDetailScreen({ route }) {
           </TouchableOpacity>
         )}
 
-        {/* Botón para creadores del casting */}
         {isOwner && (
           <TouchableOpacity
             style={styles.viewApplicationsButton}
@@ -65,10 +102,6 @@ export default function CastingDetailScreen({ route }) {
             <Text style={styles.buttonText}>📥 Ver postulaciones recibidas</Text>
           </TouchableOpacity>
         )}
-
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>⬅ Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -78,6 +111,14 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
+    marginTop:30,
+  },
+  backButton: {
+    position: 'absolute',
+    top: -5,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   container: {
     alignItems: 'center',
@@ -88,7 +129,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#D8A353',
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 20,
     textAlign: 'center',
   },
   description: {
@@ -117,6 +158,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 5,
   },
+  remaining: {
+    color: '#fff',
+    fontSize: 14,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
   applyButton: {
     backgroundColor: '#8B0000',
     paddingVertical: 15,
@@ -140,13 +187,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#D8A353',
     fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  back: {
-    marginTop: 360,
-    color: '#aaa',
-    fontSize: 16,
-    textDecorationLine: 'underline',
     textAlign: 'center',
   },
 });
