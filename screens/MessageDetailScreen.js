@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 import BackButton from '../components/BackButton';
-import { Linking } from 'react-native';
+import { syncMessageToFirestore } from '../src/firebase/syncMessages';
 
 export default function MessageDetailScreen() {
   const navigation = useNavigation();
@@ -22,6 +23,7 @@ export default function MessageDetailScreen() {
 
   const [conversation, setConversation] = useState(null);
   const [response, setResponse] = useState('');
+  const [diffDays, setDiffDays] = useState(0);
 
   useEffect(() => {
     loadConversation();
@@ -35,37 +37,50 @@ export default function MessageDetailScreen() {
     const match = all.find(
       (msg) =>
         ((msg.from === userData.email && msg.to === contactEmail) ||
-         (msg.from === contactEmail && msg.to === userData.email)) &&
+          (msg.from === contactEmail && msg.to === userData.email)) &&
         !msg.archived
     );
+
+    if (match) {
+      const now = new Date();
+      const msgDate = new Date(match.timestamp);
+      const daysDiff = Math.floor((now - msgDate) / (1000 * 60 * 60 * 24));
+      setDiffDays(daysDiff);
+    }
+
     setConversation(match);
   };
 
-  const handleReply = async () => {
-    if (!response.trim()) {
-      Alert.alert('Campo vacío', 'Escribe una respuesta antes de enviar.');
-      return;
+const handleReply = async () => {
+  if (!response.trim()) {
+    Alert.alert('Campo vacío', 'Escribe una respuesta antes de enviar.');
+    return;
+  }
+
+  const json = await AsyncStorage.getItem('professionalMessages');
+  if (!json) return;
+
+  const all = JSON.parse(json);
+  const updated = all.map((msg) => {
+    if (msg.id === conversation.id) {
+      return {
+        ...msg,
+        response: response.trim(),
+        archived: true,
+      };
     }
+    return msg;
+  });
 
-    const json = await AsyncStorage.getItem('professionalMessages');
-    if (!json) return;
+  await AsyncStorage.setItem('professionalMessages', JSON.stringify(updated));
 
-    const all = JSON.parse(json);
-    const updated = all.map((msg) => {
-      if (msg.id === conversation.id) {
-        return {
-          ...msg,
-          response: response.trim(),
-          archived: true,
-        };
-      }
-      return msg;
-    });
+  // 🔁 Sincronizar con Firestore
+  const repliedMsg = updated.find((msg) => msg.id === conversation.id);
+  await syncMessageToFirestore(repliedMsg);
 
-    await AsyncStorage.setItem('professionalMessages', JSON.stringify(updated));
-    Alert.alert('✅ Respuesta enviada', 'La conversación ha sido cerrada.');
-    navigation.goBack();
-  };
+  Alert.alert('✅ Respuesta enviada', 'La conversación ha sido cerrada.');
+  navigation.goBack();
+};
 
   if (!conversation) {
     return (
@@ -76,18 +91,18 @@ export default function MessageDetailScreen() {
   }
 
   const isSender = conversation.from === userData.email;
+  const isReplyAllowed = !conversation.response && !isSender && diffDays < 7;
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>📨 Detalle del mensaje</Text>
+        <Text style={styles.title}>📨 Detalle del Mensaje</Text>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Mensaje original:</Text>
+          <Text style={styles.label}>📝 Mensaje original:</Text>
           <Text style={styles.text}>{conversation.message}</Text>
         </View>
 
-        {/* Mostrar perfil adjunto si existe */}
         {conversation.profileAttachment && (
           <View style={styles.card}>
             <Text style={styles.label}>📎 Perfil adjunto:</Text>
@@ -99,12 +114,12 @@ export default function MessageDetailScreen() {
 
         {conversation.response ? (
           <View style={styles.card}>
-            <Text style={styles.label}>Respuesta:</Text>
+            <Text style={styles.label}>✅ Respuesta enviada:</Text>
             <Text style={styles.text}>{conversation.response}</Text>
           </View>
-        ) : !isSender ? (
+        ) : isReplyAllowed ? (
           <>
-            <Text style={styles.label}>Responder:</Text>
+            <Text style={styles.label}>✍️ Responder:</Text>
             <TextInput
               style={styles.input}
               multiline
@@ -119,7 +134,7 @@ export default function MessageDetailScreen() {
             </TouchableOpacity>
           </>
         ) : (
-          <Text style={styles.note}>Aún no han respondido a tu mensaje.</Text>
+          <Text style={styles.note}>⛔ Han pasado más de 7 días. Ya no puedes responder este mensaje.</Text>
         )}
 
         {conversation.response && (
@@ -127,7 +142,7 @@ export default function MessageDetailScreen() {
             style={styles.emailButton}
             onPress={() => Linking.openURL(`mailto:${contactEmail}`)}
           >
-            <Text style={styles.emailButtonText}>✉️ Continuar contacto por email</Text>
+            <Text style={styles.emailButtonText}>✉️ Continuar por correo</Text>
           </TouchableOpacity>
         )}
 
@@ -149,9 +164,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#D8A353',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 25,
     textAlign: 'center',
   },
   card: {

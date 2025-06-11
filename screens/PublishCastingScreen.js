@@ -15,6 +15,7 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import { useUser } from '../contexts/UserContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { syncCastingToFirestore } from '../src/firebase/helpers/syncCastingToFirestore';
 
 export default function PublishCastingScreen({ navigation }) {
   const { userData } = useUser();
@@ -31,6 +32,9 @@ export default function PublishCastingScreen({ navigation }) {
   const [modality, setModality] = useState('');
   const [location, setLocation] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [castingType, setCastingType] = useState(null);
+  const [openCastingType, setOpenCastingType] = useState(false);
 
   useEffect(() => {
     if (userData?.membershipType !== 'elite') {
@@ -52,6 +56,12 @@ export default function PublishCastingScreen({ navigation }) {
     { label: 'Animador / Presentador', value: 'Animador / Presentador' },
     { label: 'Artista urbano / Performer', value: 'Artista urbano / Performer' },
     { label: 'Otros', value: 'Otros' },
+  ];
+
+  const castingTypeOptions = [
+    { label: '🎭 Casting normal (gratis)', value: 'normal' },
+    { label: '⭐ Casting destacado (CLP 1.990)', value: 'destacado' },
+    { label: '🚨 Casting urgente (CLP 3.990)', value: 'urgente' },
   ];
 
   const pickImage = async () => {
@@ -89,6 +99,11 @@ export default function PublishCastingScreen({ navigation }) {
   };
 
   const handlePublish = async () => {
+    if (!userData?.hasPaid) {
+  Alert.alert('Pago requerido', 'Debes completar el pago para publicar un casting.');
+  return;
+}
+
     if (!title || !description || !category || !payment || !agencyName || !deadline || !modality || !location) {
         Alert.alert('Campos obligatorios', 'Completa todos los campos antes de publicar.');
         return;
@@ -119,6 +134,7 @@ if (!deadline || deadline <= today) {
       deadline: deadline.toISOString().split('T')[0],
       modality,
       location,
+      castingType,
       type: 'casting',
       date: new Date().toISOString().split('T')[0],
       isPromotional: false,
@@ -131,6 +147,8 @@ if (!deadline || deadline <= today) {
       const posts = existing ? JSON.parse(existing) : [];
       posts.push(newPost);
       await AsyncStorage.setItem('posts', JSON.stringify(posts));
+      await syncCastingToFirestore(newPost);
+
       Alert.alert('Casting publicado', 'Tu casting ha sido enviado a los usuarios. Redirigiendo...');
 setTimeout(() => {
   navigation.navigate('ViewPosts');
@@ -179,13 +197,13 @@ try {
   };
 
   return (
+    
     <View style={styles.screen}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={[styles.container, { flexGrow: 1 }]}>
-        <Text style={styles.title}>🎬 Publicar Casting</Text>
 
         {/* Botones IA */}
         <TouchableOpacity style={styles.aiButton} onPress={autoFillFromDocument}>
@@ -235,22 +253,6 @@ try {
           onChangeText={setDescription}
         />
 
-        <DropDownPicker
-          open={open}
-          value={category}
-          items={castingCategories}
-          setOpen={setOpen}
-          setValue={setCategory}
-          placeholder="Selecciona una categoría"
-          listMode="SCROLLVIEW"
-          style={styles.dropdown}
-          dropDownContainerStyle={styles.dropdownContainer}
-          textStyle={{ color: '#D8A353' }}
-          labelStyle={{ color: '#D8A353' }}
-          placeholderStyle={{ color: '#888' }}
-          arrowIconStyle={{ tintColor: '#D8A353' }}
-        />
-
         {category === 'Otros' && (
           <TextInput
             style={styles.input}
@@ -298,7 +300,6 @@ try {
   />
 )}
 
-
         <TextInput
           placeholder="Modalidad del casting (presencial / online / selftape)"
           placeholderTextColor="#888"
@@ -315,6 +316,38 @@ try {
           onChangeText={setLocation}
         />
 
+<DropDownPicker
+  open={openCastingType}
+  value={castingType}
+  items={castingTypeOptions}
+  setOpen={setOpenCastingType}
+  setValue={setCastingType}
+  placeholder="Selecciona el tipo de casting"
+  listMode="SCROLLVIEW"
+  style={styles.dropdown}
+  dropDownContainerStyle={styles.dropdownContainer}
+  textStyle={{ color: '#D8A353' }}
+  labelStyle={{ color: '#D8A353' }}
+  placeholderStyle={{ color: '#888' }}
+  arrowIconStyle={{ tintColor: '#D8A353' }}
+/>
+
+{/* 👇 Aquí agregas las notas explicativas según el tipo */}
+{castingType === 'normal' && (
+  <Text style={styles.note}>
+    ✅ Gratis. Se mostrará solo en la página de castings durante 5 días.
+  </Text>
+)}
+{castingType === 'destacado' && (
+  <Text style={styles.note}>
+    ⭐ Visible en el Dashboard principal (Pro/Free) por 3 días y en la página de castings por 5 días.
+  </Text>
+)}
+{castingType === 'urgente' && (
+  <Text style={styles.note}>
+    🚨 Siempre en primer lugar del Dashboard (Pro/Free) por 24 horas y en la página de castings por 2 días.
+  </Text>
+)}
         {/* Publicar */}
         <TouchableOpacity style={styles.publishButton} onPress={handlePublish}>
           <Text style={styles.publishText}>📤 Publicar Casting</Text>
@@ -422,4 +455,11 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
   },
+  note: {
+    color: '#ccc',
+    fontSize: 13,
+    marginTop: -10,
+    marginBottom: 15,
+    textAlign: 'center',
+  },  
 });

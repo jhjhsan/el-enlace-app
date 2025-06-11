@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,11 @@ import {
   Modal,
 } from 'react-native';
 
-import BottomBar from '../components/BottomBar';
 import { AntDesign } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
+import { ActivityIndicator } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -24,36 +24,39 @@ export default function ProfileScreen({ navigation }) {
   const [selectedImage, setSelectedImage] = useState(null);
   const profileScaleAnim = useRef(new Animated.Value(1)).current;
   const [profileEnlarged, setProfileEnlarged] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadUser = async () => {
-        try {
-          let json = await AsyncStorage.getItem('userProfileFree');
-          if (!json) {
-            json = await AsyncStorage.getItem('userProfile');
-          }
-          if (json) {
-            const user = JSON.parse(json);
-            setUserData(user);
-            console.log('📦 Datos cargados en perfil:', user);
-          }
-        } catch (e) {
-          console.log('❌ Error cargando perfil:', e);
-        }
-      };
-      loadUser();
-    }, [])
+  useEffect(() => {
+    if (!userData) return;
+  
+    if (userData.membershipType === 'elite') {
+      if (userData.hasPaid === true) {
+        navigation.replace('ProfileElite');
+      } else {
+        navigation.replace('DashboardElite');
+      }
+    } else if (userData.membershipType === 'pro') {
+      navigation.replace('ProfilePro');
+    } else {
+      // Usuario Free: simplemente marca como listo para mostrar
+      setIsReady(true);
+    }
+  }, [userData]);
+  
+
+if (
+  !isReady ||
+  !userData ||
+  userData.membershipType === 'pro' ||
+  (userData.membershipType === 'elite' && userData.hasPaid)
+) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color="#D8A353" />
+    </View>
   );
-
-  if (!userData) {
-    return (
-      <View style={styles.screen}>
-        <Text style={{ color: '#fff' }}>Cargando perfil...</Text>
-      </View>
-    );
-  }
-
+}
+  
   const {
     name = 'Usuario',
     email = 'Correo no definido',
@@ -72,7 +75,7 @@ export default function ProfileScreen({ navigation }) {
       setProfileEnlarged(!profileEnlarged);
     });
   };
-
+  
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -138,7 +141,7 @@ export default function ProfileScreen({ navigation }) {
         </Modal>
       </ScrollView>
 
-      <BottomBar />
+
     </View>
   );
 }
@@ -151,6 +154,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingBottom: 100,
+    marginTop: 20,
   },
   editButton: {
     position: 'absolute',
@@ -162,7 +166,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 2,
+    borderWidth: 0.5,
     borderColor: '#D8A353',
     marginTop: 60,
   },
@@ -170,7 +174,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 2,
+    borderWidth: 0.5,
     borderColor: '#D8A353',
     marginTop: 60,
     justifyContent: 'center',
@@ -226,7 +230,7 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 8,
     borderColor: '#D8A353',
-    borderWidth: 1,
+    borderWidth: 0.5,
   },
   modalOverlay: {
     flex: 1,

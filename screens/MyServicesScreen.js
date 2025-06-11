@@ -77,7 +77,7 @@ export default function MyServicesScreen() {
         onPress={() => navigation.goBack()}
         style={{
           position: 'absolute',
-          top: 15,
+          top: 40,
           left: 20,
           zIndex: 2000,
         }}
@@ -113,8 +113,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   container: {
+    marginTop:30,
     padding: 20,
     paddingBottom: 120,
+   
   },
   title: {
     color: '#D8A353',

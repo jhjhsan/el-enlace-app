@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,38 +10,55 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { getWeeklyCastingPostCount, registerCastingPost } from '../utils/postLimits';
-import { Ionicons } from '@expo/vector-icons'; // ✅ Importación de ícono
+import { Ionicons } from '@expo/vector-icons';
+import { useUser } from '../contexts/UserContext';
+import { syncCastingToFirestore } from '../src/firebase/helpers/syncCastingToFirestore';
 
 export default function MyCastingsScreen() {
   const navigation = useNavigation();
   const [castings, setCastings] = useState([]);
+  const { userData } = useUser();
+  const membership = userData?.membershipType || 'free';
+const hasPaid = userData?.hasPaid === true;
 
-  useEffect(() => {
-    const loadCastings = async () => {
-      try {
-        const data = await AsyncStorage.getItem('posts');
-        const parsed = data ? JSON.parse(data) : [];
-        const onlyCastings = parsed.filter((post) => post.type === 'casting');
-        setCastings(onlyCastings);
-      } catch (error) {
-        console.error('Error al cargar castings:', error);
-      }
-    };
+useEffect(() => {
+  const loadCastings = async () => {
+    try {
+      const data = await AsyncStorage.getItem('posts');
+      const parsed = data ? JSON.parse(data) : [];
+      const userId = userData?.id?.toLowerCase();
+      const creatorEmail = userData?.email?.toLowerCase();
 
-    const unsubscribe = navigation.addListener('focus', loadCastings);
-    return unsubscribe;
-  }, [navigation]);
+      const ownCastings = parsed.filter((post) => {
+        const postCreatorId = post.creatorId?.toLowerCase();
+        const postCreatorEmail = post.creatorEmail?.toLowerCase();
+
+        return (
+          post.type === 'casting' &&
+          (postCreatorId === userId || postCreatorEmail === creatorEmail)
+        );
+      });
+
+      setCastings(ownCastings);
+    } catch (error) {
+      console.error('Error al cargar castings:', error);
+    }
+  };
+
+  const unsubscribe = navigation.addListener('focus', loadCastings);
+  return unsubscribe;
+}, [navigation, userData]);
 
   const createTestCasting = async () => {
     const count = await getWeeklyCastingPostCount();
 
-    if (count >= 1) {
-      Alert.alert(
-        'Límite alcanzado',
-        'Solo puedes publicar 1 casting por semana con el plan Free. Actualiza tu membresía para publicar más.'
-      );
-      return;
-    }
+    if (membership === 'free' && count >= 1) {
+  Alert.alert(
+    'Límite alcanzado',
+    'Solo puedes publicar 1 casting por semana con el plan Free. Actualiza tu membresía para publicar más.'
+  );
+  return;
+}
 
     try {
       const demoCasting = {
@@ -52,6 +69,8 @@ export default function MyCastingsScreen() {
         type: 'casting',
         date: new Date().toISOString().split('T')[0],
         isPromotional: false,
+        creatorId: userData?.id || 'sin-id',
+        creatorEmail: userData?.email || 'desconocido@mail.com',
       };
 
       const existing = await AsyncStorage.getItem('posts');
@@ -59,7 +78,9 @@ export default function MyCastingsScreen() {
       parsed.push(demoCasting);
       await AsyncStorage.setItem('posts', JSON.stringify(parsed));
 
-      await registerCastingPost(); // ✅ registrar la publicación
+      await registerCastingPost();
+      await syncCastingToFirestore(demoCasting);
+
       Alert.alert('Casting creado', 'Tu publicación fue guardada con éxito.');
     } catch (error) {
       console.error('Error al crear casting:', error);
@@ -69,55 +90,37 @@ export default function MyCastingsScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* ✅ Flecha de volver */}
-      <TouchableOpacity
-        onPress={() => navigation.goBack()}
-        style={{
-          position: 'absolute',
-          top: 15,
-          left: 20,
-          zIndex: 2000,
-        }}
-      >
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>📋 Mis Castings</Text>
-        <Text style={styles.info}>
-          Aquí podrás ver y gestionar los castings que has publicado en El Enlace.
-        </Text>
+        <Text style={styles.title}>🎬 Mis castings publicados</Text>
 
-        {/* Botón temporal para crear casting ficticio */}
-        <TouchableOpacity
-          style={[styles.button, { marginBottom: 30 }]}
-          onPress={createTestCasting}
-        >
-          <Text style={styles.buttonText}>🔧 Crear casting de prueba</Text>
-        </TouchableOpacity>
-
-        {/* Lista de castings */}
         {castings.length === 0 ? (
-          <Text style={styles.empty}>Aún no has publicado castings.</Text>
+          <Text style={styles.empty}>Aún no has publicado ningún casting.</Text>
         ) : (
           castings.map((casting, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.card}
-              onPress={() =>
-                navigation.navigate('CastingDetail', {
-                  castingId: casting.id,
-                  castingTitle: casting.title,
-                  casting,
-                })
-              }
-            >
-              <Text style={styles.cardTitle}>{casting.title}</Text>
-              <Text style={styles.cardDate}>📅 {casting.date}</Text>
-              <Text style={styles.cardCategory}>🎭 {casting.category}</Text>
-            </TouchableOpacity>
+            <View key={index} style={styles.cardRow}>
+              <View style={styles.cardLeft}>
+                <Text style={styles.cardTitle}>{casting.title}</Text>
+                <Text style={styles.cardDate}>📅 {casting.date || 'Sin fecha'}</Text>
+                <Text style={styles.cardCategory}>🎭 {casting.category || 'Sin categoría'}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.cardButton}
+                onPress={() => navigation.navigate('ViewApplications', { castingId: casting.id })}
+              >
+                <Ionicons name="eye-outline" size={16} color="#000" />
+                <Text style={styles.cardButtonText}>Ver postulaciones</Text>
+              </TouchableOpacity>
+            </View>
           ))
         )}
+
+        <TouchableOpacity onPress={createTestCasting} style={[styles.button, { marginTop: 20 }]}>
+          <Text style={styles.buttonText}>+ Crear casting de prueba</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -130,6 +133,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 20,
+    top: 30,
     paddingBottom: 120,
     alignItems: 'center',
   },
@@ -137,14 +141,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#D8A353',
     fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  info: {
-    color: '#ccc',
-    fontSize: 14,
-    textAlign: 'center',
     marginBottom: 20,
+    textAlign: 'center',
   },
   empty: {
     color: '#888',
@@ -163,14 +161,19 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     fontWeight: 'bold',
   },
-  card: {
-    width: '100%',
+  cardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: '#1B1B1B',
     borderColor: '#D8A353',
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
+    padding: 10,
+    marginBottom: 10,
+  },
+  cardLeft: {
+    flex: 1,
   },
   cardTitle: {
     fontSize: 16,
@@ -184,5 +187,25 @@ const styles = StyleSheet.create({
   },
   cardCategory: {
     color: '#aaa',
+  },
+  cardButton: {
+    backgroundColor: '#D8A353',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  cardButtonText: {
+    color: '#000',
+    fontWeight: 'bold',
+    marginLeft: 5,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    zIndex: 10,
   },
 });

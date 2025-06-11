@@ -7,10 +7,12 @@ import {
   ScrollView,
   Alert,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
+import { syncCastingToFirestore } from '../src/firebase/helpers/syncCastingToFirestore';
 
 export default function EditPostScreen({ route, navigation }) {
   const { post } = route.params;
@@ -20,6 +22,8 @@ export default function EditPostScreen({ route, navigation }) {
   const [description, setDescription] = useState(post?.description || '');
   const [category, setCategory] = useState(post?.category || '');
   const [open, setOpen] = useState(false);
+  const [zIndex, setZIndex] = useState(1000);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const isCasting = post?.type === 'casting';
 
@@ -50,22 +54,47 @@ export default function EditPostScreen({ route, navigation }) {
       Alert.alert('Acceso denegado', 'No puedes editar publicaciones de otros usuarios.');
       return;
     }
+
     if (post.isPromotional) {
-        Alert.alert('Edición no permitida', 'Las publicaciones promocionales no se pueden editar.');
-        return;
-      }      
+      Alert.alert('Edición no permitida', 'Las publicaciones promocionales no se pueden editar.');
+      return;
+    }
 
     try {
       const stored = await AsyncStorage.getItem('posts');
-      let posts = stored ? JSON.parse(stored) : [];
+      const posts = stored ? JSON.parse(stored) : [];
 
-      const updatedPosts = posts.map(p =>
-        p.id === post.id ? { ...p, title, description, category } : p
-      );
+  // ✅ Verificar existencia del post antes de editar
+  const existing = posts.find(p => p.id === post.id);
+  if (!existing) {
+    Alert.alert('Error', 'No se encontró la publicación original.');
+    return;
+  }
+  const updatedPosts = posts.map(p =>
+    p.id === post.id
+      ? {
+          ...p,
+          title,
+          description,
+          category,
+          updatedAt: Date.now(), // ← 🔥 Pegas aquí
+        }
+      : p
+  );  
 
       await AsyncStorage.setItem('posts', JSON.stringify(updatedPosts));
-      Alert.alert('✅ Guardado', 'La publicación ha sido actualizada.');
-      navigation.goBack();
+await syncCastingToFirestore({
+  ...existing,
+  title,
+  description,
+  category,
+  updatedAt: Date.now(),
+});
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        navigation.goBack();
+      }, 1500);
     } catch (error) {
       console.error('Error al guardar post editado:', error);
       Alert.alert('Error', 'No se pudo guardar la publicación.');
@@ -99,20 +128,16 @@ export default function EditPostScreen({ route, navigation }) {
           open={open}
           value={category}
           items={categories}
-          setOpen={setOpen}
+          setOpen={value => {
+            setOpen(value);
+            setZIndex(value ? 2000 : 1000);
+          }}
           setValue={setCategory}
           placeholder="Selecciona una categoría"
-          style={{
-            backgroundColor: '#1A1A1A',
-            borderColor: '#D8A353',
-            zIndex: 1000,
-          }}
-          dropDownContainerStyle={{
-            backgroundColor: '#1A1A1A',
-            borderColor: '#D8A353',
-            zIndex: 1000,
-          }}
+          style={styles.dropdown}
+          dropDownContainerStyle={styles.dropdownContainer}
           textStyle={{ color: '#fff' }}
+          zIndex={zIndex}
         />
 
         <TouchableOpacity style={styles.button} onPress={handleSave}>
@@ -123,6 +148,14 @@ export default function EditPostScreen({ route, navigation }) {
           <Text style={styles.back}>⬅ Volver</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal transparent={true} visible={showSuccess} animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.successText}>✅ Cambios guardados</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -164,6 +197,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     textAlignVertical: 'top',
   },
+  dropdown: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#D8A353',
+    marginBottom: 20,
+  },
+  dropdownContainer: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#D8A353',
+  },
   button: {
     backgroundColor: '#D8A353',
     padding: 16,
@@ -181,6 +223,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textDecorationLine: 'underline',
+    textAlign: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000aa',
+  },
+  modalContent: {
+    backgroundColor: '#1B1B1B',
+    padding: 20,
+    borderRadius: 10,
+    borderColor: '#D8A353',
+    borderWidth: 1,
+  },
+  successText: {
+    color: '#D8A353',
+    fontSize: 16,
+    fontWeight: 'bold',
     textAlign: 'center',
   },
 });

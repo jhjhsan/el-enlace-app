@@ -1,36 +1,46 @@
-// DashboardScreen.js original modificado con carrusel dinámico y anuncios vigentes
-
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Image,
-  ScrollView,
   TouchableOpacity,
   FlatList,
   Dimensions,
   Animated,
   Linking,
+  Modal,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BottomBar from '../components/BottomBar';
 import { useUser } from '../contexts/UserContext';
 import { useSimulatedNotification } from '../utils/useSimulatedNotification';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { Video } from 'expo-av';
+import { syncAdToFirestore } from '../src/firebase/helpers/syncAdToFirestore';
+import { Image as RNImage } from 'react-native'; // asegúrate de tener este import
 
 const { width } = Dimensions.get('window');
+import img1 from '../assets/placeholders_ads1.png';
+import img2 from '../assets/placeholders_ads2.png';
+import img3 from '../assets/placeholders_ads3.png';
+import img4 from '../assets/placeholders_ads4.png';
+import img5 from '../assets/placeholders_ads5.png';
+import img6 from '../assets/placeholders_ads6.png';
+import img7 from '../assets/placeholders_ads7.png';
+
 
 export default function DashboardScreen({ navigation }) {
   const scrollRef = useRef(null);
   const currentIndexRef = useRef(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [appliedCastings, setAppliedCastings] = useState([]);
-  const [showProWelcome, setShowProWelcome] = useState(false);
   const [carouselImages, setCarouselImages] = useState([]);
-  const bannerAnim = useRef(new Animated.Value(0)).current;
+  const [allCastings, setAllCastings] = useState([]);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { userData } = useUser();
   const userName = userData?.name || 'Usuario';
@@ -38,94 +48,180 @@ export default function DashboardScreen({ navigation }) {
 
   useSimulatedNotification(userData);
 
-  useEffect(() => {
-    const checkProWelcome = async () => {
-      if (membershipType === 'pro') {
-        const flag = await AsyncStorage.getItem('hasSeenProWelcome');
-        if (flag !== 'true') {
-          setShowProWelcome(true);
-          Animated.timing(bannerAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }).start();
+  const loadRecentCastings = async () => {
+    try {
+      const data = await AsyncStorage.getItem('castings');
+      const parsed = data ? JSON.parse(data) : [];
 
-          setTimeout(() => {
-            Animated.timing(bannerAnim, {
-              toValue: 0,
-              duration: 500,
-              useNativeDriver: true,
-            }).start(() => setShowProWelcome(false));
-          }, 4000);
+      const ahora = Date.now();
+      const cincoDiasEnMs = 5 * 24 * 60 * 60 * 1000;
 
-          await AsyncStorage.setItem('hasSeenProWelcome', 'true');
-        }
-      }
-    };
-    checkProWelcome();
-  }, [membershipType]);
+      const recientes = parsed.filter(c => ahora - c.timestamp <= cincoDiasEnMs);
+      await AsyncStorage.setItem('castings', JSON.stringify(recientes));
+      const sorted = recientes.sort((a, b) => b.timestamp - a.timestamp);
+      setAllCastings(sorted);
+    } catch (error) {
+      console.error('Error cargando castings:', error);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadRecentCastings();
+    setIsRefreshing(false);
+  };
 
   useEffect(() => {
-    const fetchApplications = async () => {
-      try {
-        const data = await AsyncStorage.getItem('applications');
-        const all = data ? JSON.parse(data) : [];
-        const mine = all.filter(app => app.userEmail === userData?.email);
-        setAppliedCastings(mine.reverse());
-      } catch (error) {
-        console.error('Error cargando postulaciones:', error);
-      }
-    };
-    fetchApplications();
+    loadRecentCastings();
   }, []);
 
-  useEffect(() => {
-    const fetchAds = async () => {
-      try {
-        const json = await AsyncStorage.getItem('adsList');
-        const parsed = json ? JSON.parse(json) : [];
-  
-        const now = Date.now();
-        const dynamicImages = parsed
-          .filter(ad => ad.aprobado === true && ad.expiresAt > now && ad.destacado === true)
-          .map(ad => ({
-            uri: ad.imageUri,
-            link: ad.link,
-          }));
-  
-        setCarouselImages(dynamicImages);
-      } catch (error) {
-        console.log('❌ Error cargando anuncios:', error);
+useEffect(() => {
+  const fetchAds = async () => {
+    try {
+      const json = await AsyncStorage.getItem('adsList');
+      let parsed = json ? JSON.parse(json) : [];
+      const now = Date.now();
+
+      // 1. Desactivar anuncios expirados
+      parsed = parsed.map(ad => {
+        if (ad.expiresAt < now) {
+          return { ...ad, aprobado: false };
+        }
+        return ad;
+      });
+
+      // 2. Verificar si hay espacio para activar uno en espera
+      const activos = parsed.filter(ad => ad.aprobado === true);
+      if (activos.length < 20) {
+        const enEspera = parsed.find(ad => ad.enEspera && !ad.aprobado);
+        if (enEspera) {
+          enEspera.aprobado = true;
+          enEspera.enEspera = false;
+          await syncAdToFirestore(enEspera); // FALTA sincronizar cambio con Firebase
+        }
       }
-    };
-  
-    fetchAds();
-  }, []);  
-  
+
+      // 3. Guardar cambios
+      await AsyncStorage.setItem('adsList', JSON.stringify(parsed));
+
+      // 4. Cargar solo los destacados activos y vigentes
+      const dynamicImages = parsed
+  .filter(ad => ad.aprobado === true && ad.expiresAt > now && ad.destacado === true)
+  .map(ad => ({
+    tipo: ad.tipo || 'imagen', // por si es antiguo
+    uri: ad.imageUri || null,
+    videoUri: ad.videoUri || null,
+    link: ad.link,
+  }));
+
+const placeholderImages = [
+  img1, img2, img3, img4, img5, img6, img7,
+];
+
+const placeholders = placeholderImages.map((img, index) => ({
+  uri: RNImage.resolveAssetSource(img).uri,
+  isPlaceholder: true,
+  id: index + 1,
+}));
+
+      const mergedImages = placeholders.map((slot, index) => {
+  const realAd = dynamicImages[index];
+  return realAd
+    ? { ...realAd, isPlaceholder: false, id: index + 1 }
+    : { ...slot };
+});
+setCarouselImages(mergedImages);
+
+    } catch (error) {
+      console.log('❌ Error cargando anuncios:', error);
+    }
+  };
+  fetchAds();
+}, []);
+
   useEffect(() => {
     if (!isPlaying || carouselImages.length === 0) return;
-
     const interval = setInterval(() => {
       const nextIndex = (currentIndexRef.current + 1) % carouselImages.length;
       currentIndexRef.current = nextIndex;
       setCurrentIndex(nextIndex);
-
       scrollRef.current?.scrollToOffset({
         offset: nextIndex * width,
         animated: nextIndex !== 0,
       });
     }, 5000);
-
     return () => clearInterval(interval);
   }, [isPlaying, carouselImages]);
 
+  const crearCastingDePrueba = async () => {
+    const nuevoCasting = {
+      id: Date.now().toString(),
+      title: '🎬 Casting de prueba automático',
+      agencyName: 'Agencia Demo',
+      timestamp: Date.now(),
+    };
+    try {
+      const data = await AsyncStorage.getItem('castings');
+      const existentes = data ? JSON.parse(data) : [];
+      const actualizados = [nuevoCasting, ...existentes];
+      await AsyncStorage.setItem('castings', JSON.stringify(actualizados));
+      await loadRecentCastings();
+      Alert.alert('✅ Listo', 'Se agregó un casting de prueba.');
+    } catch (error) {
+      console.error('❌ Error al crear casting de prueba:', error);
+    }
+  };
+const formatDate = (isoDate) => {
+  const d = new Date(isoDate);
+  return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1)
+    .toString()
+    .padStart(2, '0')}/${d.getFullYear()}`;
+};
+
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.container, { flexGrow: 1 }]}>
-        <Image source={require('../assets/logo.png')} style={styles.logo} />
-        <Text style={styles.greeting}>Hola, {userName} 👋</Text>
-        <Text style={styles.subtitle}>¿Listo para tu próxima oportunidad?</Text>
+      <TouchableOpacity
+  onPress={() => navigation.navigate('ExploreProfiles')}
+  style={{
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    backgroundColor: '#1a1a1a',
+    padding: 10,
+    borderRadius: 30,
+    zIndex: 20,
+    elevation: 5,
+  }}
+>
+  <Ionicons name="search" size={24} color="#D8A353" />
+</TouchableOpacity>
 
+      <View style={styles.header}>
+        <View style={styles.logoRow}>
+          <Image source={require('../assets/logo.png')} style={styles.logoSmall} />
+          <View style={styles.greetingBox}>
+            <Text style={styles.greeting}>
+              Hola, {userName} {membershipType === 'pro' ? '🏆' : '👋'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {membershipType === 'free'
+                ? 'Explora oportunidades y sube a Pro para postular.'
+                : '¿Listo para tu próxima oportunidad?'}
+            </Text>
+          </View>
+        </View>
+{userData?.trialEndsAt && !userData?.hasPaid && (
+  <View style={styles.trialBanner}>
+    <Text style={styles.trialText}>
+      🎁 Acceso gratis hasta el {formatDate(userData.trialEndsAt)}
+    </Text>
+    <TouchableOpacity onPress={() => navigation.navigate('PaymentScreen')}>
+      <Text style={[styles.trialText, { textDecorationLine: 'underline', marginTop: 6 }]}>
+        🔓 Activar plan ahora
+      </Text>
+    </TouchableOpacity>
+  </View>
+)}
         <View style={styles.carouselWrapper}>
           <FlatList
             ref={scrollRef}
@@ -136,13 +232,32 @@ export default function DashboardScreen({ navigation }) {
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item }) => (
               <TouchableOpacity onPress={() => item.link && Linking.openURL(item.link)}>
-                <Image
-                  source={item.uri ? { uri: item.uri } : item}
-                  style={styles.carouselImage}
-                  resizeMode="cover"
-                />
+                <View style={styles.carouselImageWrapper}>
+  {item.tipo === 'video' && item.videoUri ? (
+  <Video
+    source={{ uri: item.videoUri }}
+    style={styles.carouselImage}
+    resizeMode="cover"
+    isLooping
+    shouldPlay={isPlaying}
+    isMuted
+  />
+) : (
+  <>
+    <Image
+      source={{ uri: item.uri }}
+      style={[styles.carouselImage, item.isPlaceholder && { opacity: 0.4 }]}
+      resizeMode="cover"
+    />
+    {item.isPlaceholder && (
+      <Text style={styles.adWatermark}>ESPACIO PUBLICITARIO</Text>
+    )}
+  </>
+)}
+</View>
+
               </TouchableOpacity>
-            )}            
+            )}
           />
           <TouchableOpacity
             style={styles.playPauseOverlay}
@@ -151,191 +266,270 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.playPauseText}>{isPlaying ? '⏸️' : '▶️'}</Text>
           </TouchableOpacity>
         </View>
+
         <TouchableOpacity
-  onPress={() => navigation.navigate('AllAdsScreen')}
-  style={{
-    backgroundColor: '#D8A353',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 15,
-  }}
->
-  <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
-    📢 Ver anuncios promocionados
-  </Text>
-</TouchableOpacity>
+          onPress={() => navigation.navigate('AllAdsScreen')}
+          style={styles.promoButton}
+        >
+          <Text style={styles.promoButtonText}>📢 Ver anuncios promocionados</Text>
+        </TouchableOpacity>
 
-        {/* Todo el contenido original desde aquí se mantiene igual... */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => navigation.navigate('ExploreProfiles')}
-          >
-            <Text style={styles.buttonText}>Explorar perfiles</Text>
-          </TouchableOpacity>
-        </View>
+        <View style={styles.divider} />
+      </View>
 
-        {appliedCastings.length > 0 && (
-          <>
-            <Text style={styles.appliedTitle}>🎯 Castings postulados</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.appliedScroll}>
-              {appliedCastings.slice(0, 10).map((app, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.appliedCard}
-                  onPress={() => navigation.navigate('CastingDetail', { casting: app })}
-                >
-                  <Text style={styles.appliedText}>{app.title}</Text>
-                  <Text style={styles.appliedSub}>{app.agencyName}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </>
-        )}
-
-        <Text style={styles.categoriesTitle}>Categorías destacadas</Text>
-        <View style={styles.categoriesContainer}>
-          <View style={styles.column}>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Extra' })}>
-              <Text style={styles.categoryButton}>🎭 Extras</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Vestuarista' })}>
-              <Text style={styles.categoryButton}>👕 Vestuaristas</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Transporte de producción' })}>
-              <Text style={styles.categoryButton}>🚌 Transporte</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Autos personales' })}>
-              <Text style={styles.categoryButton}>🚗 Autos personales</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.column}>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Maquillista' })}>
-              <Text style={styles.categoryButton}>💄 Maquillista</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Servicios de catering' })}>
-              <Text style={styles.categoryButton}>🍽️ Catering</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Fotógrafo de backstage' })}>
-              <Text style={styles.categoryButton}>📷 Fotógrafo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('FilteredProfiles', { category: 'Locaciones' })}>
-              <Text style={styles.categoryButton}>📍 Locaciones</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {membershipType === 'elite' && (
-          <View style={styles.membershipCard}>
-            <Text style={styles.membershipText}>👑 Miembro Elite – Gestión de castings activada</Text>
-          </View>
-        )}
-
-        {membershipType === 'pro' && (
-          <View style={styles.membershipCard}>
-            <Text style={styles.membershipText}>🏆 Miembro Pro – Máximo nivel para talentos</Text>
-          </View>
-        )}
-
-        {membershipType === 'free' && (
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#D8A353',
-              borderRadius: 10,
-              paddingVertical: 12,
-              paddingHorizontal: 20,
-              marginTop: 50,
-              borderColor: '#FFD700',
-              borderWidth: 1,
-              alignSelf: 'center',
-            }}
-            onPress={() => navigation.navigate('UpgradeToPro')}
-          >
-            <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
-              📈 Subir a Pro por $2.990 CLP
+      <View style={styles.castingSectionWrapper}>
+        {allCastings.length > 0 ? (
+          <FlatList
+            data={allCastings}
+            keyExtractor={(item, index) => index.toString()}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.castingLineContainer}
+                onPress={() =>
+                  membershipType === 'free'
+                    ? setShowUpgradeModal(true)
+                    : navigation.navigate('CastingDetail', { casting: item })
+                }
+              >
+                <View style={styles.lineSeparator} />
+                <View style={styles.castingLine}>
+                  <Text style={styles.castingTitle}>{item.title}</Text>
+                  <Text style={styles.castingAgency}>{item.agencyName}</Text>
+                  <Text style={styles.castingDate}>
+                    {new Date(item.timestamp).toLocaleDateString()} -{' '}
+                    {new Date(item.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+            onRefresh={handleRefresh}
+            refreshing={isRefreshing}
+            contentContainerStyle={{ paddingBottom: 90 }}
+          />
+        ) : (
+          <View style={{ paddingHorizontal: 20, paddingBottom: 90 }}>
+            <View style={styles.lineSeparator} />
+            <Text style={styles.emptyMessage}>
+              No hay castings publicados actualmente. Vuelve a revisar más tarde.
             </Text>
-          </TouchableOpacity>
+            <View style={styles.lineSeparator} />
+          </View>
         )}
+      </View>
 
-        {showProWelcome && (
-          <Animated.View style={[styles.proBanner, { opacity: bannerAnim }]}>
-            <Text style={styles.proBannerText}>🏆 ¡Bienvenido al plan Pro! Disfruta tus nuevos beneficios.</Text>
-          </Animated.View>
-        )}
+      <Modal transparent={true} visible={showUpgradeModal} animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>🚫 Solo disponible para cuentas Pro o Elite</Text>
+            <Text style={styles.modalText}>
+              Para ver los detalles de los castings y postular, necesitas activar tu cuenta Pro.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => {
+                setShowUpgradeModal(false);
+                navigation.navigate('UpgradeToPro');
+              }}
+            >
+              <Text style={{ color: '#000', fontWeight: 'bold' }}>Subir a Pro</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
-      </ScrollView>
-      <BottomBar membershipType={membershipType} />
+      <TouchableOpacity onPress={crearCastingDePrueba} style={styles.testButton}>
+        <Text style={styles.testButtonText}>+ Test</Text>
+      </TouchableOpacity>
+      {userData?.membershipType !== 'free' && (
+ <TouchableOpacity
+  style={{
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    backgroundColor: '#D8A353',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 6,
+  }}
+  onPress={() => navigation.navigate('AssistantIAProfile')}
+>
+  <Ionicons name="sparkles-outline" size={18} color="#000" style={{ marginRight: 6 }} />
+  <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>Analiza mi perfil</Text>
+</TouchableOpacity>
+)}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#000' },
-  container: { alignItems: 'center', paddingBottom: 0 },
-  logo: { width: 100, height: 100, marginTop: 10 },
-  greeting: { color: '#D8A353', fontSize: 20, fontWeight: 'bold', marginTop: 0, marginBottom: 4, textAlign: 'center' },
-  subtitle: { color: '#ccc', fontSize: 14, marginBottom: 15, textAlign: 'center' },
-  carouselWrapper: { position: 'relative', width: '100%', alignItems: 'center', marginBottom: 10 },
+  screen: {
+    flex: 1,
+    backgroundColor: '#000',
+    paddingTop: 10,
+  },
+  header: { paddingTop: 0, backgroundColor: '#000' },
+  logoRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 },
+  logoSmall: { width: 50, height: 50, marginRight:-10},
+  greetingBox: { flex: 1, marginLeft: 45, alignItems: 'flex-start' },
+  greeting: {
+    color: '#D8A353',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 0,
+    marginLeft: -20,
+    alignSelf: 'flex-start',
+  },
+  subtitle: {
+    color: '#ccc',
+    fontSize: 12,
+    marginBottom: 0,
+    textAlign: 'center',
+    marginTop: 0,
+    marginLeft: -35,
+    marginRight: 10,
+    alignSelf: 'flex-start',
+  },
+  carouselWrapper: { position: 'relative', width: '100%', alignItems: 'center', marginBottom: 8 },
   carouselImage: {
     width: width - 40,
     height: (width - 40) * 9 / 16,
     borderRadius: 10,
     marginHorizontal: 20,
-  }, 
-  playPauseOverlay: { position: 'absolute', top: 10, right: 25, backgroundColor: 'rgba(0, 0, 0, 0.5)', paddingHorizontal: 5, paddingVertical: 4, borderRadius: 20 },
-  playPauseText: { color: '#D8A353', fontWeight: 'bold', fontSize: 12 },
-  buttonContainer: { flexDirection: 'row', marginBottom: 18 },
-  button: { borderColor: '#D8A353', borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, marginHorizontal: 10 },
-  buttonText: { color: '#D8A353', fontSize: 14 },
-  appliedTitle: { color: '#D8A353', fontSize: 16, fontWeight: 'bold', marginTop: 20, marginBottom: 10, alignSelf: 'center' },
-  appliedScroll: { paddingLeft: 20, marginBottom: 20 },
-  appliedCard: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#D8A353', borderRadius: 10, padding: 12, marginRight: 15, width: 200 },
-  appliedText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  appliedSub: { color: '#aaa', fontSize: 12, marginTop: 5 },
-  categoriesTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', marginBottom: 5 },
-  categoriesContainer: { flexDirection: 'row', justifyContent: 'space-around', width: '90%', marginBottom: 0 },
-  column: { alignItems: 'flex-start' },
-  categoryButton: { color: '#D8A353', fontSize: 14, fontWeight: 'bold', marginVertical: 6, textDecorationLine: 'underline' },
-  membershipCard: {
-    backgroundColor: '#1B1B1B',
-    borderRadius: 10,
-    marginTop: 10,
-    marginBottom: 0,
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    alignItems: 'center',
-    width: '85%',
-    shadowColor: '#D8A353',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
-  membershipText: {
-    color: '#D8A353',
-    fontWeight: 'bold',
-    fontSize: 14,
-    textAlign: 'center',
+  playPauseOverlay: {
+    position: 'absolute',
+    top: 10,
+    right: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  playPauseText: { color: '#D8A353', fontWeight: 'bold', fontSize: 12 },
+  promoButton: {
+    backgroundColor: '#D8A353',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    marginBottom: 10,
+    alignSelf: 'center',
+  },
+  promoButtonText: { color: '#000', fontWeight: 'bold', fontSize: 14 },
+  divider: {
+    height: 0.4,
+    backgroundColor: '#2A2A2A',
+    width: '88%',
+    alignSelf: 'center',
+    marginBottom: -5,
+  },
+  castingSectionWrapper: {
+    flex: 1,
+    backgroundColor: '#111111',
+  },
+  castingLineContainer: {
+    width: '100%',
+    paddingHorizontal: 20,
     paddingVertical: 10,
   },
-  proBanner: {
-    position: 'absolute',
-    top: 40,
-    backgroundColor: '#1A1A1A',
-    padding: 10,
-    borderRadius: 8,
+  castingLine: {
+    width: '100%',
+  },
+  castingTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  castingAgency: {
+    color: '#aaa',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  castingDate: {
+    color: '#777',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  lineSeparator: {
+    height: 0.6,
+    backgroundColor: '#2A2A2A',
+    marginBottom: 9,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000aa',
+  },
+  modalContent: {
+    backgroundColor: '#1B1B1B',
+    padding: 20,
+    borderRadius: 10,
     borderColor: '#D8A353',
     borderWidth: 1,
-    alignSelf: 'center',
-    zIndex: 1000,
-    maxWidth: '90%',
   },
-  proBannerText: {
-    color: '#D8A353',
+  modalTitle: { color: '#D8A353', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  modalText: { color: '#ccc', marginBottom: 20 },
+  modalButton: { backgroundColor: '#D8A353', padding: 10, borderRadius: 8, alignItems: 'center' },
+  testButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 20,
+    backgroundColor: '#D8A353',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 30,
+    elevation: 5,
+  },
+  testButtonText: {
+    color: '#000',
     fontWeight: 'bold',
-    textAlign: 'center',
     fontSize: 14,
   },
+  emptyMessage: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  trialBanner: {
+  backgroundColor: '#222',
+  borderColor: '#D8A353',
+  borderWidth: 1,
+  borderRadius: 8,
+  padding: 8,
+  marginTop: 10,
+  marginHorizontal: 20,
+},
+trialText: {
+  color: '#D8A353',
+  fontSize: 12,
+  textAlign: 'center',
+  fontWeight: 'bold',
+},
+carouselImageWrapper: {
+  position: 'relative',
+  width: width - 40,
+  height: (width - 40) * 9 / 16,
+  borderRadius: 10,
+  marginHorizontal: 20,
+  overflow: 'hidden',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+adWatermark: {
+  position: 'absolute',
+  color: 'rgba(255, 255, 255, 0.4)', // blanco semitransparente
+  fontSize: 28,
+  fontWeight: 'bold',
+  textAlign: 'center',
+  zIndex: 5,
+},
+
 });

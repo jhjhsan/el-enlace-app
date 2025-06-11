@@ -106,7 +106,10 @@ export default function EditProfileFree({ navigation }) {
       Alert.alert('Correo inválido', 'Por favor ingresa un correo electrónico válido.');
       return;
     }
-
+    if (name && edad && name.trim() === edad.trim()) {
+        Alert.alert('Datos inválidos', 'Nombre y edad no deben ser iguales.');
+        return;
+      }      
     const profile = {
       profilePhoto,
       name,
@@ -129,7 +132,8 @@ export default function EditProfileFree({ navigation }) {
         edad,
       }));
       setUserData(profile);
-      navigation.navigate('Profile');
+goToProfileTab(navigation);
+
     } catch (err) {
       console.log('Error al guardar perfil:', err);
       Alert.alert('Error', 'No se pudo guardar el perfil.');
@@ -171,14 +175,16 @@ export default function EditProfileFree({ navigation }) {
           keyboardType="email-address"
         />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Edad"
-          value={edad}
-          onChangeText={setEdad}
-          placeholderTextColor="#aaa"
-          keyboardType="numeric"
-        />
+<TextInput
+  style={styles.input}
+  placeholder="Edad"
+  value={edad}
+  onChangeText={setEdad}
+  placeholderTextColor="#aaa"
+  keyboardType="numeric"
+  autoComplete="off"
+  textContentType="none"
+/>
 
         <View style={{ zIndex: zIndexSexo, width: '80%', marginBottom: 10 }}>
           <DropDownPicker

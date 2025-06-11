@@ -12,7 +12,7 @@ export default function SettingsScreen() {
       {/* ✅ Flecha profesional */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={{ position: 'absolute', top: 15, left: 20, zIndex: 10 }}
+        style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
       >
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingBottom: 120,
-    marginTop:20,
+    marginTop:30,
     alignItems: 'center',
   },
   title: {

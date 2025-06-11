@@ -9,7 +9,7 @@ export default function HomeScreen() {
         <Text style={styles.title}>Inicio</Text>
         <Text style={styles.text}>Aquí verás las novedades y recomendaciones.</Text>
       </View>
-      <BottomBar />
+    
     </View>
   );
 }

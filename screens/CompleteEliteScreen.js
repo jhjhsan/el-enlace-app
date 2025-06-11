@@ -10,6 +10,7 @@ import {
   Dimensions,
   Modal,
   Platform,
+  Alert, // ✅ AÑADIDO AQUÍ
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -17,6 +18,11 @@ import { useUser } from '../contexts/UserContext';
 import { useNavigation } from '@react-navigation/native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
+import { saveUserProfile } from '../utils/profileStorage';
+import { Video } from 'expo-av';
+import { CommonActions } from '@react-navigation/native';
+import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
+import { goToDashboardTab } from '../utils/navigationHelpers';
 
 const regionCityMap = {
   'arica_parinacota': [
@@ -83,7 +89,7 @@ const regionCityMap = {
 };
 
 export default function CompleteEliteScreen() {
-  const { userData, setUserData } = useUser();
+const { userData, setUserData, setIsLoggedIn } = useUser();
   const navigation = useNavigation();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -92,7 +98,11 @@ export default function CompleteEliteScreen() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [instagram, setInstagram] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [descripcionError, setDescripcionError] = useState('');
   const [region, setRegion] = useState(null);
+  const [descripcion, setDescripcion] = useState('');
+
   const regionNameMap = {
     arica_parinacota: 'Arica y Parinacota',
     tarapaca: 'Tarapacá',
@@ -126,6 +136,7 @@ export default function CompleteEliteScreen() {
   const [logos, setLogos] = useState([]);
   const [webLink, setWebLink] = useState('');
   const [profilePhoto, setProfilePhoto] = useState(null); // Nuevo estado para foto de perfil
+  const [profileVideo, setProfileVideo] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -139,7 +150,16 @@ export default function CompleteEliteScreen() {
         navigation.goBack();
         return;
       }
-      const savedProfile = await AsyncStorage.getItem('userProfile');
+  
+      // Si es un nuevo Elite (hasPaid: false), no cargamos datos antiguos
+      if (!userData?.hasPaid) {
+        // Nuevo usuario Elite, deja el formulario limpio
+        await AsyncStorage.removeItem('userProfile');
+        return;
+      }
+  
+      // Si ha pagado y ya completó perfil, podemos permitir edición
+      const savedProfile = await AsyncStorage.getItem('userProfileElite');
       if (savedProfile) {
         const profile = JSON.parse(savedProfile);
         setIsEditing(true);
@@ -148,6 +168,7 @@ export default function CompleteEliteScreen() {
         setEmail(profile.email || '');
         setPhone(profile.phone || '');
         setInstagram(profile.instagram || '');
+        setWhatsapp(profile.whatsapp || '');
         setRegion(profile.region || null);
         setCity(profile.city || null);
         setAddress(profile.address || '');
@@ -155,24 +176,36 @@ export default function CompleteEliteScreen() {
         setDescription(profile.description || '');
         setLogos(profile.logos || []);
         setWebLink(profile.webLink || '');
-        setProfilePhoto(profile.profilePhoto || null); // Cargar foto de perfil
+        setProfilePhoto(profile.profilePhoto || null);
         if (profile.region) setCityItems(regionCityMap[profile.region] || []);
       }
     };
     loadProfile();
-  }, [userData]);
+  }, [userData]);  
 
-  const pickLogo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-      aspect: [1, 1],
-    });
-    if (!result.canceled) {
-      setLogos((prev) => [...prev, result.assets[0].uri].slice(0, 5));
-    }
-  };
+{descripcionError ? (
+  <Text style={{ color: 'red', marginBottom: 10 }}>{descripcionError}</Text>
+) : null}
+
+const pickLogo = async () => {
+  if (logos.length >= 5) {
+    alert('Solo puedes subir hasta 5 imágenes representativas.');
+    return;
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsMultipleSelection: true,
+    quality: 1,
+    selectionLimit: 5 - logos.length,
+  });
+
+  if (!result.canceled) {
+    const newUris = result.assets.map(asset => asset.uri);
+    const combined = [...logos, ...newUris].slice(0, 5); // máximo 5
+    setLogos(combined);
+  }
+};
 
   const pickProfilePhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -185,7 +218,18 @@ export default function CompleteEliteScreen() {
       setProfilePhoto(result.assets[0].uri);
     }
   };
-
+  const pickVideo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: false,
+      quality: 1,
+    });
+  
+    if (!result.canceled) {
+      setProfileVideo(result.assets[0].uri);
+    }
+  };
+  
   const removeLogo = (uri) => {
     setLogos((prev) => prev.filter((logo) => logo !== uri));
   };
@@ -210,38 +254,78 @@ export default function CompleteEliteScreen() {
       );      
   };
 
-  const saveProfile = async () => {
-    if (!isFormValid()) {
-      setErrorMessage('Por favor, completa todos los campos correctamente, incluyendo la foto de perfil.');
-      setErrorModalVisible(true);
-      return;
-    }
-    try {
-      const profileData = {
-        membershipType: 'elite',
-        agencyName,
-        representative,
-        email,
-        phone,
-        instagram,
-        region,
-        city,
-        address,
-        companyType,
-        description,
-        logos,
-        webLink,
-        profilePhoto, // Agregar foto de perfil a los datos guardados
-        updatedAt: new Date().toISOString(),
-      };
-      await AsyncStorage.setItem('userProfile', JSON.stringify(profileData));
-      setUserData(profileData);
-      setModalVisible(true);
-    } catch (error) {
-      setErrorMessage('Fallo al guardar el perfil. Intenta de nuevo.');
-      setErrorModalVisible(true);
-    }
-  };
+const saveProfile = async () => {
+if (!isFormValid()) {
+  setErrorMessage('Por favor, completa todos los campos obligatorios correctamente.');
+  setErrorModalVisible(true);
+  return;
+}
+
+  try {
+    const webLinkFormatted =
+      webLink.trim() !== ''
+        ? webLink.startsWith('http')
+          ? webLink.trim()
+          : `https://${webLink.trim()}`
+        : '';
+
+   // ⬇️ OMITIMOS subida a Firebase mientras usamos Expo Go
+const uploadedProfilePhoto = profilePhoto || null;
+const uploadedLogos = logos || [];
+const uploadedVideo = profileVideo || null;
+
+console.log('FOTO local:', uploadedProfilePhoto);
+console.log('VIDEO local:', uploadedVideo);
+console.log('LOGOS locales:', uploadedLogos);
+if (!description || description.trim().length < 30) {
+  setDescripcionError('La descripción debe tener al menos 30 caracteres.');
+  Alert.alert(
+    'Descripción muy breve',
+    'Agrega una descripción más detallada (mínimo 30 caracteres).'
+  );
+  return;
+} else {
+  setDescripcionError('');
+}
+
+    // ⬇️ AHORA SÍ: Crea el objeto final con las URLs subidas
+    const profileData = {
+      ...userData,
+      membershipType: 'elite',
+      accountType: 'agency',
+      hasPaid: false,
+      agencyName,
+      representative,
+      email,
+      phone,
+      instagram,
+      whatsapp,
+      region,
+      city,
+      address,
+      companyType,
+      category: [companyType],
+      description,
+      logos: uploadedLogos,
+      webLink: webLinkFormatted,
+      profilePhoto: uploadedProfilePhoto,
+      profileVideo: uploadedVideo,
+      updatedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      visibleInExplorer: true,
+    };
+
+    console.log('👀 Datos a guardar:', profileData);
+    await saveUserProfile(profileData, 'elite', setUserData, setIsLoggedIn, true);
+    await AsyncStorage.setItem('eliteProfileCompleted', 'true');
+    setModalVisible(true);
+  } catch (error) {
+    console.error('❌ Error en saveProfile:', error);
+    setErrorMessage('Fallo al guardar el perfil. Intenta de nuevo.');
+    setErrorModalVisible(true);
+  }
+};
+
   return (
     <ScrollView
       style={styles.container}
@@ -284,6 +368,16 @@ export default function CompleteEliteScreen() {
   placeholderTextColor="#777"
   autoCapitalize="none"
 />
+<Text style={styles.label}>WhatsApp (opcional)</Text>
+<TextInput
+  style={styles.input}
+  value={whatsapp}
+  onChangeText={setWhatsapp}
+  placeholder="Ej: +56912345678"
+  keyboardType="phone-pad"
+  autoCapitalize="none"
+/>
+
       <Text style={styles.label}>Región *</Text>
       <View style={styles.pickerWrapper}>
         <Picker
@@ -382,9 +476,9 @@ export default function CompleteEliteScreen() {
         <Text style={styles.imagePickerText}>Subir imagen</Text>
       </TouchableOpacity>
       <View style={styles.logoScrollWrapper}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.logoRow}>
-            {logos.map((uri, index) => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ justifyContent: 'center', flexGrow: 1 }}>
+  <View style={styles.logoRow}>
+    {logos.map((uri, index) => (
               <View key={index} style={styles.logoWrapper}>
                 <Image source={{ uri }} style={styles.logo} />
                 <TouchableOpacity onPress={() => removeLogo(uri)} style={styles.removeButton}>
@@ -393,6 +487,12 @@ export default function CompleteEliteScreen() {
               </View>
             ))}
           </View>
+          {logos.length === 0 && (
+  <Text style={styles.noImagesText}>
+    Sube hasta 3 imágenes representativas de tu agencia.
+  </Text>
+)}
+
         </ScrollView>
         {errorModalVisible && (
           <View style={styles.modalOverlay}>
@@ -408,29 +508,64 @@ export default function CompleteEliteScreen() {
           </View>
         )}
       </View>
+      <Text style={styles.label}>Video institucional (opcional)</Text>
+
+{profileVideo ? (
+  <View style={styles.videoPreviewContainer}>
+    <Video
+      source={{ uri: profileVideo }}
+      useNativeControls
+      resizeMode="cover"
+      style={styles.videoPreview}
+      onError={(e) => {
+        console.log('❌ Error al cargar el video:', e);
+        alert('No se pudo cargar el video. Intenta seleccionar otro archivo.');
+      }}
+    />
+    <TouchableOpacity
+      style={styles.deleteVideoButton}
+      onPress={() => setProfileVideo(null)}
+    >
+      <Text style={styles.deleteVideoText}>🗑️ Eliminar Video</Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  <TouchableOpacity style={styles.imagePicker} onPress={pickVideo}>
+    <Text style={styles.imagePickerText}>Subir video</Text>
+  </TouchableOpacity>
+)}
+
 
       <Text style={styles.label}>Enlace web o Instagram (opcional)</Text>
       <TextInput style={styles.input} value={webLink} onChangeText={setWebLink} />
 
-      <TouchableOpacity
-        style={[styles.button, !isFormValid() && { ...styles.button, backgroundColor: '#D8A353', opacity: 0.9 }]}
-        disabled={!isFormValid()}
-        onPress={saveProfile}
-      >
-        <Text style={styles.buttonText}>Guardar perfil</Text>
-      </TouchableOpacity>
+     <TouchableOpacity
+  style={styles.button}
+  onPress={saveProfile}
+>
+  <Text style={styles.buttonText}>Guardar perfil</Text>
+</TouchableOpacity>
+
       <View style={{ flex: 1 }}>
         {/* Modal de éxito */}
         <Modal visible={modalVisible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
               <Text style={styles.modalText}>✅ Perfil guardado correctamente</Text>
-              <TouchableOpacity style={styles.modalButton} onPress={() => {
-                setModalVisible(false);
-                navigation.navigate('ProfileElite');
-              }}>
-                <Text style={styles.modalButtonText}>Ir al perfil</Text>
-              </TouchableOpacity>
+<TouchableOpacity
+  style={styles.modalButton}
+  onPress={() => {
+    setModalVisible(false);
+    setTimeout(() => {
+     goToDashboardTab(navigation);
+
+    }, 300); // Espera breve para evitar conflictos con montado de contextos
+  }}
+>
+
+  <Text style={styles.modalButtonText}>Ir al Dashboard Elite</Text>
+</TouchableOpacity>
+
             </View>
           </View>
         </Modal>
@@ -456,6 +591,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
     padding: 20,
+    marginTop:30,
   },
   header: {
     color: '#D8A353',
@@ -548,7 +684,10 @@ const styles = StyleSheet.create({
     maxHeight: 120,
   },
   logoRow: {
-    flexDirection: 'row',
+    justifyContent: 'center',
+flexWrap: 'wrap',
+marginHorizontal: 'auto',
+
   },  
   pickerWrapper: {
     backgroundColor: '#1A1A1A',
@@ -625,5 +764,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginBottom: 15,
-  }  
+  },
+  videoPreviewContainer: {
+  width: '100%',
+  alignItems: 'center',
+  marginVertical: 10,
+  backgroundColor: '#1B1B1B',
+  borderWidth: 1,
+  borderColor: '#D8A353',
+  borderRadius: 10,
+  padding: 10,
+},
+videoPreview: {
+  width: '100%',
+  height: 180,
+  borderRadius: 8,
+},
+deleteVideoButton: {
+  marginTop: 10,
+  backgroundColor: '#000',
+  borderWidth: 1,
+  borderColor: '#D8A353',
+  borderRadius: 5,
+  paddingVertical: 5,
+  paddingHorizontal: 10,
+},
+deleteVideoText: {
+  color: '#D8A353',
+  fontSize: 14,
+  textAlign: 'center',
+},
+
+  noImagesText: {
+  color: '#888',
+  fontSize: 13,
+  fontStyle: 'italic',
+  textAlign: 'center',
+  marginBottom: 10,
+},
 });

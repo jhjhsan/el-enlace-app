@@ -10,8 +10,9 @@ import {
   TouchableOpacity,
   Linking,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAdsFromFirestore } from '../src/firebase/helpers/getAdsFromFirestore';
 import BackButton from '../components/BackButton';
+import { syncAdToFirestore } from '../src/firebase/helpers/syncAdToFirestore';
 
 const { height } = Dimensions.get('window');
 const ITEM_HEIGHT = 280;
@@ -20,23 +21,30 @@ export default function AllAdsScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [ads, setAds] = useState([]);
 
-  useEffect(() => {
-    const fetchAds = async () => {
-      try {
-        const json = await AsyncStorage.getItem('adsList');
-        const parsed = json ? JSON.parse(json) : [];
-        const now = Date.now();
-        const filtered = parsed
-          .filter(ad => ad.aprobado && ad.expiresAt > now)
-          .slice(0, 20);
-        setAds(filtered);
-      } catch (error) {
-        console.log('❌ Error cargando anuncios:', error);
-      }
-    };
+useEffect(() => {
+  const fetchAds = async () => {
+    try {
+      // 1. Obtener todos los anuncios desde Firestore
+      const firestoreAds = await getAdsFromFirestore();
 
-    fetchAds();
-  }, []);
+      // 2. Filtrar solo los aprobados y vigentes
+      const now = Date.now();
+      const visibles = firestoreAds.filter(
+        ad => ad.aprobado && ad.expiresAt > now
+      );
+
+      // 3. Ordenar por fecha de expiración (más nuevos primero)
+      visibles.sort((a, b) => b.expiresAt - a.expiresAt);
+
+      // 4. Límite de 20 anuncios
+      setAds(visibles.slice(0, 20));
+    } catch (error) {
+      console.log('❌ Error al cargar anuncios desde Firestore:', error);
+    }
+  };
+
+  fetchAds();
+}, []);
 
   const renderItem = ({ item, index }) => {
     const inputRange = [
@@ -73,10 +81,15 @@ export default function AllAdsScreen() {
     <View style={styles.container}>
       <BackButton color="#fff" />
       <Text style={styles.header}>🎯 Publicidad y promociones</Text>
+{ads.length < 20 && ads.some(ad => ad.enEspera) && (
+  <Text style={{ color: '#888', fontSize: 12, marginBottom: 10, textAlign: 'center' }}>
+    🔔 Tu anuncio pendiente será activado automáticamente cuando haya espacio.
+  </Text>
+)}
 
       <Animated.FlatList
         data={ads}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => item.id || index.toString()}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingVertical: 60 }}

@@ -100,13 +100,13 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 15,
+    top: 40,
     left: 20,
     zIndex: 2000,
   },
   container: {
     padding: 20,
-    paddingTop: 50,
+    paddingTop: 60,
   },
   title: {
     fontSize: 22,

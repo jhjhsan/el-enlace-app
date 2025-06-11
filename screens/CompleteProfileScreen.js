@@ -4,12 +4,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { useUser } from '../contexts/UserContext';
-import BottomBar from '../components/BottomBar';
 import { saveUserProfile } from '../utils/profileStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DropDownPicker from 'react-native-dropdown-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
+import { goToProfileTab } from '../utils/navigationHelpers';
 
 export default function CompleteProfileScreen({ navigation }) {
   const { userData, setUserData } = useUser();
@@ -47,6 +47,7 @@ export default function CompleteProfileScreen({ navigation }) {
   const [comuna, setComuna] = useState(userData?.comuna || '');
   const [selectedImage, setSelectedImage] = useState(null);
   const [isImageModalVisible, setImageModalVisible] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const [openSexo, setOpenSexo] = useState(false);
   const [zIndexSexo, setZIndexSexo] = useState(950);
@@ -69,21 +70,6 @@ export default function CompleteProfileScreen({ navigation }) {
   ];
   const countryItems = [
     { label: 'Chile', value: 'Chile' },
-    { label: 'Argentina', value: 'Argentina' },
-    { label: 'Perú', value: 'Perú' },
-    { label: 'Colombia', value: 'Colombia' },
-    { label: 'México', value: 'México' },
-    { label: 'Venezuela', value: 'Venezuela' },
-    { label: 'Brasil', value: 'Brasil' },
-    { label: 'Uruguay', value: 'Uruguay' },
-    { label: 'Ecuador', value: 'Ecuador' },
-    { label: 'Bolivia', value: 'Bolivia' },
-    { label: 'Paraguay', value: 'Paraguay' },
-    { label: 'Costa Rica', value: 'Costa Rica' },
-    { label: 'República Dominicana', value: 'República Dominicana' },
-    { label: 'Puerto Rico', value: 'Puerto Rico' },
-    { label: 'España', value: 'España' },
-    { label: 'Otro', value: 'Otro' },
   ];  
   const regionItems = [
     { label: 'Arica y Parinacota', value: 'arica-y-parinacota' },
@@ -120,20 +106,21 @@ export default function CompleteProfileScreen({ navigation }) {
   ];
 
   const categoriesList = [
-    "Actor", "Actriz", "Agencia de casting", "Agencia de modelos", "Ambientador",
-    "Animador / presentador", "Artista urbano", "Asistente de cámara", "Asistente de dirección",
-    "Asistente de producción", "Asistente de vestuario", "Autos clásicos para escenas",
-    "Autos personales", "Bailarín / bailarina", "Camiones de arte para rodajes", "Camarógrafo",
-    "Caracterizador (maquillaje FX)", "Casas rodantes para producción", "Coffee break / snacks",
-    "Colorista", "Community manager", "Continuista", "Coordinador de locaciones",
-    "Creador de contenido digital", "Decorador de set", "Diseñador de arte", "Diseñador gráfico",
-    "Doble de acción", "Editor de video", "Escenógrafo", "Estudio fotográfico", "Extra",
-    "Fotógrafo de backstage", "Grúas para filmación", "Iluminador", "Ilustrador / storyboarder",
-    "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Motos o bicicletas para escenas",
-    "Niño actor", "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
-    "Promotoras", "Servicios de catering", "Sonidista", "Stage manager", "Técnico de efectos especiales",
-    "Técnico de grúa", "Transporte de producción", "Transporte de talentos", "Vans de producción",
-    "Vestuarista", "Otros / No especificado"
+  "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
+  "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
+  "Continuista", "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
+  "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
+  "Extra", "Fotógrafo de backstage", "Iluminador", "Ilustrador / storyboarder",
+  "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Niño actor",
+  "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
+  "Promotoras", "Servicios de catering", "Sonidista", "Stage manager",
+  "Técnico de efectos especiales", "Técnico de grúa", "Vestuarista",
+  "Ambientador", "Asistente de cámara", "Asistente de dirección",
+  "Asistente de producción", "Asistente de vestuario",
+  "Transporte de talentos", "Autos personales", "Motos o bicicletas para escenas",
+  "Grúas para filmación", "Camiones de arte para rodajes", "Casas rodantes para producción",
+  "Estudio fotográfico", "Transporte de producción", "Vans de producción",
+  "Coffee break / snacks", "Otros / No especificado"
   ];
 
   useEffect(() => {
@@ -392,7 +379,13 @@ export default function CompleteProfileScreen({ navigation }) {
         Animated.timing(bannerOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
       ]).start(() => {
         setShowSuccessBanner(false);
-        navigation.navigate('ProfilePro');
+        if (success) {
+  setModalVisible(true);
+  setTimeout(() => {
+    goToProfileTab(navigation);
+  }, 300);
+}
+
       });
     } else {
       alert('Hubo un problema al guardar tu perfil. Intenta de nuevo.');
@@ -792,6 +785,25 @@ maxHeight={550}
           </View>
         </View>
       </Modal>
+      <Modal visible={modalVisible} transparent animationType="fade">
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalBox}>
+      <Text style={styles.modalText}>✅ Perfil guardado correctamente</Text>
+      <TouchableOpacity
+        style={styles.modalButton}
+        onPress={() => {
+          setModalVisible(false);
+          setTimeout(() => {
+            goToProfileTab(navigation); // Navegación moderna
+          }, 300);
+        }}
+      >
+        <Text style={styles.modalButtonText}>Ir a mi perfil</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
     </View>
   );
 }

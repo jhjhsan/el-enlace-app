@@ -1,308 +1,443 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Image,
-  ActivityIndicator,
   TouchableOpacity,
-  FlatList,
   Linking,
+  StyleSheet,
   Modal,
-  Animated,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { Video } from 'expo-av';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { Animated } from 'react-native';
+import { useRef, useEffect } from 'react';
+import BackButton from '../components/BackButton';
+import { useNavigation } from '@react-navigation/native';
+import { useUser } from '../contexts/UserContext';
 
-export default function ProfileDetailScreen() {
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [membershipType, setMembershipType] = useState('free');
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { profileData, returnTo } = route.params || {};
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const handleBlockedPress = () => {
-    setShowUpgradeModal(true);
-  };
-  
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const [isEnlarged, setIsEnlarged] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
 
-  const handleProfilePhotoPress = () => {
-    Animated.timing(scaleAnim, {
-      toValue: isEnlarged ? 1 : 1.6,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setIsEnlarged(!isEnlarged);
-    });
-  };
+export default function ProfileDetailScreen({ route }) {
 
-  useEffect(() => {
-    const checkAccess = async () => {
-        if (profileData) {
-            setProfile(profileData);
-            try {
-              const json = await AsyncStorage.getItem('userProfile');
-              if (json) {
-                const user = JSON.parse(json);
-                const type = user.membershipType || 'free';
-                setMembershipType(type);
-              } else {
-                setMembershipType('free');
-              }
-            } catch (error) {
-              console.error('Error cargando tipo de cuenta:', error);
-              setMembershipType('free');
-            }
-            setLoading(false);
-            return;
-          }          
-
-      const json = await AsyncStorage.getItem('userProfile');
-      if (json) {
-        const user = JSON.parse(json);
-        const type = user.membershipType || 'free';
-        setMembershipType(type);
-      }
-
-      const loadProfile = async () => {
-        try {
-          const json =
-            (await AsyncStorage.getItem('userProfilePro')) ||
-            (await AsyncStorage.getItem('userProfileFree'));
-
-          if (json) {
-            const parsed = JSON.parse(json);
-            setProfile(parsed);
-          }
-        } catch (error) {
-          console.error('Error cargando el perfil:', error);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      loadProfile();
-    };
-
-    checkAccess();
-  }, [profileData]);
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator color="#D8A353" size="large" />
-        <Text style={{ color: '#fff', marginTop: 10 }}>Cargando perfil...</Text>
-      </View>
-    );
-  }
-  
+  const { profileData: profile } = route.params || {};
   if (!profile) {
-    return (
-      <View style={styles.container}>
-        <Text style={{ color: '#fff' }}>No se encontró ningún perfil.</Text>
-      </View>
-    );
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+      <Text style={{ color: '#D8A353', textAlign: 'center' }}>
+        ❌ Error: No se pudo cargar el perfil. Vuelve atrás e intenta de nuevo.
+      </Text>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
+        <Text style={{ color: '#fff', textDecorationLine: 'underline' }}>Volver</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const navigation = useNavigation();
+const { userData } = useUser();
+console.log('🧠 USERDATA EN DETALLE:', userData);
+
+  const isElite = profile?.membershipType === 'elite';
+const isPro = profile?.membershipType === 'pro';
+const isFree = profile?.membershipType === 'free';
+
+const viewerType = userData?.membershipType;
+const isBlocked = isFree && (viewerType === 'pro' || viewerType === 'elite');
+
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isGalleryImage, setIsGalleryImage] = useState(false);
+  const [isZoomedProfile, setIsZoomedProfile] = useState(false);
+const scaleAnim = useRef(new Animated.Value(0.5)).current;
+const opacityAnim = useRef(new Animated.Value(0)).current;
+
+useEffect(() => {
+  if (selectedImage) {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  } else {
+    scaleAnim.setValue(0.5);
+    opacityAnim.setValue(0);
   }
+}, [selectedImage]);
+
+if (profile.membershipType === 'elite' && profile.webLink) {
+  console.log('👉 LINK EN PERFIL:', profile.webLink);
+}
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
-      {profile.profilePhoto && (
-        <TouchableOpacity onPress={handleProfilePhotoPress}>
-          <Animated.Image
-            source={{ uri: profile.profilePhoto }}
-            style={[styles.profileImage, { transform: [{ scale: scaleAnim }] }]}
-          />
-        </TouchableOpacity>
-      )}
-      <Text style={styles.name}>{profile.name}</Text>
+    <View style={styles.container}>
+      <BackButton color="#fff" top={45} left={20} />
+<ScrollView
+  style={{ backgroundColor: '#000' }}
+  contentContainerStyle={{
+    paddingBottom: 150,
+    backgroundColor: '#000',
+    paddingHorizontal: 20,
+    paddingTop: 35,
+  }}
+  showsVerticalScrollIndicator={false}
+>
+  {isElite ? (
+    <View testID="elite-profile" style={styles.inner}>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>Perfil de Agencia</Text>
+        <Text style={styles.subtitle}>👑 Cuenta Elite</Text>
+      </View>
 
-      {profile.category && (
-        <Text style={styles.category}>
-          {Array.isArray(profile.category) ? profile.category.join(', ') : profile.category}
+      <View style={styles.logoContainer}>
+       <TouchableOpacity onPress={() => {
+  setIsGalleryImage(false); // ✅ esto hace que se vea redonda
+  setSelectedImage(profile.profilePhoto);
+}}>
+          {profile.profilePhoto ? (
+            <Image source={{ uri: profile.profilePhoto }} style={styles.logo} />
+          ) : (
+            <View style={[styles.logo, styles.iconFallback]}>
+              <Ionicons name="image-outline" size={40} color="#D8A353" />
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {profile.companyType && (
+        <View style={styles.categoryBadge}>
+          <Feather name="briefcase" size={14} color="#D8A353" style={{ marginRight: 6 }} />
+          <Text style={styles.categoryText}>{profile.companyType}</Text>
+        </View>
+      )}
+
+      {profile.agencyName && <Text style={styles.agencyName}>{profile.agencyName}</Text>}
+      {profile.representative && <Text style={styles.representative}>{profile.representative}</Text>}
+
+      {(profile.city || profile.region || profile.comuna) && (
+        <Text style={styles.location}>
+          {profile.city || 'Ciudad'}, {profile.region || 'Región'}
+          {profile.comuna ? `, ${profile.comuna}` : ''}
         </Text>
       )}
 
-      <View style={styles.infoBox}>
-        {profile.sexo && <Text style={styles.infoText}>Sexo: {profile.sexo}</Text>}
-        {profile.age && <Text style={styles.infoText}>Edad: {profile.age}</Text>}
-        {profile.height && <Text style={styles.infoText}>Estatura: {profile.height} cm</Text>}
-        {profile.skinColor && <Text style={styles.infoText}>Color de piel: {profile.skinColor}</Text>}
-        {profile.eyeColor && <Text style={styles.infoText}>Color de ojos: {profile.eyeColor}</Text>}
-        {profile.hairColor && <Text style={styles.infoText}>Color de cabello: {profile.hairColor}</Text>}
-        {profile.ethnicity && <Text style={styles.infoText}>Etnia: {profile.ethnicity}</Text>}
-        {profile.tattoos && <Text style={styles.infoText}>Tatuajes: {profile.tattoos}</Text>}
-        {profile.tattoosLocation && <Text style={styles.infoText}>Ubicación tatuajes: {profile.tattoosLocation}</Text>}
-        {profile.piercings && <Text style={styles.infoText}>Piercings: {profile.piercings}</Text>}
-        {profile.piercingsLocation && <Text style={styles.infoText}>Ubicación piercings: {profile.piercingsLocation}</Text>}
-        {profile.shirtSize && <Text style={styles.infoText}>Talla de camisa: {profile.shirtSize}</Text>}
-        {profile.pantsSize && <Text style={styles.infoText}>Talla de pantalón: {profile.pantsSize}</Text>}
-        {profile.shoeSize && <Text style={styles.infoText}>Talla de zapatos: {profile.shoeSize}</Text>}
-        {profile.country && <Text style={styles.infoText}>País: {profile.country}</Text>}
-        {profile.city && <Text style={styles.infoText}>Ciudad: {profile.city}</Text>}
-        {profile.region && <Text style={styles.infoText}>Región: {profile.region}</Text>}
+      <Text style={styles.sectionTitle}>Contacto</Text>
+      <View style={styles.contactBoxCentered}>
+        {profile.email && (
+          <TouchableOpacity style={styles.contactCard} onPress={() => Linking.openURL(`mailto:${profile.email}`)}>
+            <Ionicons name="mail" size={18} color="#D8A353" style={styles.cardIcon} />
+            <Text style={styles.cardText}>{profile.email}</Text>
+          </TouchableOpacity>
+        )}
+        {profile.phone && (
+          <TouchableOpacity style={styles.contactCard} onPress={() => Linking.openURL(`tel:${profile.phone}`)}>
+            <Ionicons name="call" size={18} color="#D8A353" style={styles.cardIcon} />
+            <Text style={styles.cardText}>{profile.phone}</Text>
+          </TouchableOpacity>
+        )}
+        {profile.address && (
+          <View style={styles.contactCard}>
+            <Ionicons name="location" size={18} color="#D8A353" style={styles.cardIcon} />
+            <Text style={styles.cardText}>{profile.address}</Text>
+          </View>
+        )}
+        {profile.instagram && (
+          <TouchableOpacity
+            style={styles.contactCard}
+            onPress={() => Linking.openURL(`https://instagram.com/${profile.instagram.replace('@', '')}`)}
+          >
+            <Ionicons name="logo-instagram" size={18} color="#D8A353" style={styles.cardIcon} />
+            <Text style={styles.cardText}>{profile.instagram}</Text>
+          </TouchableOpacity>
+        )}
+        {profile.whatsapp && (
+          <TouchableOpacity
+            style={styles.contactCard}
+            onPress={() => Linking.openURL(`https://wa.me/${profile.whatsapp.replace(/\D/g, '')}`)}
+          >
+            <Ionicons name="logo-whatsapp" size={18} color="#D8A353" style={styles.cardIcon} />
+            <Text style={styles.cardText}>{profile.whatsapp}</Text>
+          </TouchableOpacity>
+        )}
+        {profile.webLink?.trim() !== '' && (
+          <TouchableOpacity
+            style={styles.contactCard}
+            onPress={() => {
+              const url = profile.webLink.startsWith('http') ? profile.webLink : `https://${profile.webLink}`;
+              Linking.openURL(url);
+            }}
+          >
+            <Ionicons name="link-outline" size={18} color="#D8A353" style={styles.cardIcon} />
+            <Text style={[styles.cardText, { textDecorationLine: 'underline' }]} numberOfLines={1}>
+              {profile.webLink}
+            </Text>
+          </TouchableOpacity>
+        )}
+      {(() => {
+  const tipo = userData?.membershipType;
+  console.warn('💡 Tipo de usuario activo:', tipo); // Verifica en consola
+
+  if (tipo === 'free' || tipo === 'pro') {
+    return (
+      <TouchableOpacity
+        style={[styles.contactCard, { marginTop: 5, backgroundColor: '#D8A353' }]}
+        onPress={() =>
+          navigation.navigate('Messages', {
+            recipient: profile.agencyName || profile.name,
+            email: profile.email,
+          })
+        }
+      >
+        <Ionicons name="chatbox-ellipses-outline" size={18} color="#000" style={styles.cardIcon} />
+        <Text style={[styles.cardText, { color: '#000', fontWeight: 'bold' }]}> Contactar Agencia</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return null;
+})()}
+
       </View>
 
-      {membershipType === 'free' ? (
-  <Text style={{ color: '#ccc', textAlign: 'center', marginVertical: 20 }}>
-    🔒 Hazte Pro para ver las fotos y el video de este perfil.
-  </Text>
-) : (
-  <>
-    {membershipType !== 'free' && profile.bookPhotos && profile.bookPhotos.length > 0 && (
-  <View style={{ width: '110%', paddingHorizontal: 20, marginTop: 10, marginBottom: 20 }}>
-    <Text style={styles.label}>📸 Book de fotos ({profile.bookPhotos.length})</Text>
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{
-        paddingVertical: 10,
-        paddingRight: 10,
-      }}
-      style={{ flexGrow: 0 }}
-    >
-      {profile.bookPhotos.map((uri, index) => (
-        <TouchableOpacity
-          key={index}
-          onPress={() => setSelectedImage(uri)}
-          style={{ marginRight: index === profile.bookPhotos.length - 1 ? 0 : 10 }}
-        >
-          <Image source={{ uri }} style={styles.bookImage} />
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  </View>
-)}
+      <Text style={styles.sectionTitle}>Descripción</Text>
+      <View style={styles.descriptionBox}>
+        <Text style={styles.descriptionText}>{profile.description}</Text>
+      </View>
 
-{membershipType !== 'free' && profile.profileVideo && (
-  <View style={{ width: '90%', marginTop: 10, marginBottom: 20 }}>
-    <Text style={styles.label}>🎥 Video de presentación</Text>
-    <Video
-      source={{ uri: profile.profileVideo }}
-      useNativeControls
-      resizeMode="contain"
-      style={styles.video}
-    />
-  </View>
-)}
-  </>
-)}
-
-<View style={styles.contactContainer}>
-  <View style={styles.rowButtons}>
-    <TouchableOpacity
-      style={[
-        styles.smallButton,
-        membershipType === 'free' && styles.disabledButton,
-      ]}
-      onPress={() => {
-        if (membershipType === 'free') {
-            setShowUpgradeModal(true);
-
-        } else if (profile.email) {
-          Linking.openURL(`mailto:${profile.email}`);
-        }
-      }}
-    >
-      <Text style={styles.buttonText}>
-        {membershipType === 'free' ? '🔒 Correo' : '📩 Correo'}
-      </Text>
-    </TouchableOpacity>
-
-    <TouchableOpacity
-  style={[
-    styles.smallButton,
-    membershipType === 'free' && styles.disabledButton,
-  ]}
+      <Text style={styles.sectionTitle}>Galería de trabajos</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollHorizontal}>
+        {profile.logos?.map((uri, index) => (
+          <TouchableOpacity
+  key={index}
+  style={styles.portfolioCard}
   onPress={() => {
-    if (membershipType === 'free') {
-      setShowUpgradeModal(true);
-    } else if (profile.instagram) {
-      Linking.openURL(`https://instagram.com/${profile.instagram.replace('@', '')}`);
-    }
+    setIsGalleryImage(true); // ✅ ESTO ES CLAVE
+    setSelectedImage(uri);
   }}
 >
-  <Text style={styles.buttonText}>
-    {membershipType === 'free' ? '🔒 Instagram' : '📸 Instagram'}
-  </Text>
-</TouchableOpacity>
+            <Image source={{ uri }} style={styles.portfolioImage} />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {profile.profileVideo && (
+        <View style={styles.videoSection}>
+          <Text style={styles.sectionTitle}>🎥Presentación audiovisual</Text>
+          <View style={styles.videoPreviewContainer}>
+            <Video
+              source={{ uri: profile.profileVideo }}
+              useNativeControls
+              resizeMode="contain"
+              style={styles.videoPreview}
+              onError={(e) => {
+                console.log('❌ Error al cargar el video:', e);
+                alert('No se pudo cargar el video institucional.');
+              }}
+            />
+          </View>
+        </View>
+      )}
+    
+    </View>
+  ) : isPro ? (
+  <View testID="pro-profile" style={styles.inner}>
+  <View style={styles.headerContainer}>
+    <Text style={styles.title}>Perfil Profesional</Text>
+    <Text style={styles.subtitle}>🏆 Cuenta Pro</Text>
   </View>
 
-  <TouchableOpacity
-    style={[
-      styles.fullButton,
-      membershipType === 'free' && styles.disabledButton,
-    ]}
-    onPress={() => {
-        if (membershipType === 'free') {
-          setShowUpgradeModal(true);
-        } else {
-          navigation.navigate('Messages', {
-            recipient: profile.name,
-            email: profile.email,
-          });
-        }
-      }}      
-  >
-    <Text style={styles.buttonText}>
-      {membershipType === 'free' ? '🔒 Enviar mensaje' : '💬 Enviar mensaje'}
-    </Text>
+ {profile.profilePhoto && (
+ <TouchableOpacity onPress={() => {
+  setIsGalleryImage(false);
+  setSelectedImage(profile.profilePhoto);
+}} style={{ marginTop: 10 }}>
+    <Image
+      source={{ uri: profile.profilePhoto }}
+      style={[styles.logo, { width: 120, height: 120, borderRadius: 65 }]}
+    />
   </TouchableOpacity>
+)}
+
+
+  {profile.name && <Text style={styles.agencyName}>{profile.name}</Text>}
+
+  {profile.category && (
+   <Text style={[styles.categoryText, { marginBottom: 12 }]}>
+
+      {Array.isArray(profile.category) ? profile.category.join(', ') : profile.category}
+    </Text>
+  )}
+
+  <View style={styles.contactBoxCentered}>
+    {profile.email && (
+      <TouchableOpacity
+        style={styles.contactCard}
+        onPress={() => Linking.openURL(`mailto:${profile.email}`)}
+      >
+        <Ionicons name="mail" size={18} color="#D8A353" style={styles.cardIcon} />
+        <Text style={styles.cardText}>{profile.email}</Text>
+      </TouchableOpacity>
+    )}
+
+    {profile.instagram && (
+      <TouchableOpacity
+        style={styles.contactCard}
+        onPress={() =>
+          Linking.openURL(`https://instagram.com/${profile.instagram.replace('@', '')}`)
+        }
+      >
+        <Ionicons name="logo-instagram" size={18} color="#E4405F" style={styles.cardIcon} />
+        <Text style={styles.cardText}>{profile.instagram}</Text>
+      </TouchableOpacity>
+    )}
+
+   {/* 🔒 Botón de mensajería interna */}
+<TouchableOpacity
+  style={styles.contactCard}
+  onPress={() =>
+  navigation.navigate('Messages', {
+  recipient: profile.name,
+  email: profile.email,
+    })
+  }
+>
+  <Ionicons name="chatbox-ellipses-outline" size={18} color="#D8A353" style={styles.cardIcon} />
+  <Text style={styles.cardText}>Mensaje interno</Text>
+</TouchableOpacity>
+
+  </View>
+
+ <View style={[styles.descriptionBox, { marginTop: 15, minWidth: '99%' }]}>
+    {profile.sexo && <Text style={styles.descriptionText}>Sexo: {profile.sexo}</Text>}
+    {profile.age && <Text style={styles.descriptionText}>Edad: {profile.age}</Text>}
+    {profile.estatura && <Text style={styles.descriptionText}>Estatura: {profile.estatura} cm</Text>}
+    {profile.skinColor && <Text style={styles.descriptionText}>Color de piel: {profile.skinColor}</Text>}
+    {profile.eyeColor && <Text style={styles.descriptionText}>Color de ojos: {profile.eyeColor}</Text>}
+    {profile.hairColor && <Text style={styles.descriptionText}>Color de cabello: {profile.hairColor}</Text>}
+    {profile.ethnicity && <Text style={styles.descriptionText}>Etnia: {profile.ethnicity}</Text>}
+    {profile.tattoos && <Text style={styles.descriptionText}>Tatuajes: {profile.tattoos}</Text>}
+    {profile.tattoosLocation && <Text style={styles.descriptionText}>Ubicación tatuajes: {profile.tattoosLocation}</Text>}
+    {profile.piercings && <Text style={styles.descriptionText}>Piercings: {profile.piercings}</Text>}
+    {profile.piercingsLocation && <Text style={styles.descriptionText}>Ubicación piercings: {profile.piercingsLocation}</Text>}
+    {profile.shirtSize && <Text style={styles.descriptionText}>Talla de camisa: {profile.shirtSize}</Text>}
+    {profile.pantsSize && <Text style={styles.descriptionText}>Talla de pantalón: {profile.pantsSize}</Text>}
+    {profile.shoeSize && <Text style={styles.descriptionText}>Talla de zapatos: {profile.shoeSize}</Text>}
+    {profile.ciudad && <Text style={styles.descriptionText}>Ciudad: {profile.ciudad}</Text>}
+    {profile.comuna && <Text style={styles.descriptionText}>Comuna: {profile.comuna}</Text>}
+    {profile.region && <Text style={styles.descriptionText}>Región: {profile.region}</Text>}
+  </View>
+
+  {profile.bookPhotos && profile.bookPhotos.length > 0 && (
+    <>
+      <Text style={styles.sectionTitle}>Galería</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollHorizontal}>
+{profile.bookPhotos.map((uri, index) => (
+  <TouchableOpacity
+    key={index}
+    style={styles.portfolioCard}
+    onPress={() => {
+  if (uri) {
+    setIsGalleryImage(true);
+    setSelectedImage(uri);
+  }
+}}
+  >
+    <Image source={{ uri }} style={styles.portfolioImage} />
+  </TouchableOpacity>
+))}
+
+      </ScrollView>
+    </>
+  )}
+
+  {profile.profileVideo && (
+    <View style={styles.videoSection}>
+      <Text style={styles.sectionTitle}>🎥 Video de presentación</Text>
+      <View style={styles.videoPreviewContainer}>
+        <Video
+          source={{ uri: profile.profileVideo }}
+          useNativeControls
+          resizeMode="contain"
+          style={styles.videoPreview}
+          onError={(e) => {
+            console.log('❌ Error al cargar el video:', e);
+            alert('No se pudo cargar el video de presentación.');
+          }}
+        />
+      </View>
+    </View>
+  )}
 </View>
 
-      {selectedImage && (
-        <Modal visible={true} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.fullscreenContainer} onPress={() => setSelectedImage(null)}>
-              <Image source={{ uri: selectedImage }} style={styles.fullscreenImage} />
-            </TouchableOpacity>
-          </View>
-        </Modal>
-      )}
-      <TouchableOpacity
-  onPress={() => navigation.goBack()}
-  style={{
-    position: 'absolute',
-    top: 15,
-    left: 20,
-    zIndex: 10,
-  }}
+
+  ) : (
+    <View
+  testID="free-profile"
+  style={[styles.inner, isBlocked && { opacity: 0.3 }]}
 >
-  <Ionicons name="arrow-back" size={28} color="#fff" />
-</TouchableOpacity>
-<Modal
-  visible={showUpgradeModal}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setShowUpgradeModal(false)}
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.upgradeModal}>
-      <Text style={styles.upgradeTitle}>🔒 Función exclusiva para usuarios Pro</Text>
-      <Text style={styles.upgradeText}>Mejora tu membresía para contactar talentos por correo, Instagram o mensaje directo.</Text>
-      <TouchableOpacity
-        style={styles.upgradeButton}
-        onPress={() => {
-          setShowUpgradeModal(false);
-          navigation.navigate('Subscription');
-        }}
-      >
-        <Text style={styles.upgradeButtonText}>💳 Subir a Pro</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => setShowUpgradeModal(false)}>
-        <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
-      </TouchableOpacity>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>Perfil Básico</Text>
+      </View>
+
+      {profile.profilePhoto && <Image source={{ uri: profile.profilePhoto }} style={styles.logo} />}
+      {profile.name && <Text style={styles.agencyName}>{profile.name}</Text>}
+      <Text style={styles.location}>{profile.city}, {profile.region}</Text>
+
+      <Text style={styles.sectionTitle}>Categoría</Text>
+      <Text style={styles.cardText}>{profile.category}</Text>
     </View>
+  )}
+</ScrollView>
+<Modal visible={!!selectedImage} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
+  <View style={styles.modalOverlay}>
+    <TouchableOpacity
+      style={styles.modalCloseArea}
+      activeOpacity={1}
+      onPressOut={() => setSelectedImage(null)}
+    />
+    <BlurView intensity={100} tint="dark" style={styles.modalBlur}>
+      <Animated.Image
+        source={{ uri: selectedImage }}
+        resizeMode="contain"
+        style={[
+          isGalleryImage ? styles.expandedProfileImage : styles.expandedProfileImageRounded,
+          {
+            transform: [{ scale: scaleAnim }],
+            opacity: opacityAnim,
+          },
+        ]}
+      />
+    </BlurView>
+  </View>
+</Modal>
+<Modal visible={isBlocked} transparent animationType="fade">
+  <View style={styles.modalOverlay}>
+    <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
+      <View style={{ padding: 20, backgroundColor: '#111', borderRadius: 12, alignItems: 'center', maxWidth: 320 }}>
+        <Text style={{ color: '#D8A353', fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' }}>
+          Perfil restringido
+        </Text>
+        <Text style={{ color: '#ccc', fontSize: 14, textAlign: 'center' }}>
+          Este perfil pertenece a un usuario con cuenta Free. Invítalo a subir al plan Pro para ver sus datos completos.
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={{ marginTop: 20, backgroundColor: '#D8A353', padding: 12, borderRadius: 8 }}
+        >
+          <Text style={{ color: '#000', fontWeight: 'bold' }}>Volver</Text>
+        </TouchableOpacity>
+      </View>
+    </BlurView>
   </View>
 </Modal>
 
-    </ScrollView>
+    </View>
   );
 }
 
@@ -310,178 +445,200 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    justifyContent: 'center',
+  },
+  inner: {
+    width: '100%',
     alignItems: 'center',
-    padding: 20,
   },
-  content: {
-    padding: 20,
+  headerContainer: {
+    marginTop: 20,
     alignItems: 'center',
-    backgroundColor: '#000',
-    paddingBottom: 100,
+    marginBottom: 20,
   },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderColor: '#D8A353',
-    borderWidth: 2,
-    marginTop:15,
-    marginBottom:   0,
-  },
-  name: {
+  title: {
+    color: '#D8A353',
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  subtitle: {
+    color: '#D8A353',
+    fontSize: 16,
     marginTop: 0,
+    marginBottom: -15,
+    fontWeight: '600',
   },
-  category: {
-    color: '#D8A353',
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop:0,
+  profileSection: {
+    alignItems: 'center',
+    marginVertical: 0,
   },
-  infoBox: {
-    width: '90%',
-    backgroundColor: '#1B1B1B',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8A353',
-    padding: 10,
-    marginBottom: 20,
-    marginTop: 5,
+  logo: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
   },
-  infoText: {
-    color: '#CCCCCC',
-    fontSize: 14,
-    marginBottom: 5,
+  logoZoom: {
+    width: 165,
+    height: 165,
+    borderRadius: 82.5,
   },
-  bookScroll: {
-    width: '90%',
-    marginBottom: 10,
-  },
-  bookImage: {
-    width: 100,
-    height: 140,
-    borderRadius: 8,
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    marginRight: 10,
-    marginBottom: -5,
-  },
-  video: {
-    width: '100%',
-    height: 180,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8A353',
-    marginTop: 10,
-  },
-  
-  contactButton: {
-    color: '#D8A353',
-    fontSize: 14,
-    textDecorationLine: 'underline',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
+  iconFallback: {
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  fullscreenContainer: {
-    width: '90%',
-    height: '90%',
-  },
-  fullscreenImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
-  },
-  label: {
-    fontWeight: 'bold',
-    color: '#D8A353',
-    marginBottom: 5,
-    marginTop:-15,
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  contactContainer: {
-    width: '90%',
-    marginTop: 20,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  
-  rowButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 15,
-  },
-  smallButton: {
     backgroundColor: '#1B1B1B',
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    flex: 1,
-    marginHorizontal: 5,
-    alignItems: 'center',
   },
-  
-  fullButton: {
-    backgroundColor: '#D8A353',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    width: '100%',
-    alignItems: 'center',
-  },
-  
-  buttonText: {
+  agencyName: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: 'bold',
-  }, 
-  disabledButton: {
-    opacity: 0.4,
-  },  
-  upgradeModal: {
-    backgroundColor: '#1B1B1B',
-    padding: 20,
-    borderRadius: 12,
+    marginTop: 0,
+  },
+  representative: {
+    color: '#CCCCCC',
+    fontSize: 14,
+    marginTop: 0,
+  },
+  location: {
+    color: '#888888',
+    fontSize: 13,
+    marginTop: 0,
+    marginBottom: 10,
+    fontStyle: 'italic',
+  },
+  categoryBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#1B1B1B',
+    borderWidth: 0.5,
     borderColor: '#D8A353',
-    borderWidth: 1,
-    marginHorizontal: 30,
-    zIndex: 1000,
-    elevation: 20,
-  },  
-upgradeTitle: {
-  fontSize: 18,
-  fontWeight: 'bold',
-  color: '#D8A353',
-  marginBottom: 10,
-  textAlign: 'center',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 10,
+  },
+  categoryText: {
+    color: '#D8A353',
+    fontSize: 14,
+  },
+  sectionTitle: {
+    color: '#D8A353',
+    fontSize: 18,
+    fontWeight: '600',
+    marginVertical: 14,
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+  },
+  contactBoxCentered: {
+    alignItems: 'center',
+    gap: 6,
+    width: '100%',
+  },
+  contactCard: {
+    backgroundColor: '#1B1B1B',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    minWidth: '99%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardIcon: {
+    marginRight: 10,
+  },
+  cardText: {
+    color: '#CCCCCC',
+    fontSize: 14,
+  },
+  descriptionBox: {
+    backgroundColor: '#1B1B1B',
+    borderRadius: 10,
+    padding: 16,
+  },
+  descriptionText: {
+    color: '#CCCCCC',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'justify',
+  },
+  scrollHorizontal: {
+    marginVertical: 10,
+    marginLeft: -10, // MÁS A LA IZQUIERDA
+    width: '100%',
+  },
+  portfolioCard: {
+    marginRight: 10,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#1B1B1B',
+    borderWidth: 0.5,
+    borderColor: '#D8A353',
+  },
+  portfolioImage: {
+    width: 120, // MÁS GRANDE
+    height: 160,
+    borderRadius: 8,
+  },
+  videoSection: {
+    marginVertical: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  videoPreviewContainer: {
+    width: '100%',
+    backgroundColor: '#1B1B1B',
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: '#D8A353',
+    padding: 0,
+    alignItems: 'center',
+  },
+  videoPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
+    backgroundColor: '#000',
+  },
+ logoContainer: {
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'transparent', // sin fondo
 },
-upgradeText: {
-  color: '#ccc',
-  fontSize: 14,
-  textAlign: 'center',
-  marginBottom: 20,
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  justifyContent: 'center',
+  alignItems: 'center',
 },
-upgradeButton: {
-  backgroundColor: '#D8A353',
-  paddingVertical: 10,
-  paddingHorizontal: 25,
-  borderRadius: 10,
+
+modalBlur: {
+  width: '100%',
+  height: '100%',
+  justifyContent: 'center',
+  alignItems: 'center',
 },
-upgradeButtonText: {
-  color: '#000',
-  fontWeight: 'bold',
+
+expandedProfileImage: {
+  width: '100%',
+  height: '100%',
+  borderRadius: 0,
+  resizeMode: 'contain',
+  backgroundColor: '#000',
 },
+modalCloseArea: {
+  position: 'absolute',
+  top: 0,
+  bottom: 0,
+  left: 0,
+  right: 0,
+  zIndex: 1,
+},
+expandedProfileImageRounded: {
+  width: 250,
+  height: 250,
+  borderRadius: 125,
+  resizeMode: 'contain',
+  backgroundColor: '#000',
+},
+
 });

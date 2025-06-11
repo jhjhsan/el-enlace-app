@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BottomBar from '../components/BottomBar';
 
 export default function ExplorePostsScreen() {
   const [posts, setPosts] = useState([]);
@@ -39,7 +38,6 @@ export default function ExplorePostsScreen() {
           ))
         )}
       </ScrollView>
-      <BottomBar />
     </View>
   );
 }

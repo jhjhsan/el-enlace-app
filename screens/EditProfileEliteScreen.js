@@ -14,6 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Picker } from '@react-native-picker/picker';
 import { useUser } from '../contexts/UserContext';
 import BackButton from '../components/BackButton';
+import { Video } from 'expo-av';
 
 const regionCityMap = {
   'arica_parinacota': [ { label: 'Arica', value: 'arica' }, { label: 'Putre', value: 'putre' } ],
@@ -55,12 +56,15 @@ export default function EditProfileEliteScreen({ navigation }) {
   const [logos, setLogos] = useState([]);
   const [webLink, setWebLink] = useState('');
   const [instagram, setInstagram] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [profileVideo, setProfileVideo] = useState(null);
+
 
   useEffect(() => {
     const loadData = async () => {
-      const json = await AsyncStorage.getItem('userProfile');
+      const json = await AsyncStorage.getItem('userProfileElite');
       if (json) {
         const data = JSON.parse(json);
         setAgencyName(data.agencyName || '');
@@ -76,7 +80,9 @@ export default function EditProfileEliteScreen({ navigation }) {
         setLogos(data.logos || []);
         setWebLink(data.webLink || '');
         setInstagram(data.instagram || '');
+        setWhatsapp(data.whatsapp || '');
         setProfilePhoto(data.profilePhoto || null);
+        setProfileVideo(data.profileVideo || null);
         if (data.region) setCityItems(regionCityMap[data.region] || []);
       }
     };
@@ -106,6 +112,17 @@ export default function EditProfileEliteScreen({ navigation }) {
       setLogos((prev) => [...prev, result.assets[0].uri].slice(0, 5));
     }
   };
+const pickVideo = async () => {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+    allowsEditing: false,
+    quality: 1,
+  });
+
+  if (!result.canceled) {
+    setProfileVideo(result.assets[0].uri);
+  }
+};
 
   const removeLogo = (uri) => {
     setLogos((prev) => prev.filter((logo) => logo !== uri));
@@ -146,27 +163,45 @@ export default function EditProfileEliteScreen({ navigation }) {
       city,
       address,
       companyType,
-      eliteCategory, 
+      eliteCategory,
       description,
       logos,
       webLink,
       instagram,
+      whatsapp,
       profilePhoto,
+      profileVideo,
       updatedAt: new Date().toISOString(),
     };
-
+  
     try {
-      await AsyncStorage.setItem('userProfile', JSON.stringify(profileData));
+      await AsyncStorage.setItem('userProfileElite', JSON.stringify(profileData));
+      await AsyncStorage.setItem('eliteProfileCompleted', 'true'); // ✅ NUEVA LÍNEA
       setUserData(profileData);
       setModalVisible(true);
     } catch (error) {
       console.log('Error al guardar perfil:', error);
     }
   };
-
+  
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 80 }}>
-      <BackButton />
+    <>
+
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: 45, paddingBottom: 80 }}>
+  <TouchableOpacity
+  onPress={() => navigation.goBack()}
+  style={{
+    position: 'absolute',
+    top: 15,
+    left: -20, 
+    zIndex: 999,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 5,
+    borderRadius: 20,
+  }}
+>
+  <BackButton />
+</TouchableOpacity>
       <Text style={styles.header}>✏️ Editar perfil de agencia</Text>
 
       <TouchableOpacity onPress={pickProfilePhoto} style={styles.profileImagePicker}>
@@ -191,6 +226,17 @@ export default function EditProfileEliteScreen({ navigation }) {
 
       <Text style={styles.label}>Instagram (@usuario) *</Text>
       <TextInput style={styles.input} value={instagram} onChangeText={setInstagram} />
+
+      <Text style={styles.label}>WhatsApp (opcional)</Text>
+<TextInput
+  style={styles.input}
+  value={whatsapp}
+  onChangeText={setWhatsapp}
+  keyboardType="phone-pad"
+  placeholder="+56912345678"
+  placeholderTextColor="#777"
+/>
+
 
       <Text style={styles.label}>Región *</Text>
       <View style={styles.pickerWrapper}>
@@ -273,56 +319,80 @@ export default function EditProfileEliteScreen({ navigation }) {
       <Text style={styles.label}>Descripción *</Text>
       <TextInput style={[styles.input, styles.multilineInput]} value={description} onChangeText={setDescription} multiline numberOfLines={4} />
 
-      <Text style={styles.label}>Logos (máx. 5) *</Text>
-      <TouchableOpacity style={styles.imagePicker} onPress={pickLogo}>
-        <Text style={styles.imagePickerText}>Subir imagen</Text>
+<Text style={styles.label}>Web o Instagram (opcional)</Text>
+<TextInput style={styles.input} value={webLink} onChangeText={setWebLink} />
+
+<Text style={styles.label}>Logos (máx. 5) *</Text>
+<TouchableOpacity style={styles.imagePicker} onPress={pickLogo}>
+  <Text style={styles.imagePickerText}>Subir imagen</Text>
+</TouchableOpacity>
+
+<ScrollView horizontal style={styles.logoRow}>
+  {logos.map((uri, i) => (
+    <View key={i} style={styles.logoWrapper}>
+      <Image source={{ uri }} style={styles.logo} />
+      <TouchableOpacity style={styles.removeButton} onPress={() => removeLogo(uri)}>
+        <Text style={styles.removeText}>✖</Text>
       </TouchableOpacity>
+    </View>
+  ))}
+</ScrollView>
 
-      <ScrollView horizontal style={styles.logoRow}>
-        {logos.map((uri, i) => (
-          <View key={i} style={styles.logoWrapper}>
-            <Image source={{ uri }} style={styles.logo} />
-            <TouchableOpacity style={styles.removeButton} onPress={() => removeLogo(uri)}>
-              <Text style={styles.removeText}>✖</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-      </ScrollView>
+<Text style={styles.label}>Video institucional (opcional)</Text>
+{profileVideo ? (
+  <View style={styles.videoPreviewContainer}>
+    <Video
+      source={{ uri: profileVideo }}
+      useNativeControls
+      resizeMode="contain"
+      style={styles.videoPreview}
+    />
+    <TouchableOpacity
+      style={styles.removeButton}
+      onPress={() => setProfileVideo(null)}
+    >
+      <Text style={styles.removeText}>✖</Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  <TouchableOpacity style={styles.imagePicker} onPress={pickVideo}>
+    <Text style={styles.imagePickerText}>Subir video</Text>
+  </TouchableOpacity>
+)}
 
-      <Text style={styles.label}>Web o Instagram (opcional)</Text>
-      <TextInput style={styles.input} value={webLink} onChangeText={setWebLink} />
+<TouchableOpacity
+  style={[styles.button, !isFormValid() && { backgroundColor: '#D8A353', opacity: 0.5 }]}
+  disabled={!isFormValid()}
+  onPress={saveProfile}
+>
+  <Text style={styles.buttonText}>Actualizar perfil</Text>
+</TouchableOpacity>
 
+<Modal visible={modalVisible} transparent animationType="fade">
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalBox}>
+      <Text style={styles.modalText}>✅ Perfil actualizado correctamente</Text>
       <TouchableOpacity
-        style={[styles.button, !isFormValid() && { backgroundColor: '#D8A353', opacity: 0.5 }]}
-        disabled={!isFormValid()}
-        onPress={saveProfile}
+        style={styles.modalButton}
+        onPress={() => {
+          setModalVisible(false);
+          navigation.goBack();
+        }}
       >
-        <Text style={styles.buttonText}>Actualizar perfil</Text>
+        <Text style={styles.modalButtonText}>Volver</Text>
       </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
 
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalText}>✅ Perfil actualizado correctamente</Text>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => {
-                setModalVisible(false);
-                navigation.goBack();
-              }}
-            >
-              <Text style={styles.modalButtonText}>Volver</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', padding: 20 },
-  header: { color: '#D8A353', fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
+  header: { color: '#D8A353', fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
   label: { color: '#CCCCCC', marginTop: 15 },
   input: { backgroundColor: '#1A1A1A', borderRadius: 10, padding: 10, color: '#FFFFFF' },
   multilineInput: { height: 100, textAlignVertical: 'top' },
@@ -330,7 +400,7 @@ const styles = StyleSheet.create({
   picker: { color: '#FFFFFF', height: 50 },
   imagePicker: { backgroundColor: '#1A1A1A', borderRadius: 10, padding: 15, alignItems: 'center', marginVertical: 10 },
   imagePickerText: { color: '#CCCCCC', textAlign: 'center', marginTop: 5 },
-  profileImagePicker: { alignItems: 'center', marginVertical: 10 },
+  profileImagePicker: { alignItems: 'center', marginVertical: 0, marginTop: -10 },
   profileImage: { width: 100, height: 100, borderRadius: 50, borderWidth: 2, borderColor: '#D8A353' },
   logoRow: { marginVertical: 10, maxHeight: 120 },
   logoWrapper: { position: 'relative', marginRight: 10 },
@@ -344,4 +414,17 @@ const styles = StyleSheet.create({
   modalText: { color: '#fff', fontSize: 16, marginBottom: 15 },
   modalButton: { backgroundColor: '#D8A353', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 },
   modalButtonText: { color: '#000', fontWeight: 'bold' },
+  videoPreviewContainer: {
+  marginTop: 10,
+  backgroundColor: '#1B1B1B',
+  borderRadius: 10,
+  padding: 10,
+  alignItems: 'center',
+},
+videoPreview: {
+  width: 300,
+  height: 180,
+  borderRadius: 10,
+  backgroundColor: '#000',
+},
 });

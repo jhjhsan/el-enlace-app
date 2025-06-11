@@ -63,11 +63,12 @@ export default function CastingDetailScreen({ route }) {
           <Image source={{ uri: casting.image }} style={styles.image} />
         )}
 
-        <View style={styles.detailBox}>
-          <Text style={styles.detailText}>Categoría: {casting?.category || 'General'}</Text>
-          <Text style={styles.detailText}>Ubicación: {casting?.location || 'No especificada'}</Text>
-          <Text style={styles.detailText}>Fecha límite: {casting?.deadline || 'No informada'}</Text>
-        </View>
+<View style={styles.detailBox}>
+  <Text style={styles.detailText}>Categoría: {casting?.category || 'General'}</Text>
+  <Text style={styles.detailText}>Ubicación: {casting?.location || 'No especificada'}</Text>
+  <Text style={styles.detailText}>Fecha límite: {casting?.deadline || 'No informada'}</Text>
+</View>
+
 
         {!isOwner && userData?.membershipType === 'free' && remainingPostulations !== null && (
           <Text style={styles.remaining}>
@@ -75,33 +76,35 @@ export default function CastingDetailScreen({ route }) {
           </Text>
         )}
 
-        {!isOwner && (
-          <TouchableOpacity
-            style={styles.applyButton}
-            onPress={() =>
-              navigation.navigate('SubmitApplication', {
-                castingId: casting?.id,
-                castingTitle: casting?.title,
-              })
-            }
-          >
-            <Text style={styles.applyText}>Postularme a este Casting</Text>
-          </TouchableOpacity>
-        )}
+{!isOwner &&
+  userData?.accountType !== 'agency' &&
+  (userData?.membershipType === 'pro' || userData?.membershipType === 'free') && (
+    <TouchableOpacity
+      style={styles.applyButton}
+      onPress={() =>
+        navigation.navigate('SubmitApplication', {
+          castingId: casting?.id,
+          castingTitle: casting?.title,
+        })
+      }
+    >
+      <Text style={styles.applyText}>Postularme a este Casting</Text>
+    </TouchableOpacity>
+)}
 
-        {isOwner && (
-          <TouchableOpacity
-            style={styles.viewApplicationsButton}
-            onPress={() =>
-              navigation.navigate('ViewApplications', {
-                castingId: casting?.id,
-                castingTitle: casting?.title,
-              })
-            }
-          >
-            <Text style={styles.buttonText}>📥 Ver postulaciones recibidas</Text>
-          </TouchableOpacity>
-        )}
+{isOwner && userData?.accountType === 'agency' && userData?.membershipType === 'elite' && (
+  <TouchableOpacity
+    style={styles.viewApplicationsButton}
+    onPress={() =>
+      navigation.navigate('ViewApplications', {
+        castingId: casting?.id,
+        castingTitle: casting?.title,
+      })
+    }
+  >
+    <Text style={styles.buttonText}>📥 Ver postulaciones recibidas</Text>
+  </TouchableOpacity>
+)}
       </ScrollView>
     </View>
   );

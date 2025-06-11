@@ -87,7 +87,7 @@ export default function PromotePostScreen() {
     <View style={styles.container}>
       {/* Flecha de volver */}
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={24} color="#fff" />
+        <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
       <Text style={styles.title}>🌟 Promocionar servicio</Text>
@@ -147,10 +147,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
     padding: 20,
+    marginTop: 30,
   },
   backButton: {
     position: 'absolute',
-    top: 15,
+    top: 10,
     left: 20,
     zIndex: 10,
     backgroundColor: 'transparent',

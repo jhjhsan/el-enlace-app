@@ -17,12 +17,27 @@ export default function InboxScreen() {
   const { userData } = useUser();
   const [conversations, setConversations] = useState([]);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
 
   useEffect(() => {
     const loadInbox = async () => {
-      if (!userData || userData.membershipType === 'free') {
+      const isFree = userData?.membershipType === 'free';
+      const isEliteBlocked = userData?.membershipType === 'elite' && !userData?.hasPaid;
+
+      if (!userData || isEliteBlocked) {
         setShowUpgradeModal(true);
         return;
+      }
+
+      if (isFree) {
+        const pendingRaw = await AsyncStorage.getItem('pendingMessages');
+        if (pendingRaw) {
+          const pending = JSON.parse(pendingRaw);
+          const userPending = pending.filter(p => p.toEmail === userData.email);
+          if (userPending.length > 0) {
+            setShowPendingModal(true);
+          }
+        }
       }
 
       const json = await AsyncStorage.getItem('professionalMessages');
@@ -86,7 +101,16 @@ export default function InboxScreen() {
               }
             >
               <Text style={styles.user}>{conv.user}</Text>
-              <Text style={styles.preview}>{conv.lastMessage}</Text>
+              <Text style={styles.preview}>✉️ {conv.lastMessage}</Text>
+              <Text style={styles.timestamp}>
+                {new Date(conv.timestamp).toLocaleDateString('es-CL', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
             </TouchableOpacity>
           ))
         )}
@@ -101,7 +125,7 @@ export default function InboxScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.upgradeModal}>
-              <Text style={styles.upgradeTitle}>🔒 Función exclusiva para usuarios Pro</Text>
+              <Text style={styles.upgradeTitle}>🔒 Función exclusiva</Text>
               <Text style={styles.upgradeText}>
                 Mejora tu membresía para acceder a la bandeja de mensajes profesionales.
               </Text>
@@ -112,10 +136,39 @@ export default function InboxScreen() {
                   navigation.navigate('Subscription');
                 }}
               >
-                <Text style={styles.upgradeButtonText}>💳 Subir a Pro</Text>
+                <Text style={styles.upgradeButtonText}>💳 Ver planes</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setShowUpgradeModal(false)}>
                 <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={showPendingModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowPendingModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.upgradeModal}>
+              <Text style={styles.upgradeTitle}>📬 ¡Tienes mensajes pendientes!</Text>
+              <Text style={styles.upgradeText}>
+                Agencias están intentando contactarte, pero ya alcanzaste tu límite semanal de mensajes.
+                Si subes a plan Pro, podrás desbloquear y responder estos mensajes importantes.
+              </Text>
+              <TouchableOpacity
+                style={styles.upgradeButton}
+                onPress={() => {
+                  setShowPendingModal(false);
+                  navigation.navigate('Subscription');
+                }}
+              >
+                <Text style={styles.upgradeButtonText}>🚀 Subir a plan Pro</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowPendingModal(false)}>
+                <Text style={{ color: '#aaa', marginTop: 10 }}>Volver</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -133,6 +186,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingBottom: 100,
+    marginTop: 25,
   },
   title: {
     fontSize: 22,
@@ -155,7 +209,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   user: {
-    color: '#fff',
+    color: '#FFD700',
     fontWeight: 'bold',
     fontSize: 16,
     marginBottom: 5,
@@ -163,6 +217,11 @@ const styles = StyleSheet.create({
   preview: {
     color: '#aaa',
     fontSize: 13,
+  },
+  timestamp: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 5,
   },
   modalOverlay: {
     flex: 1,

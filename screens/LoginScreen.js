@@ -11,71 +11,139 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
-import { loginUser } from '../utils/auth';
+import { auth } from '../src/firebase/firebaseConfig'; // ✅ Correcto
+import { CommonActions } from '@react-navigation/native';
+import { isEmailVerified } from '../src/firebase/helpers/authHelper'; // si no está ya importado
+import { resetPassword } from '../src/firebase/helpers/authHelper';
+import { loginWithEmail } from '../src/firebase/helpers/authHelper';
+import { getProfileFromFirestore } from '../src/firebase/helpers/getProfileFromFirestore.js'; // ✅
+import { getMembershipType } from '../src/firebase/helpers/getMembershipType';
+
+import {
+  goToProfileTab,
+  goToFormularioFree,
+  goToCompleteProfile,
+  goToCompleteElite,
+} from '../utils/navigationHelpers';
 
 export default function LoginScreen({ navigation }) {
   const { setUserData, setIsLoggedIn } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
   const [showModal, setShowModal] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Por favor ingresa tu email y contraseña.');
+  if (!email || !password) {
+    Alert.alert('Error', 'Por favor ingresa tu email y contraseña.');
+    return;
+  }
+
+  try {
+const cleanedEmail = email.trim().toLowerCase();
+const cleanedPassword = password.trim();
+console.log('Intentando login con:', cleanedEmail, cleanedPassword);
+
+const result = await loginWithEmail(cleanedEmail, cleanedPassword);
+
+    if (!result.success) {
+      console.log('Error de login:', result);
+
+      if (result.needsVerification) {
+        Alert.alert(
+          'Verifica tu correo',
+          'Debes confirmar tu correo electrónico antes de ingresar. Revisa tu bandeja de entrada.'
+        );
+      } else {
+       Alert.alert('Error', result.error?.code || result.error?.message || 'No se pudo iniciar sesión.');
+      }
       return;
     }
 
-    try {
-      const user = await loginUser(email, password);
-await AsyncStorage.setItem('sessionActive', 'true');
+    const user = result.user;
+    console.log('✅ Login exitoso con UID:', user.uid);
 
-// 🔽 Obtener el perfil completo desde AsyncStorage
-const storedProfile = await AsyncStorage.getItem('userProfile');
-
-if (storedProfile) {
-  const fullProfile = JSON.parse(storedProfile);
-  setUserData(fullProfile);
-  setIsLoggedIn(true);
-} else {
-  Alert.alert('Error', 'No se pudo cargar el perfil completo.');
+    await user.reload();
+const verified = user.emailVerified;
+if (!verified) {
+  navigation.replace('EmailNotVerified');
+  return;
 }
 
-    } catch (error) {
-      console.error('Error al iniciar sesión:', error);
-      Alert.alert('Error', error.message);
-    }
-  };
+    await AsyncStorage.setItem('sessionActive', 'true');
+    
+// ✅ Detectar tipo de cuenta directamente desde Firestore
+const detectedMembershipType = await getMembershipType(cleanedEmail);
 
+if (!detectedMembershipType) {
+  Alert.alert('Error', 'No se pudo detectar el tipo de cuenta del usuario.');
+  return;
+}
+
+// 🔁 Siempre cargar perfil desde Firestore
+const firestoreProfile = await getProfileFromFirestore(cleanedEmail, detectedMembershipType);
+
+if (!firestoreProfile) {
+  Alert.alert('Error', 'No se pudo cargar el perfil desde Firestore.');
+  return;
+}
+
+// 🔍 EXTRAEMOS membershipType desde el perfil
+const { membershipType } = firestoreProfile;
+
+// 🧠 Guardamos el perfil en userData y también según el tipo
+await AsyncStorage.setItem('userData', JSON.stringify(firestoreProfile));
+setUserData(firestoreProfile);
+
+if (membershipType === 'pro') {
+  await AsyncStorage.setItem('userProfilePro', JSON.stringify(firestoreProfile));
+} else if (membershipType === 'elite') {
+  await AsyncStorage.setItem('userProfileElite', JSON.stringify(firestoreProfile));
+}
+
+setIsLoggedIn(true);
+
+console.log('🕐 Esperando para redirigir...');
+setTimeout(() => {
+  console.log('🔁 Redirigiendo a InitialRedirectScreen...');
+  navigation.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: 'MainAppContainer' }],
+    })
+  );
+}, 300); // 500ms de espera para que RootNavigator actualice
+
+
+  } catch (error) {
+    console.error('Error al iniciar sesión:', error);
+    Alert.alert('Error', error.message || 'Ocurrió un error inesperado.');
+  }
+};
   const handleRecoverPassword = async () => {
-    if (!recoveryEmail) {
-      Alert.alert('Campo vacío', 'Ingresa un correo válido.');
-      return;
-    }
+  if (!recoveryEmail) {
+    Alert.alert('Campo vacío', 'Ingresa un correo válido.');
+    return;
+  }
 
-    try {
-      const storedUsers = await AsyncStorage.getItem('allUsers');
-      const users = storedUsers ? JSON.parse(storedUsers) : [];
+  const result = await resetPassword(recoveryEmail.trim().toLowerCase());
 
-      const user = users.find(
-        (u) => u.email.toLowerCase() === recoveryEmail.trim().toLowerCase()
-      );
+  if (result.success) {
+    Alert.alert(
+      'Correo enviado',
+      'Revisa tu bandeja de entrada para restablecer tu contraseña.'
+    );
+  } else {
+    Alert.alert(
+      'Error',
+      'No se pudo enviar el correo. Asegúrate de que el correo sea válido y esté registrado.'
+    );
+  }
 
-      if (user) {
-        Alert.alert('Contraseña recuperada', `Tu contraseña es: ${user.password}`);
-      } else {
-        Alert.alert('No encontrado', 'Ese correo no está registrado.');
-      }
-    } catch (error) {
-      console.log('Error en recuperación:', error);
-      Alert.alert('Error', 'No se pudo recuperar la contraseña.');
-    } finally {
-      setShowModal(false);
-      setRecoveryEmail('');
-    }
-  };
+  setShowModal(false);
+  setRecoveryEmail('');
+};
 
   return (
     <View style={styles.container}>

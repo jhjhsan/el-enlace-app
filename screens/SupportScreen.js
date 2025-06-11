@@ -27,16 +27,19 @@ export default function SupportScreen() {
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>🛠️ Ayuda y Soporte</Text>
+        <Text style={styles.title}>🛠️ Centro de Ayuda y Soporte</Text>
+
         <Text style={styles.text}>
-          Si tienes dudas, problemas con tu cuenta o necesitas asistencia, por favor contáctanos por alguno de los siguientes medios:
+          Gracias por ser parte del plan Elite. Si necesitas asistencia técnica, soporte con tu cuenta, o resolver cualquier duda, puedes contactarnos por los siguientes canales:
         </Text>
 
-        <Text style={styles.item}>📧 Email: soporte@elenlaceapp.com</Text>
+        <Text style={styles.item}>📧 Email: soporte@elenlace.cl</Text>
         <Text style={styles.item}>📱 WhatsApp: +56 9 8765 4321</Text>
-        <Text style={styles.item}>🌐 Sitio web: www.elenlaceapp.com/soporte</Text>
+        <Text style={styles.item}>🌐 Sitio web: www.elenlace.cl/soporte</Text>
 
-        <Text style={styles.text}>Nuestro equipo te responderá lo antes posible. ¡Gracias por usar El Enlace!</Text>
+        <Text style={styles.text}>
+          Nuestro equipo responderá tu solicitud lo antes posible. Tu experiencia es nuestra prioridad.
+        </Text>
       </ScrollView>
     </View>
   );

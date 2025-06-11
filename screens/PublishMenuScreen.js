@@ -1,5 +1,3 @@
-// PublishMenuScreen.js actualizado: incluye botones separados para promocionar perfil y publicación
-
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -17,8 +15,20 @@ import { Ionicons } from '@expo/vector-icons';
 export default function PublishMenuScreen() {
   const navigation = useNavigation();
   const { userData } = useUser();
-  const [membershipType, setMembershipType] = useState(userData?.membershipType || 'free');
+  const membershipType = userData?.membershipType || 'free';
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showProModal, setShowProModal] = useState(false);
+  const hasPaid = String(userData?.hasPaid) === 'true';
+
+  useEffect(() => {
+    const loadPaymentStatus = async () => {
+      const json = await AsyncStorage.getItem('userData');
+      const user = json ? JSON.parse(json) : {};
+
+      setHasPaid(user?.hasPaid === true);
+    };
+    loadPaymentStatus();
+  }, []);
 
   useEffect(() => {
     const loadMembership = async () => {
@@ -31,25 +41,15 @@ export default function PublishMenuScreen() {
     loadMembership();
   }, []);
 
-  const canAccess = (feature) => {
-    const accessMap = {
-      casting: membershipType === 'elite',
-      service: membershipType !== 'free',
-      focus: membershipType !== 'free',
-      promote: membershipType === 'pro' || membershipType === 'elite',
-    };
-    return accessMap[feature];
-  };
-
-  const handleRestricted = () => {
-    setShowUpgradeModal(true);
-  };
+  const isEliteBlocked = membershipType === 'elite' && !hasPaid;
+  const isFreeBlocked = membershipType === 'free';
+  const isProBlockedCasting = membershipType === 'pro';
 
   return (
     <View style={styles.screen}>
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={{ position: 'absolute', top: 15, left: 20, zIndex: 10 }}
+        style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
       >
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
@@ -58,74 +58,104 @@ export default function PublishMenuScreen() {
         <Text style={styles.title}>Opciones de publicación</Text>
 
         <TouchableOpacity
-          style={[styles.button, !canAccess('casting') && styles.lockedButton]}
+  style={[styles.button, (isEliteBlocked || isFreeBlocked || isProBlockedCasting) && styles.lockedButton]}
+  onPress={() => {
+    if (isEliteBlocked) {
+      setShowUpgradeModal(true);
+    } else if (isFreeBlocked || isProBlockedCasting) {
+      setShowProModal(true);
+    } else {
+      navigation.navigate('PublishCastingScreen');
+    }
+  }}
+>
+  <Text style={styles.buttonText}>
+    {(isEliteBlocked || isFreeBlocked || isProBlockedCasting) ? '🔒 🎬 Publicar casting' : '🎬 Publicar casting'}
+  </Text>
+</TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
           onPress={() => {
-            canAccess('casting')
-              ? navigation.navigate('PublishCastingScreen')
-              : handleRestricted();
+            if (isEliteBlocked) {
+              setShowUpgradeModal(true);
+            } else if (isFreeBlocked) {
+              setShowProModal(true);
+            } else {
+              navigation.navigate('Publish');
+            }
           }}
         >
           <Text style={styles.buttonText}>
-            {!canAccess('casting') ? '🔒 🎬 Publicar casting' : '🎬 Publicar casting'}
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 🛠️ Publicar servicio' : '🛠️ Publicar servicio'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, !canAccess('service') && styles.lockedButton]}
+          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
           onPress={() => {
-            canAccess('service')
-              ? navigation.navigate('Publish')
-              : handleRestricted();
+            if (isEliteBlocked) {
+              setShowUpgradeModal(true);
+            } else if (isFreeBlocked) {
+              setShowProModal(true);
+            } else {
+              navigation.navigate('PublishFocusScreen');
+            }
           }}
         >
           <Text style={styles.buttonText}>
-            {!canAccess('service') ? '🔒 🛠️ Publicar servicio' : '🛠️ Publicar servicio'}
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 🎯 Publicar focus' : '🎯 Publicar focus'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, !canAccess('focus') && styles.lockedButton]}
+          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
           onPress={() => {
-            canAccess('focus')
-              ? navigation.navigate('PublishFocusScreen')
-              : handleRestricted();
+            if (isEliteBlocked) {
+              setShowUpgradeModal(true);
+            } else if (isFreeBlocked) {
+              setShowProModal(true);
+            } else {
+              navigation.navigate('CreateAdScreen');
+            }
           }}
         >
           <Text style={styles.buttonText}>
-            {!canAccess('focus') ? '🔒 🎯 Publicar focus' : '🎯 Publicar focus'}
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 📢 Publicar anuncio publicitario' : '📢 Publicar anuncio publicitario'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.button}
-          onPress={() => navigation.navigate('CreateAdScreen')}
-        >
-          <Text style={styles.buttonText}>📢 Publicar anuncio publicitario</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, !canAccess('promote') && styles.lockedButton]}
+          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
           onPress={() => {
-            canAccess('promote')
-              ? navigation.navigate('PromoteProfile')
-              : handleRestricted();
+            if (isEliteBlocked) {
+              setShowUpgradeModal(true);
+            } else if (isFreeBlocked) {
+              setShowProModal(true);
+            } else {
+              navigation.navigate('PromoteProfile');
+            }
           }}
         >
           <Text style={styles.buttonText}>
-            {!canAccess('promote') ? '🔒 💎 Promocionar perfil' : '💎 Promocionar perfil'}
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 💎 Promocionar perfil' : '💎 Promocionar perfil'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, !canAccess('promote') && styles.lockedButton]}
+          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
           onPress={() => {
-            canAccess('promote')
-              ? navigation.navigate('PromotePost')
-              : handleRestricted();
+            if (isEliteBlocked) {
+              setShowUpgradeModal(true);
+            } else if (isFreeBlocked) {
+              setShowProModal(true);
+            } else {
+              navigation.navigate('PromotePost');
+            }
           }}
         >
           <Text style={styles.buttonText}>
-            {!canAccess('promote') ? '🔒 📣 Promocionar publicación' : '📣 Promocionar publicación'}
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 📣 Promocionar publicación' : '📣 Promocionar publicación'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -138,9 +168,9 @@ export default function PublishMenuScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.upgradeModal}>
-            <Text style={styles.upgradeTitle}>🔒 Función exclusiva</Text>
+            <Text style={styles.upgradeTitle}>🔒 Acceso exclusivo Elite</Text>
             <Text style={styles.upgradeText}>
-              Esta función está disponible solo para usuarios con membresía Pro o Elite. Mejora tu plan para desbloquearla.
+              Esta función requiere una suscripción Elite. Actualiza tu plan para acceder.
             </Text>
             <TouchableOpacity
               style={styles.upgradeButton}
@@ -149,7 +179,7 @@ export default function PublishMenuScreen() {
                 navigation.navigate('Subscription');
               }}
             >
-              <Text style={styles.upgradeButtonText}>💳 Ver planes</Text>
+              <Text style={styles.upgradeButtonText}>Ver plan</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowUpgradeModal(false)}>
               <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
@@ -157,6 +187,35 @@ export default function PublishMenuScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+  visible={showProModal}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setShowProModal(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.upgradeModal}>
+      <Text style={styles.upgradeTitle}>🔒 Acceso restringido</Text>
+      <Text style={styles.upgradeText}>
+      Función exclusiva para usuarios con plan Pro. Mejora tu cuenta para acceder a herramientas profesionales.
+      </Text>
+      <TouchableOpacity
+        style={styles.upgradeButton}
+        onPress={() => {
+          setShowProModal(false);
+          navigation.navigate('Subscription');
+        }}
+      >
+        <Text style={styles.upgradeButtonText}>Ver planes</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => setShowProModal(false)}>
+        <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
     </View>
   );
 }
@@ -170,6 +229,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 60,
     paddingBottom: 100,
+    paddingTop: 60,
   },
   title: {
     color: '#D8A353',
@@ -178,14 +238,13 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   button: {
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 15,
+    backgroundColor: '#1a1a1a',
+    paddingVertical: 12,
     paddingHorizontal: 30,
-    marginVertical: 10,
-    width: '80%',
+    marginBottom: 8,
+    borderRadius: 10,
     alignItems: 'center',
+    width: 340,
   },
   lockedButton: {
     opacity: 0.5,
@@ -193,7 +252,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#D8A353',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,

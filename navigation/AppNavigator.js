@@ -1,8 +1,15 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import SplashScreen from '../screens/SplashScreen';
 import { useUser } from '../contexts/UserContext';
 
+// Importa la nueva navegación principal
+import MainTabs from './MainTabs';
+
+// Importa todas las demás pantallas necesarias
+import InitialRedirectScreen from '../screens/InitialRedirectScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import DashboardEliteScreen from '../screens/DashboardEliteScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import NotificationScreen from '../screens/NotificationScreen';
@@ -22,7 +29,6 @@ import ExplorePostsScreen from '../screens/ExplorePostsScreen';
 import PromoteScreen from '../screens/PromoteScreen';
 import PromoteProfileScreen from '../screens/PromoteProfileScreen';
 import PromotePostScreen from '../screens/PromotePostScreen';
-import CastingFilterBuilder from '../screens/CastingFilterBuilder';
 import ProfileEliteScreen from '../screens/ProfileEliteScreen';
 import CastingDetailScreen from '../screens/CastingDetailScreen';
 import PublishCastingScreen from '../screens/PublishCastingScreen';
@@ -39,7 +45,7 @@ import ViewApplicationsScreen from '../screens/ViewApplicationsScreen';
 import SubmitApplicationScreen from '../screens/SubmitApplicationScreen';
 import EditPostScreen from '../screens/EditPostScreen';
 import FormularioFree from '../screens/FormularioFree';
-import CompleteEliteScreen from '../screens/CompleteEliteScreen'; // ✅ Corregido
+import CompleteEliteScreen from '../screens/CompleteEliteScreen';
 import EditProfileEliteScreen from '../screens/EditProfileEliteScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -51,24 +57,42 @@ import PaymentEliteScreen from '../screens/PaymentEliteScreen';
 import CreateAdScreen from '../screens/CreateAdScreen';
 import MyAdsScreen from '../screens/MyAdsScreen';
 import AllAdsScreen from '../screens/AllAdsScreen';
+import DebugUserDataScreen from '../screens/DebugUserDataScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import TermsAndConditionsScreen from '../screens/TermsAndConditionsScreen';
+import LegalNoticeScreen from '../screens/LegalNoticeScreen';
+import CastingFilterBuilder from '../screens/CastingFilterBuilder';
+import StatsEliteScreen from '../screens/StatsEliteScreen';
+import PostulationHistoryEliteScreen from '../screens/PostulationHistoryEliteScreen';
+import EmailNotVerifiedScreen from '../screens/EmailNotVerifiedScreen';
+import ChatWithIA from '../screens/ChatWithIA';
+import IASuggestionsHistoryScreen from '../screens/IASuggestionsHistoryScreen';
+import AssistantIAProfileScreen from '../screens/AssistantIAProfileScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isLoggedIn } = useUser();
+  const { isLoggedIn, isLoading } = useUser();
 
-  if (!isLoggedIn) return null;
+  if (isLoading) {
+    console.log('⏳ AppNavigator esperando datos de sesión...');
+    return <SplashScreen />;
+  }
 
   return (
     <Stack.Navigator
-  initialRouteName="Dashboard"
-  screenOptions={{
-    headerShown: false,
-    animation: 'slide_from_right', // ⬅ Transición fluida para todas las pantallas
-    gestureEnabled: true,           // ⬅ Permite deslizar hacia atrás (iOS)
-  }}
->
+      initialRouteName="InitialRedirect"
+      screenOptions={{
+        headerShown: false,
+        animation: 'none',
+        gestureEnabled: true,
+      }}
+    >
+      <Stack.Screen name="InitialRedirect" component={InitialRedirectScreen} />
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
+      <Stack.Screen name="DashboardElite" component={DashboardEliteScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Notifications" component={NotificationScreen} />
@@ -79,7 +103,6 @@ export default function AppNavigator() {
       <Stack.Screen name="Subscription" component={SubscriptionScreen} />
       <Stack.Screen name="PublishMenu" component={PublishMenuScreen} />
       <Stack.Screen name="CastingFilterBuilder" component={CastingFilterBuilder} />
-      <Stack.Screen name="ProfilePro" component={ProfileProScreen} />
       <Stack.Screen name="EditProfileFree" component={EditProfileFree} />
       <Stack.Screen name="FilteredProfiles" component={FilteredProfilesScreen} />
       <Stack.Screen name="ProfileDetail" component={ProfileDetailScreen} />
@@ -117,7 +140,21 @@ export default function AppNavigator() {
       <Stack.Screen name="CreateAdScreen" component={CreateAdScreen} />
       <Stack.Screen name="MyAds" component={MyAdsScreen} />
       <Stack.Screen name="AllAdsScreen" component={AllAdsScreen} />
-      
+      <Stack.Screen
+        name="DebugUserData"
+        component={DebugUserDataScreen}
+        options={{ headerShown: true, title: 'Datos de usuario' }}
+      />
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+      <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+      <Stack.Screen name="LegalNotice" component={LegalNoticeScreen} />
+      <Stack.Screen name="StatsElite" component={StatsEliteScreen} options={{ title: 'Estadísticas' }} />
+      <Stack.Screen name="PostulationHistoryElite" component={PostulationHistoryEliteScreen} />
+      <Stack.Screen name="EmailNotVerified" component={EmailNotVerifiedScreen} />
+      <Stack.Screen name="ChatWithIA" component={ChatWithIA} />
+      <Stack.Screen name="IASuggestionsHistory" component={IASuggestionsHistoryScreen} />
+      <Stack.Screen name="AssistantIAProfile" component={AssistantIAProfileScreen} />
+
     </Stack.Navigator>
   );
 }

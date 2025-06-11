@@ -4,7 +4,6 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Image,
 import * as ImagePicker from 'expo-image-picker';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BottomBar from '../components/BottomBar';
 import * as FileSystem from 'expo-file-system';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -181,28 +180,49 @@ export default function EditProfileScreen({ navigation }) {
       alert('Ya has subido un video. Elimínalo si deseas subir otro.');
       return;
     }
-
+  
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       quality: 1,
     });
-
+  
     if (!result.canceled && result.assets.length > 0) {
-      const videoAsset = result.assets[0];
-      const fileName = videoAsset.uri.split('/').pop();
-      const newPath = `${FileSystem.documentDirectory}${fileName}`;
-
+      const uri = result.assets[0].uri;
+  
+      if (!uri.startsWith('file://')) {
+        alert('El archivo no se puede acceder. Intenta seleccionar un video compatible.');
+        return;
+      }
+  
       try {
-        await FileSystem.copyAsync({
-          from: videoAsset.uri,
-          to: newPath,
-        });
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        const maxFileSizeBytes = 100 * 1024 * 1024;
+        if (fileInfo.size > maxFileSizeBytes) {
+          alert('El video supera los 100 MB. Intenta seleccionar uno más liviano.');
+          return;
+        }
+  
+        const fileName = uri.split('/').pop();
+        const newPath = `${FileSystem.documentDirectory}${fileName}`;
+        await FileSystem.copyAsync({ from: uri, to: newPath });
+  
+        const { duration } = await VideoThumbnails.getThumbnailAsync(newPath, { time: 1000 });
+        const durationInSeconds = duration / 1000;
+  
+        if (durationInSeconds > 120) {
+          alert('El video no debe superar los 2 minutos de duración.');
+          await FileSystem.deleteAsync(newPath);
+          return;
+        }
+  
         setProfileVideo(newPath);
+        console.log('✅ Video guardado:', newPath);
       } catch (error) {
-        console.log('Error al guardar el video:', error);
+        console.log('❌ Error al procesar el video:', error);
+        alert('Error al guardar o procesar el video. Intenta nuevamente.');
       }
     }
-  };
+  };  
 
   const pickBookPhotos = async () => {
     if (bookPhotos.length >= 12) {
@@ -265,7 +285,7 @@ export default function EditProfileScreen({ navigation }) {
       await AsyncStorage.setItem('userProfileElite', JSON.stringify(userProfilePro));
 
       setUserData(updatedProfile);
-      navigation.navigate('ProfilePro');
+      navigation.navigate('MainTabs', { screen: 'ProfileTab' });
     } catch (err) {
       console.log('Error al guardar:', err);
     }

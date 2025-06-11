@@ -12,20 +12,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { getAdsFromFirestore } from '../src/firebase/helpers/getAdsFromFirestore';
+import { syncAdToFirestore } from '../src/firebase/helpers/syncAdToFirestore';
 
 export default function MyAdsScreen() {
   const { userData } = useUser();
   const [myAds, setMyAds] = useState([]);
+  const navigation = useNavigation();
 
   useEffect(() => {
     const fetchMyAds = async () => {
       try {
-        const json = await AsyncStorage.getItem('adsList');
-        const allAds = json ? JSON.parse(json) : [];
-        const mine = allAds.filter(ad => ad.userEmail === userData.email);
-        setMyAds(mine.reverse());
+        const userEmail = userData?.email || '';
+        const adsFromFirestore = await getAdsFromFirestore(userEmail);
+        setMyAds(adsFromFirestore.reverse());
+        await AsyncStorage.setItem('adsList', JSON.stringify(adsFromFirestore));
       } catch (error) {
-        console.error('Error al cargar anuncios:', error);
+        console.error('Error al cargar anuncios desde Firestore:', error);
       }
     };
     fetchMyAds();
@@ -42,19 +45,33 @@ export default function MyAdsScreen() {
     try {
       const updatedAds = [...myAds];
       updatedAds[index].expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+
       const existing = await AsyncStorage.getItem('adsList');
       let allAds = existing ? JSON.parse(existing) : [];
       const updatedAll = allAds.map(ad =>
         ad.id === updatedAds[index].id ? updatedAds[index] : ad
       );
+
       await AsyncStorage.setItem('adsList', JSON.stringify(updatedAll));
+      await syncAdToFirestore(updatedAds[index]);
       setMyAds(updatedAds);
       Alert.alert('✅ Anuncio renovado por 7 días');
     } catch (error) {
       console.error('Error al renovar anuncio:', error);
     }
   };
-  const navigation = useNavigation();
+
+  const handleDeleteAd = async (index) => {
+    try {
+      const adToDelete = myAds[index];
+      const updatedAds = myAds.filter((_, i) => i !== index);
+      setMyAds(updatedAds);
+      await AsyncStorage.setItem('adsList', JSON.stringify(updatedAds));
+      Alert.alert('🗑️ Anuncio eliminado');
+    } catch (error) {
+      console.error('Error al eliminar anuncio:', error);
+    }
+  };
 
   return (
     <ScrollView style={styles.container}>
@@ -69,12 +86,31 @@ export default function MyAdsScreen() {
           <Image source={{ uri: ad.imageUri }} style={styles.image} />
           <View style={styles.info}>
             <Text style={styles.adTitle}>{ad.title}</Text>
+
+            {ad.enEspera && !ad.aprobado && getRemainingDays(ad.expiresAt) > 0 && (
+              <Text style={{ color: '#aaa', fontSize: 12, marginTop: 4 }}>
+                ⏳ En espera de activación
+              </Text>
+            )}
+
+            {ad.enEspera && !ad.aprobado && (
+              <TouchableOpacity
+                style={{ marginTop: 6, alignSelf: 'flex-start' }}
+                onPress={() => handleDeleteAd(index)}
+              >
+                <Text style={{ color: '#ff4d4d', fontSize: 13 }}>🗑️ Eliminar anuncio</Text>
+              </TouchableOpacity>
+            )}
+
             {ad.link && ad.link.trim() !== '' && (
               <Text style={styles.link}>🔗 {ad.link}</Text>
             )}
+
             {ad.expiresAt ? (
               getRemainingDays(ad.expiresAt) > 0 ? (
-                <Text style={styles.active}>⏳ {getRemainingDays(ad.expiresAt)} días restantes</Text>
+                <Text style={styles.active}>
+                  ⏳ {getRemainingDays(ad.expiresAt)} días restantes
+                </Text>
               ) : (
                 <View>
                   <Text style={styles.expired}>❌ Anuncio vencido</Text>
@@ -90,13 +126,10 @@ export default function MyAdsScreen() {
           </View>
         </View>
       ))}
-      <TouchableOpacity
-  onPress={() => navigation.goBack()}
-  style={styles.backButton}
->
-  <Ionicons name="arrow-back" size={28} color="#fff" />
-</TouchableOpacity>
 
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -106,12 +139,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     flex: 1,
     padding: 20,
+    marginTop: 20,
   },
   title: {
     color: '#D8A353',
     fontSize: 20,
     fontWeight: 'bold',
-    marginTop:20,
+    marginTop: 20,
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -170,9 +204,8 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 2,
-    left: 5,
+    top: 0,
+    left: 0,
     zIndex: 10,
   },
-  
 });

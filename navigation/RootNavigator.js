@@ -1,34 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import FormularioFree from '../screens/FormularioFree';
+import CompleteEliteScreen from '../screens/CompleteEliteScreen'; // ✅ IMPORTANTE
 import AppNavigator from './AppNavigator';
 import { useUser } from '../contexts/UserContext';
+import { useNavigationReady } from '../contexts/NavigationReady';
 
 const Stack = createNativeStackNavigator();
 
-const MyDarkTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: '#000',
-  },
-};
-
 export default function RootNavigator() {
   const { isLoggedIn, setIsLoggedIn, setUserData } = useUser();
+  const { setIsReady } = useNavigationReady();
   const [checkingLogin, setCheckingLogin] = useState(true);
 
   useEffect(() => {
     const checkStoredSession = async () => {
       try {
         const userJson = await AsyncStorage.getItem('userData');
-
         if (userJson) {
           const parsed = JSON.parse(userJson);
           if (parsed?.email && parsed?.name) {
@@ -46,6 +39,7 @@ export default function RootNavigator() {
       } finally {
         setTimeout(() => {
           setCheckingLogin(false);
+          setIsReady(true);
         }, 1000);
       }
     };
@@ -58,18 +52,18 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={MyDarkTheme}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {isLoggedIn ? (
-          <Stack.Screen name="MainApp" component={AppNavigator} />
-        ) : (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="FormularioFree" component={FormularioFree} />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+   <Stack.Navigator screenOptions={{ headerShown: false }}>
+  {isLoggedIn ? (
+    <Stack.Screen name="MainAppContainer" component={AppNavigator} />
+  ) : (
+    <>
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="FormularioFree" component={FormularioFree} />
+      <Stack.Screen name="CompleteElite" component={CompleteEliteScreen} />
+    </>
+  )}
+</Stack.Navigator>
+
   );
 }

@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
-import BottomBar from '../components/BottomBar';
 import DropDownPicker from 'react-native-dropdown-picker';
 
 export default function PublishProfileScreen({ navigation }) {
@@ -123,7 +122,6 @@ export default function PublishProfileScreen({ navigation }) {
           <Text style={styles.publishText}>📤 Publicar Perfil</Text>
         </TouchableOpacity>
       </ScrollView>
-      <BottomBar />
     </View>
   );
 }

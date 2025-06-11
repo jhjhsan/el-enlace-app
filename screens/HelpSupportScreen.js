@@ -2,29 +2,31 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons'; // ✅ Añadimos ícono
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HelpSupportScreen() {
   const navigation = useNavigation();
 
   return (
     <View style={styles.screen}>
-      {/* ✅ Flecha profesional */}
+      {/* Flecha de volver */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={{ position: 'absolute', top: 15, left: 20, zIndex: 10 }}
+        style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
       >
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>🆘 Ayuda y Soporte</Text>
+        <Text style={styles.title}>🆘 Centro de Ayuda</Text>
         <Text style={styles.info}>
-          Si tienes dudas, sugerencias o problemas con la app, no dudes en escribirnos.
+          ¿Tienes preguntas, sugerencias o problemas con la app? Estamos aquí para ayudarte.
           {'\n\n'}
-          ✉️ Correo: soporte@elenlace.app
+          📧 Correo: soporte@elenlace.cl
           {'\n'}
           📱 WhatsApp: +56 9 1234 5678
+          {'\n'}
+          🌐 Web: www.elenlace.cl/ayuda
           {'\n\n'}
           Nuestro equipo te responderá lo antes posible.
         </Text>
@@ -41,7 +43,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingBottom: 120,
-    marginTop:20,
+    marginTop: 30,
     alignItems: 'center',
   },
   title: {

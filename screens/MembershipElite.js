@@ -37,7 +37,6 @@ export default function MembershipElite({ navigation }) {
           <Text style={styles.backButtonText}>Volver</Text>
         </TouchableOpacity>
       </ScrollView>
-      <BottomBar />
     </View>
   );
 }

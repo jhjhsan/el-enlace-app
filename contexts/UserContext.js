@@ -5,8 +5,9 @@ const UserContext = createContext();
 
 export const UserProvider = ({ children }) => {
   const [userData, setUserData] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(null); // ← importante: inicia en null
+  const [isLoggedIn, setIsLoggedIn] = useState(null);
   const [sessionExpiry, setSessionExpiry] = useState(null);
+  const [isLoading, setIsLoading] = useState(true); // 🔧 NUEVO
 
   useEffect(() => {
     const loadSession = async () => {
@@ -16,7 +17,14 @@ export const UserProvider = ({ children }) => {
 
         if (storedUserData) {
           const parsedUser = JSON.parse(storedUserData);
-          if (parsedUser?.name && parsedUser?.email) {
+
+          // ✅ Asignar ID si no existe
+          if (!parsedUser?.id && parsedUser?.email) {
+            parsedUser.id = parsedUser.email;
+          }
+
+          // ✅ Validación de datos mínimos
+          if (parsedUser?.email && (parsedUser?.name || parsedUser?.agencyName)) {
             setUserData(parsedUser);
             setIsLoggedIn(true);
             console.log('✅ Sesión activada con perfil válido:', parsedUser);
@@ -38,6 +46,8 @@ export const UserProvider = ({ children }) => {
         console.log('❌ Error al cargar sesión:', e);
         setUserData(null);
         setIsLoggedIn(false);
+      } finally {
+        setIsLoading(false); // 🔧 NUEVO
       }
     };
 
@@ -66,6 +76,7 @@ export const UserProvider = ({ children }) => {
         setIsLoggedIn,
         sessionExpiry,
         setSessionExpiry,
+        isLoading, // 🔧 NUEVO
       }}
     >
       {children}

@@ -52,7 +52,7 @@ export default function FocusListScreen() {
         onPress={() => navigation.goBack()}
         style={{
           position: 'absolute',
-          top: 15,
+          top: 40,
           left: 20,
           zIndex: 2000,
         }}

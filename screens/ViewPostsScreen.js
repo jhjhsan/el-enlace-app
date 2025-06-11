@@ -9,9 +9,10 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BottomBar from '../components/BottomBar';
 import { useUser } from '../contexts/UserContext';
 import { Ionicons } from '@expo/vector-icons';
+import { fetchCastingsFromFirestore } from '../src/firebase/helpers/fetchCastingsFromFirestore';
+import { deleteCastingFromFirestore } from '../src/firebase/helpers/deleteCastingFromFirestore';
 
 export default function ViewPostsScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
@@ -19,21 +20,26 @@ export default function ViewPostsScreen({ navigation }) {
   const { userData } = useUser();
 
   useEffect(() => {
-    const loadPosts = async () => {
-      try {
-        const data = await AsyncStorage.getItem('posts');
-        const parsed = data ? JSON.parse(data) : [];
+const loadPosts = async () => {
+  try {
+    const localData = await AsyncStorage.getItem('posts');
+    const localParsed = localData ? JSON.parse(localData) : [];
 
-        const filtered = showAllPosts
-          ? parsed
-          : parsed.filter(post => post.creatorEmail === userData?.email);
-
-        setPosts(filtered.reverse());
-      } catch (error) {
-        console.error('Error al cargar publicaciones:', error);
-      }
-    };
-
+    if (showAllPosts) {
+      // 🔁 Mostrar todos desde Firestore
+      const onlinePosts = await fetchCastingsFromFirestore();
+      setPosts(onlinePosts.reverse());
+    } else {
+      // 🔒 Mostrar solo los propios desde AsyncStorage
+      const filtered = localParsed.filter(
+        post => post.creatorEmail === userData?.email
+      );
+      setPosts(filtered.reverse());
+    }
+  } catch (error) {
+    console.error('Error al cargar publicaciones:', error);
+  }
+};
     const unsubscribe = navigation.addListener('focus', loadPosts);
     return unsubscribe;
   }, [navigation, showAllPosts]);
@@ -49,14 +55,15 @@ export default function ViewPostsScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
+              await deleteCastingFromFirestore(posts[index].id, posts[index].creatorEmail);
               const updated = [...posts];
               updated.splice(index, 1);
-              await AsyncStorage.setItem('posts', JSON.stringify(updated.reverse()));
-              setPosts(updated);
+              await AsyncStorage.setItem('posts', JSON.stringify([...updated].reverse()));
+              setPosts([...updated].reverse());
             } catch (error) {
               console.error('Error al eliminar publicación:', error);
             }
-          },
+          },          
         },
       ]
     );
@@ -132,7 +139,7 @@ export default function ViewPostsScreen({ navigation }) {
 </TouchableOpacity>
 
       </ScrollView>
-      <BottomBar navigation={navigation} />
+    
     </View>
   );
 }
@@ -145,7 +152,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingBottom: 120,
-    marginTop: 30,
+    marginTop: 40,
   },
   title: {
     color: '#D8A353',
