@@ -40,7 +40,7 @@ export default function RootNavigator() {
         setTimeout(() => {
           setCheckingLogin(false);
           setIsReady(true);
-        }, 1000);
+        }, 1500);
       }
     };
 

@@ -6,6 +6,7 @@ import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import FormularioFree from '../screens/FormularioFree';
+import CompleteEliteScreen from '../screens/CompleteEliteScreen'; // ✅ IMPORTANTE
 import AppNavigator from './AppNavigator';
 import { useUser } from '../contexts/UserContext';
 import { useNavigationReady } from '../contexts/NavigationReady';
@@ -21,7 +22,6 @@ export default function RootNavigator() {
     const checkStoredSession = async () => {
       try {
         const userJson = await AsyncStorage.getItem('userData');
-
         if (userJson) {
           const parsed = JSON.parse(userJson);
           if (parsed?.email && parsed?.name) {
@@ -39,7 +39,7 @@ export default function RootNavigator() {
       } finally {
         setTimeout(() => {
           setCheckingLogin(false);
-          setIsReady(true); // ✅ Indica que la navegación está lista
+          setIsReady(true);
         }, 1000);
       }
     };
@@ -52,16 +52,18 @@ export default function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {isLoggedIn ? (
-        <Stack.Screen name="MainAppContainer" component={AppNavigator} />
-      ) : (
-        <>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="FormularioFree" component={FormularioFree} />
-        </>
-      )}
-    </Stack.Navigator>
+   <Stack.Navigator screenOptions={{ headerShown: false }}>
+  {isLoggedIn ? (
+    <Stack.Screen name="MainAppContainer" component={AppNavigator} />
+  ) : (
+    <>
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="FormularioFree" component={FormularioFree} />
+      <Stack.Screen name="CompleteElite" component={CompleteEliteScreen} />
+    </>
+  )}
+</Stack.Navigator>
+
   );
 }

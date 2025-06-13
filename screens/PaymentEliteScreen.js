@@ -90,7 +90,7 @@ setUserData(updatedUser);
     <View style={styles.container}>
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}
+        style={{ position: 'absolute', top: 45, left: 20, zIndex: 10 }}
       >
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
@@ -102,36 +102,45 @@ setUserData(updatedUser);
       </Text>
 
      <Text style={styles.price}>
-  1er mes GRATIS — luego elige entre mensual o anual
+  1er mes GRATIS{'\n'}
+  <Text style={styles.subPrice}>Luego eliges entre mensual o anual</Text>
 </Text>
 
-<TouchableOpacity
-  style={styles.payButton}
-  onPress={() => handlePayment('mensual')}
-  disabled={loading}
->
-  {loading ? (
-    <ActivityIndicator color="#000" />
-  ) : (
-    <Text style={styles.payButtonText}>
-      💳 {inTrial
-        ? 'Activar después del mes gratis'
-        : 'Confirmar Plan Mensual (3 meses a $9.990, luego $19.990 CLP/mes)'}
-    </Text>
-  )}
-</TouchableOpacity>
-
-<TouchableOpacity
-  style={[styles.payButton, { marginTop: 12 }]}
-  onPress={() => handlePayment('anual')}
-  disabled={loading}
->
-  <Text style={styles.payButtonText}>
-    💳 {inTrial
-      ? 'Activar después del mes gratis'
-      : 'Confirmar Plan Anual ($149.900)'}
+<View style={styles.planBox}>
+  <Text style={styles.planLabel}>Plan Mensual</Text>
+  <Text style={styles.planPrice}>
+    <Text style={styles.oldPrice}>$19.990</Text>  <Text style={styles.newPrice}>$9.990</Text> / mes
   </Text>
-</TouchableOpacity>
+
+  <TouchableOpacity
+    style={styles.payButton}
+    onPress={() => handlePayment('mensual')}
+    disabled={loading}
+  >
+    {loading ? (
+      <ActivityIndicator color="#000" />
+    ) : (
+      <Text style={styles.payButtonText}>💳 Elegir Plan Mensual</Text>
+    )}
+  </TouchableOpacity>
+</View>
+
+<View style={[styles.planBox, { marginTop: 20 }]}>
+  <Text style={styles.planLabel}>Plan Anual</Text>
+  <Text style={styles.planPrice}>
+  <Text style={styles.oldPrice}>$149.990</Text>{' '}
+  <Text style={styles.newPrice}>$99.990</Text> / año
+</Text>
+
+
+  <TouchableOpacity
+    style={styles.payButton}
+    onPress={() => handlePayment('anual')}
+    disabled={loading}
+  >
+    <Text style={styles.payButtonText}>💳 Elegir Plan Anual</Text>
+  </TouchableOpacity>
+</View>
 
       {/* Modal de bienvenida */}
       {showWelcome && (
@@ -190,12 +199,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  price: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 30,
-  },
+price: {
+  color: '#fff',
+  fontSize: 18,
+  fontWeight: 'bold',
+  marginBottom: 30,
+  textAlign: 'center', // ⬅️ Esto es lo que centra el texto
+},
   payButton: {
     backgroundColor: '#D8A353',
     paddingVertical: 14,
@@ -248,4 +258,54 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
+  planBox: {
+  width: '100%',
+  backgroundColor: '#1A1A1A',
+  padding: 20,
+  borderRadius: 10,
+  borderWidth: 0.5,
+  borderColor: '#D8A353',
+},
+
+planLabel: {
+  color: '#D8A353',
+  fontSize: 18,
+  fontWeight: 'bold',
+  marginBottom: 8,
+  textAlign: 'center',
+},
+
+planPrice: {
+  color: '#fff',
+  fontSize: 16,
+  marginBottom: 12,
+  textAlign: 'center',
+},
+
+oldPrice: {
+  color: '#888',
+  textDecorationLine: 'line-through',
+  fontSize: 14,
+},
+
+newPrice: {
+  color: '#00FF99',
+  fontWeight: 'bold',
+  fontSize: 16,
+},
+
+payButton: {
+  backgroundColor: '#D8A353',
+  paddingVertical: 14,
+  borderRadius: 10,
+  alignItems: 'center',
+  width: '100%',
+},
+
+payButtonText: {
+  color: '#000',
+  fontWeight: 'bold',
+  fontSize: 16,
+},
+
 });

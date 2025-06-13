@@ -151,7 +151,7 @@ const handleSave = async () => {
       await AsyncStorage.setItem('sessionActive', 'true');
       await AsyncStorage.removeItem('fromRegister');
       console.log('✅ Perfil guardado y sesión activada tras registro');
-      navigation.navigate('MainTabs', { screen: 'DashboardTab' });
+     goToDashboardTab(navigation);
     } else {
       await saveUserProfile(
         fullProfile,

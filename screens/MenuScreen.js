@@ -314,29 +314,16 @@ const membership = userData?.membershipType || 'free';
             <Text style={styles.upgradeText}>Tu sesión se cerrará, pero los datos permanecerán guardados en el dispositivo.</Text>
             <TouchableOpacity
               style={styles.upgradeButton}
-              onPress={async () => {
-                try {
-            await AsyncStorage.multiRemove([
-  'userData',
-  'sessionActive',
-  'sessionExpiry',
-  'userProfileElite',
-  'userProfilePro',
-  `userProfile_${userData?.email?.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-  `notifications_${userData?.email?.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-  'pendingMessages',
-]);
-setUserData(null);
-setIsLoggedIn(false);
-navigation.reset({
-  index: 0,
-  routes: [{ name: 'Login' }],
-});
-
-                } catch (error) {
-                  console.error('❌ Error al cerrar sesión:', error);
-                }
-              }}
+            onPress={async () => {
+  try {
+    await AsyncStorage.clear(); // o multiRemove([...])
+    setUserData(null);
+    setIsLoggedIn(false); // Esto automáticamente mostrará Login
+    setShowLogoutModal(false); // Oculta el modal
+  } catch (error) {
+    console.error('❌ Error al cerrar sesión:', error);
+  }
+}}
             >
               <Text style={styles.upgradeButtonText}>✅ Cerrar sesión</Text>
             </TouchableOpacity>
@@ -363,7 +350,15 @@ navigation.reset({
             <TouchableOpacity
               style={styles.upgradeButton}
               onPress={async () => {
-                await AsyncStorage.clear();
+                await AsyncStorage.multiRemove([
+  'userData',
+  'userProfile',
+  'userProfileElite',
+  'userProfilePro',
+  'userProfileFree',
+  'eliteProfileCompleted',
+  'isLoggedIn',
+]);
                 setUserData(null);
                 setIsLoggedIn(false);
                 setShowResetModal(false);

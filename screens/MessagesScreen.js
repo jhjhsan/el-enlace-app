@@ -14,6 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 import BackButton from '../components/BackButton';
+import { syncMessageToFirestore } from '../src/firebase/syncMessages';
+
 
 export default function MessagesScreen() {
   const [message, setMessage] = useState('');
@@ -151,9 +153,13 @@ export default function MessagesScreen() {
     };
 
     const updatedMessages = [...allMessages, newMsg];
-    await AsyncStorage.setItem('professionalMessages', JSON.stringify(updatedMessages));
+await AsyncStorage.setItem('professionalMessages', JSON.stringify(updatedMessages));
 
-    Alert.alert('✅ Enviado', 'Tu mensaje fue enviado correctamente.');
+// 🔁 También guardar en Firestore
+await syncMessageToFirestore(newMsg);
+
+Alert.alert('✅ Enviado', 'Tu mensaje fue enviado correctamente.');
+
     setMessage('');
     setRemaining(100);
     setIncludeProfile(false);
@@ -162,7 +168,8 @@ export default function MessagesScreen() {
 
   return (
     <View style={styles.container}>
-      <BackButton />
+      <BackButton top={45} left={20} />
+
       <ScrollView contentContainerStyle={styles.inner}>
         <Text style={styles.title}>💬 Mensajería</Text>
 

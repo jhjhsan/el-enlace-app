@@ -115,29 +115,41 @@ if (updatedProfile.email) {
         Obtén acceso completo a fotos, postulaciones ilimitadas, contacto directo y más.
       </Text>
 
- <TouchableOpacity
-  style={styles.payButton}
-  onPress={() => handlePayment('mensual')}
-  disabled={loading}
->
-  {loading ? (
-    <ActivityIndicator color="#000" />
-  ) : (
-    <Text style={styles.payButtonText}>
-  💳 {inTrial ? 'Activar después del mes gratis' : 'Confirmar Plan Mensual ($3.490)'}
-</Text>
-  )}
-</TouchableOpacity>
+<View style={styles.planBox}>
+  <Text style={styles.planLabel}>Plan Mensual</Text>
+  <Text style={styles.planPrice}>
+    <Text style={styles.oldPrice}>$6.990</Text>{' '}
+    <Text style={styles.newPrice}>$3.490</Text> / mes
+  </Text>
 
-<TouchableOpacity
-  style={[styles.payButton, { marginTop: 12 }]}
-  onPress={() => handlePayment('anual')}
-  disabled={loading}
->
- <Text style={styles.payButtonText}>
-  💳 {inTrial ? 'Activar después del mes gratis' : 'Confirmar Plan Anual ($29.990)'}
-</Text>
-</TouchableOpacity>
+  <TouchableOpacity
+    style={styles.payButton}
+    onPress={() => handlePayment('mensual')}
+    disabled={loading}
+  >
+    {loading ? (
+      <ActivityIndicator color="#000" />
+    ) : (
+      <Text style={styles.payButtonText}>💳 Elegir Plan Mensual</Text>
+    )}
+  </TouchableOpacity>
+</View>
+
+<View style={[styles.planBox, { marginTop: 20 }]}>
+  <Text style={styles.planLabel}>Plan Anual</Text>
+  <Text style={styles.planPrice}>
+    <Text style={styles.oldPrice}>$39.990</Text>{' '}
+    <Text style={styles.newPrice}>$29.990</Text> / año
+  </Text>
+
+  <TouchableOpacity
+    style={styles.payButton}
+    onPress={() => handlePayment('anual')}
+    disabled={loading}
+  >
+    <Text style={styles.payButtonText}>💳 Elegir Plan Anual</Text>
+  </TouchableOpacity>
+</View>
 
     </View>
   );
@@ -186,4 +198,40 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  planBox: {
+  width: '85%',
+  backgroundColor: '#1A1A1A',
+  padding: 20,
+  borderRadius: 10,
+  borderWidth: 0.5,
+  borderColor: '#D8A353',
+  alignItems: 'center',
+},
+
+planLabel: {
+  color: '#D8A353',
+  fontSize: 18,
+  fontWeight: 'bold',
+  marginBottom: 8,
+},
+
+planPrice: {
+  color: '#fff',
+  fontSize: 16,
+  marginBottom: 12,
+  textAlign: 'center',
+},
+
+oldPrice: {
+  color: '#888',
+  textDecorationLine: 'line-through',
+  fontSize: 14,
+},
+
+newPrice: {
+  color: '#00FF99',
+  fontWeight: 'bold',
+  fontSize: 16,
+},
+
 });

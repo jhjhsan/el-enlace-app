@@ -39,7 +39,7 @@ export default function MainTabs() {
 
 return (
   <Tab.Navigator
-    initialRouteName="ProfileTab"
+    initialRouteName="DashboardTab"
     screenOptions={{
       headerShown: false,
       tabBarStyle: {

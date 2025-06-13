@@ -289,9 +289,9 @@ if (!description || description.trim().length < 30) {
 }
 
     // ⬇️ AHORA SÍ: Crea el objeto final con las URLs subidas
-    const profileData = {
-      ...userData,
-      membershipType: 'elite',
+   const profileData = {
+  membershipType: 'elite',
+  ...userData,
       accountType: 'agency',
       hasPaid: false,
       agencyName,

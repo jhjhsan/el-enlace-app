@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { saveUserProfile } from '../utils/profileStorage';
 
 
 export default function FilteredProfilesScreen({ route, navigation }) {
@@ -46,102 +47,127 @@ console.log('🧪 category recibido:', category);
 const normalize = (str) => str?.toLowerCase().replace(/[^a-záéíóúüñ\s]/gi, '').trim();
 
 useEffect(() => {
-    const revisarPerfiles = async () => {
+  const revisarPerfiles = async () => {
     try {
       const v1 = await AsyncStorage.getItem('allProfiles');
       const v2 = await AsyncStorage.getItem('allProfilesElite');
 
-      console.log('🔍 allProfiles:', JSON.parse(v1));
-      console.log('🔍 allProfilesElite:', JSON.parse(v2));
+      const parsed1 = v1 ? JSON.parse(v1) : [];
+      const parsed2 = v2 ? JSON.parse(v2) : [];
+
+      console.log('🧪 allProfiles (Pro + Free):', parsed1.map(p => p.email));
+      console.log('🧪 allProfilesElite:', parsed2.map(p => p.email));
+      console.log('🧪 userProfileElite directo:');
+const rawElite = await AsyncStorage.getItem('userProfileElite');
+if (rawElite) {
+  const parsed = JSON.parse(rawElite);
+  console.log('🎯 Perfil elite encontrado:', parsed.email, parsed.category);
+} else {
+  console.log('❌ userProfileElite NO existe');
+}
+
     } catch (e) {
       console.log('❌ Error leyendo perfiles:', e);
     }
   };
 
-  revisarPerfiles();
-  const fetchProfiles = async () => {
+  const forzarGuardadoPerfil = async () => {
     try {
-      const passedProfiles = route.params?.profiles;
-      const normalizedCategory = Array.isArray(category) ? category[0] : category;
-      const categoryNormalized = normalize(normalizedCategory);
-      let combined = [];
+      const rawUser = await AsyncStorage.getItem('userData');
+      const parsedUser = rawUser ? JSON.parse(rawUser) : null;
+      if (!parsedUser?.email || !parsedUser?.membershipType) return;
 
-      if (Array.isArray(passedProfiles) && passedProfiles.length > 0) {
-        combined = passedProfiles;
-      } else {
-        const storedFreePro = await AsyncStorage.getItem('allProfiles');
-        const storedElite = await AsyncStorage.getItem('allProfilesElite');
-        const parsedFreePro = storedFreePro ? JSON.parse(storedFreePro) : [];
-        const parsedElite = storedElite ? JSON.parse(storedElite) : [];
+      const { membershipType } = parsedUser;
 
-        const eliteList = Array.isArray(parsedElite)
-          ? parsedElite
-          : parsedElite && parsedElite.membershipType === 'elite'
-          ? [parsedElite]
-          : [];
-
-        combined = [...parsedFreePro, ...eliteList];
+      if (membershipType === 'pro') {
+        const proProfileRaw = await AsyncStorage.getItem('userProfilePro');
+        if (proProfileRaw) {
+          const parsed = JSON.parse(proProfileRaw);
+          await saveUserProfile(parsed, 'pro');
+        }
       }
 
-      console.log('📦 Perfiles combinados antes de filtrar:', combined);
-      combined.forEach(p => {
-  console.log('📋 Perfil disponible:', {
-    name: p.name || p.agencyName,
-    email: p.email,
-    category: p.category,
-    tipo: p.membershipType,
-    visible: p.visibleInExplorer,
-  });
-});
-
-      const filteredByCategory = combined
-        .filter(profile => ['free', 'pro', 'elite'].includes(profile.membershipType))
-        .filter(profile => {
-          const isVisible = profile.visibleInExplorer !== false;
-          const cat = profile.category;
-
-          const matchesCategory =
-  (Array.isArray(cat) &&
-    cat.some(
-      c => normalize(c).includes(categoryNormalized) || categoryNormalized.includes(normalize(c))
-    )) ||
-  (typeof cat === 'string' &&
-    (normalize(cat).includes(categoryNormalized) || categoryNormalized.includes(normalize(cat)))) ||
-  (typeof profile.companyType === 'string' &&
-    normalize(profile.companyType).includes(categoryNormalized)) ||
-  (Array.isArray(profile.category) &&
-    profile.category.join(' ').toLowerCase().includes(categoryNormalized));
-
-
-          if (!isVisible || !matchesCategory) {
-            console.log('🚫 Perfil excluido:', {
-              name: profile.name || profile.agencyName,
-              category: profile.category,
-              companyType: profile.companyType,
-              visibleInExplorer: profile.visibleInExplorer,
-            });
-          }
-
-          return isVisible && matchesCategory;
-        });
-console.log('🔎 Categoría buscada (normalizada):', categoryNormalized);
-filteredByCategory.forEach(p => {
-  console.log('👤 Candidato válido:', {
-    nombre: p.name || p.agencyName,
-    tipo: p.membershipType,
-    categorías: p.category,
-  });
-});
-      console.log('✅ Perfiles filtrados:', filteredByCategory);
-      setProfiles(filteredByCategory);
-    } catch (err) {
-      console.log('❌ Error cargando perfiles:', err);
+      if (membershipType === 'elite') {
+        const eliteProfileRaw = await AsyncStorage.getItem('userProfileElite');
+        if (eliteProfileRaw) {
+          const parsed = JSON.parse(eliteProfileRaw);
+          await saveUserProfile(parsed, 'elite');
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Error al forzar guardado de perfil activo:', e);
     }
   };
 
-  fetchProfiles();
-}, [category, route.params?.profiles]);
+const fetchProfiles = async () => {
+  try {
+    const normalizedCategory = Array.isArray(category) ? category[0] : category;
+    const categoryNormalized = normalize(normalizedCategory || '');
+    console.log('🔍 categoría normalizada:', categoryNormalized);
 
+    let storedFreePro = await AsyncStorage.getItem('allProfiles');
+    let storedElite = await AsyncStorage.getItem('allProfilesElite');
+
+    // Si no hay datos en caché, intenta recuperar los perfiles individuales
+    if (!storedFreePro) {
+      const pro = await AsyncStorage.getItem('userProfilePro');
+      const free = await AsyncStorage.getItem('userProfileFree');
+      const parsedPro = pro ? [JSON.parse(pro)] : [];
+      const parsedFree = free ? [JSON.parse(free)] : [];
+      storedFreePro = JSON.stringify([...parsedPro, ...parsedFree]);
+    }
+
+    if (!storedElite) {
+      const elite = await AsyncStorage.getItem('userProfileElite');
+      storedElite = elite ? JSON.stringify([JSON.parse(elite)]) : '[]';
+    }
+
+    const parsedFreePro = storedFreePro ? JSON.parse(storedFreePro) : [];
+    const parsedElite = storedElite ? JSON.parse(storedElite) : [];
+
+    const freeProList = Array.isArray(parsedFreePro) ? parsedFreePro : [parsedFreePro];
+    const eliteList = Array.isArray(parsedElite) ? parsedElite : [parsedElite];
+
+    // ✅ Combinamos y filtramos perfiles válidos
+   const seen = new Set();
+const combined = [...freeProList, ...eliteList]
+  .filter(p => p && p.email && p.visibleInExplorer !== false)
+  .filter(p => {
+    const email = p.email.toLowerCase();
+    if (seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+
+    console.log(`✅ Cargando ${combined.length} perfiles combinados`);
+
+    // 🎯 Aplicamos el filtro por categoría normalizada
+    const filtered = combined.filter((profile) => {
+      const categoryField = profile.category;
+      const profileCategory = Array.isArray(categoryField)
+        ? categoryField.map((cat) => normalize(cat))
+        : [normalize(categoryField || '')];
+
+      return profileCategory.some(
+        (cat) =>
+          cat.includes(categoryNormalized) ||
+          categoryNormalized.includes(cat)
+      );
+    });
+
+    console.log(`✅ Mostrando ${filtered.length} perfiles filtrados por categoría:`, categoryNormalized);
+    setProfiles(filtered);
+  } catch (error) {
+    console.error('❌ Error al cargar perfiles filtrados:', error);
+  }
+};
+
+
+  revisarPerfiles();
+  forzarGuardadoPerfil(); // se ejecuta en segundo plano
+fetchProfiles();        // se carga de inmediato
+
+}, [category, route.params?.profiles]);
 
 
   const filtered = profiles.filter(p =>
@@ -164,7 +190,7 @@ filteredByCategory.forEach(p => {
   <TextInput
     style={styles.searchInput}
     placeholder="Buscar talentos o servicios"
-    placeholderTextColor="#D8A353"
+    placeholderTextColor="#aaaaaa"
     value={search}
     onChangeText={setSearch}
   />
@@ -209,6 +235,7 @@ filteredByCategory.forEach(p => {
   try {
     const cleaned = sanitizeProfileData(profile);
     console.log('🧠 PERFIL FINAL PASADO A PROFILE DETAIL:', cleaned);
+    console.log('🧭 Navegando a ProfileDetail con:', cleaned);
   navigation.navigate('ProfileDetail', {
   profileData: cleaned,
 });

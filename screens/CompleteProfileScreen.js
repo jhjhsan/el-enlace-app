@@ -31,7 +31,9 @@ export default function CompleteProfileScreen({ navigation }) {
   const [shoeSize, setShoeSize] = useState(userData?.shoeSize || '');
   const [email, setEmail] = useState(userData?.email || '');
   const [phone, setPhone] = useState(userData?.phone || '');
-  const [instagram, setInstagram] = useState(userData?.instagram || '');
+  const [instagram, setInstagram] = useState(
+  userData?.instagram?.replace(/^@/, '') || ''
+);
   const [bookPhotos, setBookPhotos] = useState(userData?.bookPhotos || []);
   const [category, setCategory] = useState(Array.isArray(userData?.category) ? userData.category : []);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -339,12 +341,15 @@ export default function CompleteProfileScreen({ navigation }) {
       return;
     }
   
+    const formattedEstatura =
+  parseInt(estatura) > 100 ? (parseInt(estatura) / 100).toFixed(2) : estatura;
+
     const profileData = {
       profilePhoto,
       name,
       sexo,
       age,
-      estatura,
+      estatura: formattedEstatura,
       skinColor,
       eyeColor,
       hairColor,
@@ -357,7 +362,7 @@ export default function CompleteProfileScreen({ navigation }) {
       shoeSize,
       email,
       phone,
-      instagram,
+      instagram: `@${instagram.replace(/^@/, '')}`,
       bookPhotos,
       profileVideo,
       category,
@@ -369,7 +374,7 @@ export default function CompleteProfileScreen({ navigation }) {
       comuna,
     };
   
-    const success = await saveUserProfile(profileData, 'pro', setUserData);
+    const success = await saveUserProfile(profileData, 'pro', setUserData, null, true);
   
     if (success) {
       setShowSuccessBanner(true);
@@ -474,9 +479,14 @@ export default function CompleteProfileScreen({ navigation }) {
   placeholder="Estatura (cm)"
   placeholderTextColor="#aaa"
   value={estatura}
-  onChangeText={setEstatura}
+  onChangeText={(text) => {
+    // Elimina letras y permite solo números
+    const cleaned = text.replace(/[^0-9]/g, '');
+    setEstatura(cleaned);
+  }}
   keyboardType="numeric"
-        />
+/>
+
         <TextInput
           style={styles.input}
           placeholder="Color de piel"
@@ -587,13 +597,13 @@ export default function CompleteProfileScreen({ navigation }) {
   onChangeText={setPhone}
   keyboardType="phone-pad"
 />
-        <TextInput
-          style={styles.input}
-          placeholder="Instagram (@usuario)"
-          placeholderTextColor="#aaa"
-          value={instagram}
-          onChangeText={setInstagram}
-        />
+     <TextInput
+  style={styles.input}
+  placeholder="Instagram (@usuario)"
+  placeholderTextColor="#aaa"
+  value={instagram ? `@${instagram.replace(/^@/, '')}` : ''}
+  onChangeText={(text) => setInstagram(text.replace(/^@/, ''))}
+/>
         <View style={[styles.dropdownWrapper, { zIndex: zIndexCountry }]}>
           <DropDownPicker
             open={openCountry}

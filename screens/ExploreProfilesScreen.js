@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native';
 import { saveSearchIA } from '../src/firebase/helpers/saveSearchIA'; // asegúrate que la ruta sea correcta
 import BackButton from '../components/BackButton';
 
+
 const categories = [
   "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
   "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
@@ -218,7 +219,7 @@ const filtrarPorTipo = (tipo) => {
   <TextInput
     style={styles.searchInput}
     placeholder="Buscar talentos o servicios"
-    placeholderTextColor="#D8A353"
+    placeholderTextColor="#aaaaaa"
     value={search}
     onChangeText={handleSearch}
   />

@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { goToProfileTab } from '../utils/navigationHelpers';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -18,7 +19,7 @@ export default function EditProfileScreen({ navigation }) {
   const [selectedCategories, setSelectedCategories] = useState(userData?.category ? userData.category.split(', ').filter(Boolean) : []);
   const [sex, setSex] = useState(userData?.sex || '');
   const [age, setAge] = useState(userData?.age || '');
-  const [height, setHeight] = useState(userData?.height || '');
+  const [estatura, setEstatura] = useState(userData?.estatura || '');
   const [skinColor, setSkinColor] = useState(userData?.skinColor || '');
   const [eyeColor, setEyeColor] = useState(userData?.eyeColor || '');
   const [hairColor, setHairColor] = useState(userData?.hairColor || '');
@@ -31,7 +32,9 @@ export default function EditProfileScreen({ navigation }) {
   const [shoeSize, setShoeSize] = useState(userData?.shoeSize || '');
   const [email, setEmail] = useState(userData?.email || '');
   const [phone, setPhone] = useState(userData?.phone || '');
-  const [instagram, setInstagram] = useState(userData?.instagram || '');
+  const [instagram, setInstagram] = useState(
+  userData?.instagram?.replace(/^@/, '') || ''
+);
   const [bookPhotos, setBookPhotos] = useState(userData?.bookPhotos || []);
   const [profileVideo, setProfileVideo] = useState(userData?.profileVideo || null);
   const [open, setOpen] = useState(false);
@@ -256,7 +259,7 @@ export default function EditProfileScreen({ navigation }) {
       category: selectedCategories.join(', '),
       sex,
       age,
-      height,
+      estatura,
       skinColor,
       eyeColor,
       hairColor,
@@ -269,7 +272,7 @@ export default function EditProfileScreen({ navigation }) {
       shoeSize,
       email,
       phone,
-      instagram,
+      instagram: `@${instagram.replace(/^@/, '')}`,
       bookPhotos,
       profileVideo,
       membershipType: 'pro',
@@ -285,7 +288,8 @@ export default function EditProfileScreen({ navigation }) {
       await AsyncStorage.setItem('userProfileElite', JSON.stringify(userProfilePro));
 
       setUserData(updatedProfile);
-      navigation.navigate('MainTabs', { screen: 'ProfileTab' });
+    goToProfileTab(navigation);
+
     } catch (err) {
       console.log('Error al guardar:', err);
     }
@@ -427,7 +431,14 @@ export default function EditProfileScreen({ navigation }) {
 
         <TextInput style={styles.input} placeholder="Sexo" value={sex} onChangeText={setSex} placeholderTextColor="#aaa" />
         <TextInput style={styles.input} placeholder="Edad" value={age} onChangeText={setAge} placeholderTextColor="#aaa" />
-        <TextInput style={styles.input} placeholder="Estatura" value={height} onChangeText={setHeight} placeholderTextColor="#aaa" />
+        <TextInput
+  style={styles.input}
+  placeholder="Estatura (cm)"
+  placeholderTextColor="#aaa"
+  value={estatura}
+  onChangeText={setEstatura}
+  keyboardType="numeric"
+/>
         <View style={[styles.dropdownWrapper, { zIndex: zIndexEthnicity }]}>
           <DropDownPicker
             open={openEthnicity}
@@ -462,7 +473,13 @@ export default function EditProfileScreen({ navigation }) {
         <TextInput style={styles.input} placeholder="Talla de zapatos" value={shoeSize} onChangeText={setShoeSize} placeholderTextColor="#aaa" />
         <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} placeholderTextColor="#aaa" />
         <TextInput style={styles.input} placeholder="Teléfono" value={phone} onChangeText={setPhone} placeholderTextColor="#aaa" />
-        <TextInput style={styles.input} placeholder="Instagram" value={instagram} onChangeText={setInstagram} placeholderTextColor="#aaa" />
+        <TextInput
+  style={styles.input}
+  placeholder="Instagram (@usuario)"
+  placeholderTextColor="#aaa"
+  value={instagram ? `@${instagram.replace(/^@/, '')}` : ''}
+  onChangeText={(text) => setInstagram(text.replace(/^@/, ''))}
+/>
 
         <View style={styles.galleryContainer}>
           {bookPhotos.map((uri, index) => (
