@@ -30,12 +30,22 @@ try {
 
 const mergedData = { ...existingData, ...data };
 
+// 🧠 Forzar que category siempre sea array
+if (mergedData.category && !Array.isArray(mergedData.category)) {
+  mergedData.category = [mergedData.category];
+}
+
+// 🧠 Forzar que visibleInExplorer sea true si no está definido
+if (mergedData.visibleInExplorer === undefined) {
+  mergedData.visibleInExplorer = true;
+}
+
 const normalizedData = {
   ...mergedData,
   email: mergedData.email.trim().toLowerCase(),
   membershipType: membershipType || 'free',
   timestamp: mergedData.timestamp || Date.now(),
-  visibleInExplorer: true, // 👈 IMPRESCINDIBLE
+  visibleInExplorer: mergedData.visibleInExplorer,
 };
 
     const emailKey = `userProfile_${normalizedData.email}`;
@@ -53,6 +63,16 @@ const normalizedData = {
         console.error('❌ Error al guardar userProfileFree:', error.message || error);
         throw error;
       });
+      const existing = await AsyncStorage.getItem('allProfiles').catch(() => null);
+const parsed = existing ? JSON.parse(existing) : [];
+
+const filtered = parsed.filter(p => p.email?.toLowerCase() !== normalizedData.email.toLowerCase());
+const updated = [normalizedData, ...filtered];
+
+await AsyncStorage.setItem('allProfiles', JSON.stringify(updated)).catch((error) => {
+  console.error('❌ Error al guardar allProfiles (Free):', error.message || error);
+});
+
     } else if (membershipType === 'pro') {
       await AsyncStorage.setItem('userProfilePro', JSON.stringify(normalizedData)).catch((error) => {
         console.error('❌ Error al guardar userProfilePro:', error.message || error);

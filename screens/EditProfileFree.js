@@ -17,9 +17,28 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { saveUserProfile } from '../utils/profileStorage';
+import { goToProfileTab } from '../utils/navigationHelpers';
+
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
+const talentCategories = [
+  "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
+  "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
+  "Continuista", "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
+  "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
+  "Extra", "Fotógrafo de backstage", "Iluminador", "Ilustrador / storyboarder",
+  "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Niño actor",
+  "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
+  "Promotoras", "Servicios de catering", "Sonidista", "Stage manager",
+  "Técnico de efectos especiales", "Técnico de grúa", "Vestuarista",
+  "Ambientador", "Asistente de cámara", "Asistente de dirección",
+  "Asistente de producción", "Asistente de vestuario",
+  "Transporte de talentos", "Autos personales", "Motos o bicicletas para escenas",
+  "Grúas para filmación", "Camiones de arte para rodajes", "Casas rodantes para producción",
+  "Estudio fotográfico", "Transporte de producción", "Vans de producción",
+  "Coffee break / snacks", "Otros / No especificado"
+];
 export default function EditProfileFree({ navigation }) {
   const { setUserData } = useUser();
   const [profilePhoto, setProfilePhoto] = useState(null);
@@ -28,6 +47,9 @@ export default function EditProfileFree({ navigation }) {
   const [edad, setEdad] = useState('');
   const [sexo, setSexo] = useState('');
   const [bookPhotos, setBookPhotos] = useState([]);
+  const [category, setCategory] = useState([]);
+const [showCategoryModal, setShowCategoryModal] = useState(false);
+const [searchCategory, setSearchCategory] = useState('');
 
   const [openSexo, setOpenSexo] = useState(false);
   const [zIndexSexo, setZIndexSexo] = useState(1000);
@@ -36,6 +58,15 @@ export default function EditProfileFree({ navigation }) {
     { label: 'Hombre', value: 'Hombre' },
     { label: 'Mujer', value: 'Mujer' },
   ];
+const filteredCategories = talentCategories.filter(cat =>
+  cat.toLowerCase().includes(searchCategory.toLowerCase())
+);
+
+const toggleCategory = (cat) => {
+  setCategory(prev =>
+    prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+  );
+};
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -49,6 +80,7 @@ export default function EditProfileFree({ navigation }) {
           setEdad(savedData.edad || '');
           setSexo(savedData.sexo || '');
           setBookPhotos(savedData.bookPhotos || []);
+          setCategory(Array.isArray(savedData.category) ? savedData.category : []);
         }
       } catch (error) {
         console.log('Error al cargar los datos:', error);
@@ -117,6 +149,7 @@ export default function EditProfileFree({ navigation }) {
       edad,
       sexo,
       bookPhotos,
+      category,
       membershipType: 'free',
     };
 
@@ -157,6 +190,11 @@ goToProfileTab(navigation);
             </View>
           )}
         </TouchableOpacity>
+<TouchableOpacity onPress={() => setShowCategoryModal(true)} style={styles.button}>
+  <Text style={styles.buttonText}>
+    {category.length > 0 ? `${category.length} categorías seleccionadas` : 'Seleccionar categorías'}
+  </Text>
+</TouchableOpacity>
 
         <TextInput
           style={styles.input}
@@ -225,6 +263,32 @@ goToProfileTab(navigation);
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
           <Text style={styles.saveButtonText}>Guardar Perfil</Text>
         </TouchableOpacity>
+        {showCategoryModal && (
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Buscar categoría..."
+        placeholderTextColor="#aaa"
+        value={searchCategory}
+        onChangeText={setSearchCategory}
+      />
+      <ScrollView style={{ maxHeight: 300 }}>
+        {filteredCategories.map((cat, index) => (
+          <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
+            <Text style={[styles.modalItem, category.includes(cat) && styles.selectedCategory]}>
+              {cat}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <TouchableOpacity style={styles.modalButton} onPress={() => setShowCategoryModal(false)}>
+        <Text style={styles.modalButtonText}>Cerrar</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)}
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -347,4 +411,49 @@ const styles = StyleSheet.create({
     borderColor: '#D8A353',
     maxHeight: 300,
   },
+  modalOverlay: {
+  position: 'absolute',
+  top: 0, left: 0, right: 0, bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.8)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 9999,
+},
+modalContent: {
+  backgroundColor: '#111',
+  padding: 20,
+  borderRadius: 12,
+  width: '90%',
+},
+searchInput: {
+  backgroundColor: '#222',
+  color: '#fff',
+  padding: 8,
+  borderRadius: 8,
+  marginBottom: 10,
+  borderColor: '#D8A353',
+  borderWidth: 1,
+},
+modalItem: {
+  color: '#ccc',
+  paddingVertical: 10,
+  borderBottomColor: '#333',
+  borderBottomWidth: 1,
+},
+selectedCategory: {
+  color: '#D8A353',
+  fontWeight: 'bold',
+},
+modalButton: {
+  marginTop: 10,
+  backgroundColor: '#D8A353',
+  padding: 10,
+  borderRadius: 8,
+},
+modalButtonText: {
+  color: '#000',
+  textAlign: 'center',
+  fontWeight: 'bold',
+},
+
 });

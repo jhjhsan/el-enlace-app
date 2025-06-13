@@ -262,6 +262,8 @@ if (!isFormValid()) {
 }
 
   try {
+    console.log('🧪 companyType:', companyType);
+
     const webLinkFormatted =
       webLink.trim() !== ''
         ? webLink.startsWith('http')

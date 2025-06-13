@@ -44,7 +44,7 @@ const isPro = profile?.membershipType === 'pro';
 const isFree = profile?.membershipType === 'free';
 
 const viewerType = userData?.membershipType;
-const isBlocked = isFree && (viewerType === 'pro' || viewerType === 'elite');
+const isBlocked = false; // Ya no se bloquea ningún perfil Free
 
   const [selectedImage, setSelectedImage] = useState(null);
   const [isGalleryImage, setIsGalleryImage] = useState(false);
@@ -74,6 +74,7 @@ useEffect(() => {
 if (profile.membershipType === 'elite' && profile.webLink) {
   console.log('👉 LINK EN PERFIL:', profile.webLink);
 }
+console.log('📦 Categorías cargadas:', profile.category);
 
   return (
     <View style={styles.container}>
@@ -299,17 +300,18 @@ if (profile.membershipType === 'elite' && profile.webLink) {
 
    {/* 🔒 Botón de mensajería interna */}
 <TouchableOpacity
-  style={styles.contactCard}
+  style={[styles.contactCard, { backgroundColor: '#D8A353', marginTop: 12 }]}
   onPress={() =>
-  navigation.navigate('Messages', {
-  recipient: profile.name,
-  email: profile.email,
+    navigation.navigate('Messages', {
+      recipient: profile.name,
+      email: profile.email,
     })
   }
 >
-  <Ionicons name="chatbox-ellipses-outline" size={18} color="#D8A353" style={styles.cardIcon} />
-  <Text style={styles.cardText}>Mensaje interno</Text>
+  <Ionicons name="chatbox-ellipses-outline" size={18} color="#FFF" style={styles.cardIcon} />
+  <Text style={[styles.cardText, { color: '#000', fontWeight: 'bold' }]}>Mensaje interno</Text>
 </TouchableOpacity>
+
 
   </View>
 
@@ -375,72 +377,108 @@ if (profile.membershipType === 'elite' && profile.webLink) {
   )}
 </View>
 
+            ) : (userData?.membershipType === 'free' && profile?.email === userData?.email) ? (
+          <View style={styles.inner}>
+            <Text style={[styles.title, { marginTop: 20 }]}>Mi Perfil Free 🎬</Text>
 
-  ) : (
-    <View
-  testID="free-profile"
-  style={[styles.inner, isBlocked && { opacity: 0.3 }]}
+            {profile.profilePhoto ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setIsGalleryImage(false);
+                  setSelectedImage(profile.profilePhoto);
+                }}
+                 style={{ marginTop: 30 }} 
+              >
+                <Image source={{ uri: profile.profilePhoto }} style={styles.logo} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.noPhoto}>
+                <Text style={styles.noPhotoText}>Sin foto de perfil</Text>
+              </View>
+            )}
+
+            <Text style={[styles.agencyName, { marginTop: 20 }]}>{profile.name}</Text>
+
+      {profile.category && (
+  <Text style={{ color: '#D8A353', fontSize: 18, marginTop: 10, fontWeight: 'bold' }}>
+    Categorías: {Array.isArray(profile.category) ? profile.category.join(', ') : profile.category}
+  </Text>
+)}
+    {profile.edad && (
+      <View style={styles.infoBox}>
+        <Text style={styles.label}>Edad:</Text>
+        <Text style={styles.text}>{profile.edad}</Text>
+      </View>
+    )}
+
+    {profile.sexo && (
+      <View style={styles.infoBox}>
+        <Text style={styles.label}>Sexo:</Text>
+        <Text style={styles.text}>{profile.sexo}</Text>
+      </View>
+    )}
+
+{/* 🔒 Botón de mensajería interna */}
+<TouchableOpacity
+  style={[styles.contactCard, { backgroundColor: '#D8A353', marginTop: 16 }]}
+  onPress={() =>
+    navigation.navigate('Messages', {
+      recipient: profile.name,
+      email: profile.email,
+    })
+  }
 >
-      <View style={styles.headerContainer}>
-        <Text style={styles.title}>Perfil Básico</Text>
-      </View>
+  <Ionicons name="chatbox-ellipses-outline" size={18} color="#FFF" style={styles.cardIcon} />
+  <Text style={[styles.cardText, { color: '#000', fontWeight: 'bold' }]}>Mensaje interno</Text>
+</TouchableOpacity>
 
-      {profile.profilePhoto && <Image source={{ uri: profile.profilePhoto }} style={styles.logo} />}
-      {profile.name && <Text style={styles.agencyName}>{profile.name}</Text>}
-      <Text style={styles.location}>{profile.city}, {profile.region}</Text>
-
-      <Text style={styles.sectionTitle}>Categoría</Text>
-      <Text style={styles.cardText}>{profile.category}</Text>
-    </View>
-  )}
-</ScrollView>
-<Modal visible={!!selectedImage} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
-  <View style={styles.modalOverlay}>
-    <TouchableOpacity
-      style={styles.modalCloseArea}
-      activeOpacity={1}
-      onPressOut={() => setSelectedImage(null)}
-    />
-    <BlurView intensity={100} tint="dark" style={styles.modalBlur}>
-      <Animated.Image
-        source={{ uri: selectedImage }}
-        resizeMode="contain"
-        style={[
-          isGalleryImage ? styles.expandedProfileImage : styles.expandedProfileImageRounded,
-          {
-            transform: [{ scale: scaleAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-      />
-    </BlurView>
-  </View>
-</Modal>
-<Modal visible={isBlocked} transparent animationType="fade">
-  <View style={styles.modalOverlay}>
-    <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
-      <View style={{ padding: 20, backgroundColor: '#111', borderRadius: 12, alignItems: 'center', maxWidth: 320 }}>
-        <Text style={{ color: '#D8A353', fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' }}>
-          Perfil restringido
-        </Text>
-        <Text style={{ color: '#ccc', fontSize: 14, textAlign: 'center' }}>
-          Este perfil pertenece a un usuario con cuenta Free. Invítalo a subir al plan Pro para ver sus datos completos.
-        </Text>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ marginTop: 20, backgroundColor: '#D8A353', padding: 12, borderRadius: 8 }}
-        >
-          <Text style={{ color: '#000', fontWeight: 'bold' }}>Volver</Text>
-        </TouchableOpacity>
-      </View>
-    </BlurView>
-  </View>
-</Modal>
-
+            {profile.bookPhotos?.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Galería</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollHorizontal}>
+                  {profile.bookPhotos.slice(0, 3).map((uri, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.portfolioCard}
+                      onPress={() => {
+                        setIsGalleryImage(true);
+                        setSelectedImage(uri);
+                      }}
+                    >
+                      <Image source={{ uri }} style={styles.portfolioImage} />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+          </View>
+        ) : null}
+      </ScrollView>
+      <Modal visible={!!selectedImage} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalCloseArea}
+            activeOpacity={1}
+            onPressOut={() => setSelectedImage(null)}
+          />
+          <BlurView intensity={100} tint="dark" style={styles.modalBlur}>
+            <Animated.Image
+              source={{ uri: selectedImage }}
+              resizeMode="contain"
+              style={[
+                isGalleryImage ? styles.expandedProfileImage : styles.expandedProfileImageRounded,
+                {
+                  transform: [{ scale: scaleAnim }],
+                  opacity: opacityAnim,
+                },
+              ]}
+            />
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -639,6 +677,37 @@ expandedProfileImageRounded: {
   borderRadius: 125,
   resizeMode: 'contain',
   backgroundColor: '#000',
+},
+infoBox: {
+  backgroundColor: '#1A1A1A',
+  borderRadius: 10,
+  padding: 10,
+  marginTop: 12,
+  width: '100%',
+  alignSelf: 'center',
+},
+label: {
+  color: '#D8A353',
+  fontWeight: 'bold',
+  fontSize: 12,
+  marginBottom: 4,
+},
+text: {
+  color: '#FFFFFF',
+  fontSize: 16,
+},
+contactCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#1A1A1A',
+  padding: 10,
+  borderRadius: 10,
+  marginTop: 10,
+  alignSelf: 'center',
+  width: '100%',
+},
+cardIcon: {
+  marginRight: 12,
 },
 
 });

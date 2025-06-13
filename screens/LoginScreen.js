@@ -93,6 +93,7 @@ const handleLogin = async () => {
 
     // 💾 Guardar perfil en AsyncStorage según tipo
  await AsyncStorage.setItem('userData', JSON.stringify(firestoreProfile));
+
 if (membershipType === 'pro') {
   await AsyncStorage.setItem('userProfilePro', JSON.stringify(firestoreProfile));
 } else if (membershipType === 'elite') {
@@ -103,6 +104,38 @@ if (membershipType === 'pro') {
 
     setUserData(firestoreProfile);
     setIsLoggedIn(true); // 🧠 Esto activará RootNavigator → InitialRedirectScreen
+// 🔁 Reconstruir allProfiles incluyendo Pro y, si existe, también Elite
+try {
+  const list = [firestoreProfile];
+if (membershipType === 'pro') {
+  const eliteProfile = await getProfileFromFirestore(cleanedEmail, 'elite');
+  if (eliteProfile && eliteProfile.membershipType === 'elite') {
+    if (eliteProfile.visibleInExplorer === undefined) {
+      eliteProfile.visibleInExplorer = true;
+    }
+    list.push(eliteProfile);
+    await AsyncStorage.setItem('userProfileElite', JSON.stringify(eliteProfile));
+    await AsyncStorage.setItem('allProfilesElite', JSON.stringify([eliteProfile]));
+    console.log('✅ Perfil Elite también recuperado desde Firestore');
+  } else {
+    console.log('ℹ️ No se encontró perfil Elite adicional');
+  }
+}
+
+  const seen = new Set();
+  const deduplicated = list.filter(p => {
+    const email = p.email?.toLowerCase();
+    if (!email || seen.has(email)) return false;
+    seen.add(email);
+    return p.visibleInExplorer !== false;
+  });
+
+  await combinarPerfilesLocales(deduplicated);
+
+  console.log('✅ allProfiles reconstruido con', deduplicated.length, 'perfiles');
+} catch (error) {
+  console.warn('⚠️ No se pudo reconstruir allProfiles:', error.message);
+}
 
     console.log('🟢 Login completo. Redirección a cargo de InitialRedirectScreen.');
 
@@ -135,6 +168,21 @@ const handleRecoverPassword = async () => {
   setRecoveryEmail('');
 };
 
+const combinarPerfilesLocales = async (nuevos) => {
+  try {
+    const anterioresRaw = await AsyncStorage.getItem('allProfiles');
+    const anteriores = anterioresRaw ? JSON.parse(anterioresRaw) : [];
+
+    const combinados = [...anteriores, ...nuevos].filter((p, index, self) =>
+      index === self.findIndex((q) => q.email === p.email)
+    );
+
+    await AsyncStorage.setItem('allProfiles', JSON.stringify(combinados));
+    console.log('🧪 allProfiles actualizado con', combinados.length, 'perfiles totales');
+  } catch (err) {
+    console.error('❌ Error al combinar perfiles locales:', err);
+  }
+};
 
   return (
     <View style={styles.container}>

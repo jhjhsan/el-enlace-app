@@ -159,22 +159,15 @@ const membership = userData?.membershipType || 'free';
 )}
 
         {/* 📥 Ver mensajes */}
-        <TouchableOpacity
-          style={[styles.menuButton, (isEliteBlocked || isFreeBlocked) && styles.disabledButton]}
-          onPress={() => {
-            if (isEliteBlocked || isFreeBlocked) {
-              setShowUpgradeModal(true);
-            } else {
-              navigation.navigate('Inbox');
-            }
-          }}
-        >
-          <Text style={styles.menuButtonText}>
-            {(isEliteBlocked || isFreeBlocked)
-              ? '🔒 📥 Ver mensajes'
-              : `📥 Ver mensajes${newMessagesCount > 0 ? ` (${newMessagesCount} nuevo${newMessagesCount > 1 ? 's' : ''})` : ''}`}
-          </Text>
-        </TouchableOpacity>
+      <TouchableOpacity
+  style={styles.menuButton}
+  onPress={() => navigation.navigate('Inbox')}
+>
+  <Text style={styles.menuButtonText}>
+    📥 Ver mensajes{newMessagesCount > 0 ? ` (${newMessagesCount} nuevo${newMessagesCount > 1 ? 's' : ''})` : ''}
+  </Text>
+</TouchableOpacity>
+
 
         {/* 📊 Ver mis anuncios */}
         <TouchableOpacity
@@ -316,7 +309,17 @@ const membership = userData?.membershipType || 'free';
               style={styles.upgradeButton}
             onPress={async () => {
   try {
-    await AsyncStorage.clear(); // o multiRemove([...])
+// ⚠️ IMPORTANTE: No borrar 'allProfiles' ni 'allProfilesElite' para no romper el explorador de perfiles
+await AsyncStorage.multiRemove([
+  'userData',
+  'userProfile',
+  'userProfileElite',
+  'userProfilePro',
+  'userProfileFree',
+  'eliteProfileCompleted',
+  'isLoggedIn'
+]); // ✅ Solo borra sesión y perfil activo
+
     setUserData(null);
     setIsLoggedIn(false); // Esto automáticamente mostrará Login
     setShowLogoutModal(false); // Oculta el modal

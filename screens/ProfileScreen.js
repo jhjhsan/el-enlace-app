@@ -97,6 +97,9 @@ if (
         )}
         
         <Text style={styles.name}>{name}</Text>
+<Text style={styles.categoryLabel}>
+  Categorías: {Array.isArray(userData.category) ? userData.category.join(', ') : userData.category}
+</Text>
 
         <View style={styles.infoBox}>
           <Text style={styles.label}>Correo:</Text>
@@ -254,4 +257,10 @@ const styles = StyleSheet.create({
     marginTop: 30,
     marginBottom: -50,
   },
+  categoryLabel: {
+  color: '#D8A353',
+  fontSize: 14,
+  marginTop: 10,
+},
+
 });

@@ -13,6 +13,7 @@ import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { saveUserProfile } from '../utils/profileStorage';
+import { rebuildAllProfiles } from '../src/firebase/helpers/rebuildAllProfiles';
 
 
 export default function FilteredProfilesScreen({ route, navigation }) {
@@ -46,133 +47,92 @@ console.log('🧪 category recibido:', category);
 };
 const normalize = (str) => str?.toLowerCase().replace(/[^a-záéíóúüñ\s]/gi, '').trim();
 
-useEffect(() => {
-  const revisarPerfiles = async () => {
-    try {
-      const v1 = await AsyncStorage.getItem('allProfiles');
-      const v2 = await AsyncStorage.getItem('allProfilesElite');
-
-      const parsed1 = v1 ? JSON.parse(v1) : [];
-      const parsed2 = v2 ? JSON.parse(v2) : [];
-
-      console.log('🧪 allProfiles (Pro + Free):', parsed1.map(p => p.email));
-      console.log('🧪 allProfilesElite:', parsed2.map(p => p.email));
-      console.log('🧪 userProfileElite directo:');
-const rawElite = await AsyncStorage.getItem('userProfileElite');
-if (rawElite) {
-  const parsed = JSON.parse(rawElite);
-  console.log('🎯 Perfil elite encontrado:', parsed.email, parsed.category);
-} else {
-  console.log('❌ userProfileElite NO existe');
-}
-
-    } catch (e) {
-      console.log('❌ Error leyendo perfiles:', e);
-    }
-  };
-
-  const forzarGuardadoPerfil = async () => {
-    try {
-      const rawUser = await AsyncStorage.getItem('userData');
-      const parsedUser = rawUser ? JSON.parse(rawUser) : null;
-      if (!parsedUser?.email || !parsedUser?.membershipType) return;
-
-      const { membershipType } = parsedUser;
-
-      if (membershipType === 'pro') {
-        const proProfileRaw = await AsyncStorage.getItem('userProfilePro');
-        if (proProfileRaw) {
-          const parsed = JSON.parse(proProfileRaw);
-          await saveUserProfile(parsed, 'pro');
-        }
-      }
-
-      if (membershipType === 'elite') {
-        const eliteProfileRaw = await AsyncStorage.getItem('userProfileElite');
-        if (eliteProfileRaw) {
-          const parsed = JSON.parse(eliteProfileRaw);
-          await saveUserProfile(parsed, 'elite');
-        }
-      }
-    } catch (e) {
-      console.log('⚠️ Error al forzar guardado de perfil activo:', e);
-    }
-  };
-
 const fetchProfiles = async () => {
   try {
-    const normalizedCategory = Array.isArray(category) ? category[0] : category;
-    const categoryNormalized = normalize(normalizedCategory || '');
-    console.log('🔍 categoría normalizada:', categoryNormalized);
-
-    let storedFreePro = await AsyncStorage.getItem('allProfiles');
-    let storedElite = await AsyncStorage.getItem('allProfilesElite');
-
-    // Si no hay datos en caché, intenta recuperar los perfiles individuales
-    if (!storedFreePro) {
-      const pro = await AsyncStorage.getItem('userProfilePro');
-      const free = await AsyncStorage.getItem('userProfileFree');
-      const parsedPro = pro ? [JSON.parse(pro)] : [];
-      const parsedFree = free ? [JSON.parse(free)] : [];
-      storedFreePro = JSON.stringify([...parsedPro, ...parsedFree]);
-    }
-
-    if (!storedElite) {
-      const elite = await AsyncStorage.getItem('userProfileElite');
-      storedElite = elite ? JSON.stringify([JSON.parse(elite)]) : '[]';
-    }
+    const storedFreePro = await AsyncStorage.getItem('allProfiles');
+    const storedElite = await AsyncStorage.getItem('allProfilesElite');
 
     const parsedFreePro = storedFreePro ? JSON.parse(storedFreePro) : [];
     const parsedElite = storedElite ? JSON.parse(storedElite) : [];
 
-    const freeProList = Array.isArray(parsedFreePro) ? parsedFreePro : [parsedFreePro];
-    const eliteList = Array.isArray(parsedElite) ? parsedElite : [parsedElite];
-
-    // ✅ Combinamos y filtramos perfiles válidos
-   const seen = new Set();
-const combined = [...freeProList, ...eliteList]
-  .filter(p => p && p.email && p.visibleInExplorer !== false)
-  .filter(p => {
-    const email = p.email.toLowerCase();
-    if (seen.has(email)) return false;
-    seen.add(email);
-    return true;
-  });
-
-    console.log(`✅ Cargando ${combined.length} perfiles combinados`);
-
-    // 🎯 Aplicamos el filtro por categoría normalizada
-    const filtered = combined.filter((profile) => {
-      const categoryField = profile.category;
-      const profileCategory = Array.isArray(categoryField)
-        ? categoryField.map((cat) => normalize(cat))
-        : [normalize(categoryField || '')];
-
-      return profileCategory.some(
-        (cat) =>
-          cat.includes(categoryNormalized) ||
-          categoryNormalized.includes(cat)
-      );
+    // ✅ Mezclar ambos sin duplicados
+    const allCombined = [...parsedFreePro, ...parsedElite];
+    const seen = new Set();
+    const uniqueProfiles = allCombined.filter((p) => {
+      const email = p?.email?.toLowerCase();
+      if (!email || seen.has(email)) return false;
+      seen.add(email);
+      return p.visibleInExplorer !== false;
     });
 
-    console.log(`✅ Mostrando ${filtered.length} perfiles filtrados por categoría:`, categoryNormalized);
+    // 🔍 Filtro por categoría
+// 🔍 Filtro por categoría (maneja strings, arrays, nulos y diferencias de mayúsculas)
+const filtered = uniqueProfiles.filter((profile) => {
+  const cat = profile.category;
+
+  const categories = Array.isArray(cat)
+    ? cat.map(c => normalize(c))
+    : typeof cat === 'string'
+    ? [normalize(cat)]
+    : [];
+
+  return categories.includes(normalize(normalizedCategory));
+});
+
+    console.log(`✅ Mostrando ${filtered.length} perfiles para: ${normalize(normalizedCategory)}`);
     setProfiles(filtered);
   } catch (error) {
-    console.error('❌ Error al cargar perfiles filtrados:', error);
+    console.error('❌ Error al cargar perfiles:', error);
   }
 };
 
+useEffect(() => {
+  const init = async () => {
+    // 🔍 Mostrar si los perfiles individuales existen
+    const debugFree = await AsyncStorage.getItem('userProfileFree');
+    const debugPro = await AsyncStorage.getItem('userProfilePro');
+    const debugElite = await AsyncStorage.getItem('userProfileElite');
 
-  revisarPerfiles();
-  forzarGuardadoPerfil(); // se ejecuta en segundo plano
-fetchProfiles();        // se carga de inmediato
+    console.log('📦 PERFIL FREE:', debugFree ? '✅ Existe' : '❌ No existe');
+    console.log('📦 PERFIL PRO:', debugPro ? '✅ Existe' : '❌ No existe');
+    console.log('📦 PERFIL ELITE:', debugElite ? '✅ Existe' : '❌ No existe');
+    // 🔁 Reconstruir la lista combinada
+    await rebuildAllProfiles();
 
-}, [category, route.params?.profiles]);
+    // 🧪 Verificar si category se está conservando
+    const all = await AsyncStorage.getItem('allProfiles');
+    console.log('🧪 Verificación después de rebuildAllProfiles:', JSON.parse(all));
 
 
-  const filtered = profiles.filter(p =>
-    p.name?.toLowerCase().includes(search.toLowerCase())
+    // 🎯 Cargar los perfiles filtrados por categoría
+    await fetchProfiles();
+
+    // 🧪 DEBUG: Mostrar todo lo que hay en allProfiles
+    const debugRaw = await AsyncStorage.getItem('allProfiles');
+    const debugParsed = debugRaw ? JSON.parse(debugRaw) : [];
+    console.log('🧪 DEBUG – Perfiles guardados en allProfiles:');
+    debugParsed.forEach((p) => {
+      console.log('➡️ Perfil:', {
+        email: p.email,
+        category: p.category,
+        visibleInExplorer: p.visibleInExplorer,
+        membershipType: p.membershipType,
+      });
+    });
+  };
+
+  init();
+}, [category]);
+
+
+ const filtered = profiles.filter(p => {
+  const name = p.name || p.agencyName || '';
+  const category = Array.isArray(p.category) ? p.category.join(', ') : p.category || '';
+  return (
+    name.toLowerCase().includes(search.toLowerCase()) ||
+    category.toLowerCase().includes(search.toLowerCase())
   );
+});
 
   return (
     <View style={styles.container}>
@@ -227,7 +187,10 @@ fetchProfiles();        // se carga de inmediato
             )}
             <View style={styles.info}>
               <Text style={styles.name}>{profile.name || profile.agencyName || 'Usuario'}</Text>
-              <Text style={styles.categoryText}>{category}</Text>
+              <Text style={styles.categoryText}>
+  {Array.isArray(profile.category) ? profile.category.join(', ') : profile.category}
+</Text>
+
             </View>
             <TouchableOpacity
   style={styles.button}

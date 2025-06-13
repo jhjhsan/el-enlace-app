@@ -36,21 +36,51 @@ export default function FormularioFree({ navigation }) {
   const [zIndexSexo, setZIndexSexo] = useState(500);
   const [modalVisible, setModalVisible] = useState(false);
 const [modalMessage, setModalMessage] = useState('');
+const [category, setCategory] = useState([]);
+const [showCategoryModal, setShowCategoryModal] = useState(false);
+const [searchCategory, setSearchCategory] = useState('');
+const filteredCategories = categoriesList.filter(cat =>
+  cat.toLowerCase().includes(searchCategory.toLowerCase())
+);
 
+const toggleCategory = (cat) => {
+  setCategory(prev => 
+    prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+  );
+};
+
+const categoriesList = [
+  "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
+  "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
+  "Continuista", "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
+  "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
+  "Extra", "Fotógrafo de backstage", "Iluminador", "Ilustrador / storyboarder",
+  "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Niño actor",
+  "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
+  "Promotoras", "Servicios de catering", "Sonidista", "Stage manager",
+  "Técnico de efectos especiales", "Técnico de grúa", "Vestuarista",
+  "Ambientador", "Asistente de cámara", "Asistente de dirección",
+  "Asistente de producción", "Asistente de vestuario",
+  "Transporte de talentos", "Autos personales", "Motos o bicicletas para escenas",
+  "Grúas para filmación", "Camiones de arte para rodajes", "Casas rodantes para producción",
+  "Estudio fotográfico", "Transporte de producción", "Vans de producción",
+  "Coffee break / snacks", "Otros / No especificado"
+];
 
 useEffect(() => {
   const loadProfile = async () => {
     try {
       const json = await AsyncStorage.getItem('userProfileFree');
       if (json) {
-        const profile = JSON.parse(json);
-        setName(profile.name || '');
-        setEmail(profile.email || '');
-        setSexo(profile.sexo || '');
-        setEdad(profile.edad || '');
-        setProfilePhoto(profile.profilePhoto || null);
-        setBookPhotos(profile.bookPhotos || []);
-      }
+  const profile = JSON.parse(json);
+  setName(profile.name || '');
+  setEmail(profile.email || '');
+  setSexo(profile.sexo || '');
+  setEdad(profile.edad || '');
+  setProfilePhoto(profile.profilePhoto || null);
+  setBookPhotos(profile.bookPhotos || []);
+  setCategory(Array.isArray(profile.category) ? profile.category : []); // ✅ ← AQUÍ
+}
     } catch (error) {
       console.log('❌ Error al cargar perfil Free:', error);
     }
@@ -133,6 +163,7 @@ const handleSave = async () => {
     bookPhotos,
     sexo,
     edad,
+    category,
     visibleInExplorer: true,
     timestamp: Date.now(),
   };
@@ -141,6 +172,8 @@ const handleSave = async () => {
     const fromRegister = await AsyncStorage.getItem('fromRegister');
 
     if (fromRegister === 'true') {
+      console.log('🚨 Categorías antes de guardar:', category);
+
       await saveUserProfile(
         fullProfile,
         'free',
@@ -211,7 +244,15 @@ const handleSave = async () => {
   autoComplete="off"
   textContentType="none"
 />
-  
+  <TouchableOpacity
+  style={[styles.input, { justifyContent: 'center' }]}
+  onPress={() => setShowCategoryModal(true)}
+>
+  <Text style={{ color: category.length ? '#fff' : '#888' }}>
+    {category.length > 0 ? category.join(', ') : 'Seleccionar Categorías*'}
+  </Text>
+</TouchableOpacity>
+
           <View style={[styles.dropdownWrapper, { zIndex: zIndexSexo }]}>
             <DropDownPicker
               open={openSexo}
@@ -272,8 +313,34 @@ const handleSave = async () => {
               <Text style={styles.modalButtonText}>Aceptar</Text>
             </TouchableOpacity>
           </View>
-          </View>
+          </View>        
       )}
+      {showCategoryModal && (
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Buscar categoría..."
+        placeholderTextColor="#aaa"
+        value={searchCategory}
+        onChangeText={setSearchCategory}
+      />
+      {filteredCategories.map((cat, index) => (
+        <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
+          <Text style={[styles.modalItem, category.includes(cat) && styles.selectedCategory]}>
+            {cat}
+          </Text>
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity
+        style={styles.modalButton}
+        onPress={() => setShowCategoryModal(false)}
+      >
+        <Text style={styles.modalButtonText}>Cerrar</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)}
     </>
   );
 }
@@ -445,5 +512,26 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 14,
-  },  
+  }, 
+  searchInput: {
+  backgroundColor: '#1B1B1B',
+  borderColor: '#D8A353',
+  borderWidth: 1,
+  borderRadius: 10,
+  padding: 8,
+  marginBottom: 10,
+  color: '#fff',
+},
+modalItem: {
+  color: '#D8A353',
+  fontSize: 16,
+  paddingVertical: 8,
+  textAlign: 'center',
+},
+selectedCategory: {
+  fontWeight: 'bold',
+  color: '#D8A353',
+  textDecorationLine: 'underline',
+},
+
 });
