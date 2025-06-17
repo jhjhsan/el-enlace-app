@@ -6,7 +6,6 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
-  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackButton from '../components/BackButton';
@@ -14,14 +13,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getCastingsFromFirestore } from '../src/firebase/helpers/getCastingsFromFirestore';
 import { getPostulationsFromFirestore } from '../src/firebase/helpers/getPostulationsFromFirestore';
+import { useNavigation } from '@react-navigation/native';
 
 export default function StatsEliteScreen() {
   const [publishedCount, setPublishedCount] = useState(0);
   const [postulationsCount, setPostulationsCount] = useState(0);
   const [activeAdsCount, setActiveAdsCount] = useState(0);
-  const [castingSummary, setCastingSummary] = useState([]);
-  const [filter, setFilter] = useState('all'); // '7d', '30d', 'all'
-  const [modalVisible, setModalVisible] = useState(false);
+  const [myCastings, setMyCastings] = useState([]);
+  const [filter, setFilter] = useState('all');
+  const navigation = useNavigation();
 
   useEffect(() => {
     loadStats();
@@ -31,16 +31,14 @@ export default function StatsEliteScreen() {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('userData'));
       const email = userData?.email;
-
-     const allCastings = await getCastingsFromFirestore(email);
-     const allPostulations = await getPostulationsFromFirestore(email);
-
-      const adsData = JSON.parse(await AsyncStorage.getItem('adsData')) || [];
       const now = new Date();
 
-      const myCastings = allCastings.filter(c => c.creatorEmail === email);
+      const allCastings = await getCastingsFromFirestore(email);
+      const allPostulations = await getPostulationsFromFirestore(email);
+      const adsData = JSON.parse(await AsyncStorage.getItem('adsData')) || [];
 
-      const filteredCastings = myCastings.filter(c => {
+      const filteredCastings = allCastings.filter(c => {
+        if (c.creatorEmail !== email) return false;
         if (filter === 'all') return true;
         const castingDate = new Date(c.createdAt || c.syncedAt || 0);
         const diffDays = (now - castingDate) / (1000 * 60 * 60 * 24);
@@ -58,17 +56,7 @@ export default function StatsEliteScreen() {
       setPublishedCount(filteredCastings.length);
       setPostulationsCount(myPostulations.length);
       setActiveAdsCount(myAds.length);
-
-      const summary = filteredCastings.map(casting => {
-        const postulations = allPostulations.filter(p => p.castingId === casting.id);
-        return {
-          title: casting.title || 'Casting sin título',
-          date: casting.createdAt || 'Sin fecha',
-          total: postulations.length,
-        };
-      });
-
-      setCastingSummary(summary);
+      setMyCastings(filteredCastings);
     } catch (err) {
       console.error('Error al cargar estadísticas:', err);
     }
@@ -95,45 +83,65 @@ export default function StatsEliteScreen() {
 
           <View style={styles.bubble}>
             <Ionicons name="film-outline" size={34} color="#4DA6FF" />
-            <Text style={styles.bubbleNumber}>{publishedCount}</Text>
+            <Text style={styles.bubbleNumber}>{publishedCount.toLocaleString('es-CL')}</Text>
             <Text style={styles.bubbleLabel}>Castings publicados</Text>
           </View>
 
           <View style={styles.bubble}>
             <Ionicons name="people-outline" size={34} color="#4CAF50" />
-            <Text style={styles.bubbleNumber}>{postulationsCount}</Text>
+            <Text style={styles.bubbleNumber}>{postulationsCount.toLocaleString('es-CL')}</Text>
             <Text style={styles.bubbleLabel}>Postulaciones recibidas</Text>
           </View>
 
           <View style={styles.bubble}>
             <Ionicons name="megaphone-outline" size={34} color="#FF7043" />
-            <Text style={styles.bubbleNumber}>{activeAdsCount}</Text>
+            <Text style={styles.bubbleNumber}>{activeAdsCount.toLocaleString('es-CL')}</Text>
             <Text style={styles.bubbleLabel}>Anuncios activos</Text>
           </View>
 
+          <View style={{ height: 1, backgroundColor: '#333', width: '100%', marginVertical: 25 }} />
+
           <TouchableOpacity
-            style={styles.reportButton}
+            style={styles.viewPostulationsButton}
             onPress={() => {
-              setModalVisible(true);
-              // FUTURO: aquí se puede integrar exportación a PDF o Excel
-              // usando librerías como react-native-html-to-pdf o expo-print
+              if (myCastings.length > 0) {
+                // Scroll directo o ya visible
+              }
             }}
           >
-            <Text style={styles.reportButtonText}>📄 Ver informe de postulaciones</Text>
+            <Ionicons name="analytics-outline" size={20} color="#000" />
+            <Text style={styles.viewPostulationsText}>Ver postulaciones por casting</Text>
           </TouchableOpacity>
 
-          <Text style={styles.subtitle}>📋 Resumen por casting</Text>
-          {castingSummary.length === 0 ? (
+          {myCastings.length === 0 ? (
             <Text style={styles.emptyText}>No se encontraron castings.</Text>
           ) : (
-            castingSummary.map((item, index) => (
-              <View key={index} style={styles.castingCard}>
-                <Text style={styles.castingTitle}>🎬 {item.title}</Text>
-                <Text style={styles.castingDetail}>📅 {item.date}</Text>
-                <Text style={styles.castingDetail}>👥 Postulaciones: {item.total}</Text>
-              </View>
+            myCastings.map((casting, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.castingCard}
+                onPress={() =>
+                  navigation.navigate('ViewApplications', {
+                    castingId: casting.id,
+                    castingTitle: casting.title,
+                  })
+                }
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="videocam-outline" size={22} color="#D8A353" style={{ marginRight: 10 }} />
+                  <View>
+                    <Text style={styles.castingTitle}>{casting.title || 'Sin título'}</Text>
+                    <Text style={styles.castingDetail}>📅 {casting.createdAt || 'Sin fecha'}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
             ))
           )}
+
+          <TouchableOpacity style={styles.aiSummaryButton} disabled>
+            <Ionicons name="bulb-outline" size={20} color="#fff" />
+            <Text style={styles.aiSummaryText}>Resumen con IA (próximamente)</Text>
+          </TouchableOpacity>
 
           <Text style={styles.lastUpdated}>
             🔄 Última actualización:{' '}
@@ -146,35 +154,6 @@ export default function StatsEliteScreen() {
           </Text>
         </ScrollView>
       </LinearGradient>
-
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Informe de Postulaciones</Text>
-            <Text style={styles.modalText}>
-              Casting: "Actores para comercial{'\n'}"
-              Fecha: 10/05/2025{'\n'}
-              Postulaciones: 12
-            </Text>
-            <Text style={styles.modalText}>
-              Casting: "Modelo editorial{'\n'}"
-              Fecha: 08/05/2025{'\n'}
-              Postulaciones: 7
-            </Text>
-            <TouchableOpacity
-              onPress={() => setModalVisible(false)}
-              style={styles.closeButton}
-            >
-              <Text style={{ color: '#000000', fontWeight: 'bold' }}>Cerrar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -244,26 +223,19 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'center',
   },
-  reportButton: {
+  viewPostulationsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#D8A353',
     paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignSelf: 'center',
-    marginTop: 20,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 20,
   },
-  reportButtonText: {
-    color: '#000000',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  subtitle: {
-    fontSize: 16,
+  viewPostulationsText: {
+    color: '#000',
     fontWeight: '600',
-    color: '#D8A353',
-    alignSelf: 'flex-start',
-    marginTop: 30,
-    marginBottom: 10,
+    marginLeft: 10,
   },
   castingCard: {
     backgroundColor: '#1E1E1E',
@@ -289,45 +261,26 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 10,
   },
+  aiSummaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#444',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginTop: 20,
+    opacity: 0.5,
+  },
+  aiSummaryText: {
+    color: '#ccc',
+    marginLeft: 10,
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
   lastUpdated: {
     color: '#CCCCCC',
     fontSize: 12,
     textAlign: 'center',
     marginTop: 30,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    width: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 10,
-  },
-  modalText: {
-    color: '#333333',
-    marginBottom: 8,
-    lineHeight: 20,
-  },
-  closeButton: {
-    marginTop: 10,
-    backgroundColor: '#D8A353',
-    padding: 10,
-    borderRadius: 10,
-    alignSelf: 'center',
   },
 });

@@ -16,6 +16,9 @@ import { useUser } from '../contexts/UserContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { syncCastingToFirestore } from '../src/firebase/helpers/syncCastingToFirestore';
+import BackButton from '../components/BackButton';
+import { parseDocxToCasting } from '../src/ia/parsers/parseDocxToCasting';
+import { parseImageToCasting } from '../src/ia/parsers/parseImageToCasting'; 
 
 export default function PublishCastingScreen({ navigation }) {
   const { userData } = useUser();
@@ -84,19 +87,37 @@ export default function PublishCastingScreen({ navigation }) {
       setVideoUri(result.assets[0].uri);
     }
   };
+const autoFillFromDocument = async () => {
+  const data = await parseDocxToCasting();
+  if (data) {
+    setTitle(data.title || '');
+    setDescription(data.description || '');
+    setCategory(data.category || '');
+    setPayment(data.payment || '');
+    setAgencyName(data.agencyName || '');
+    setDeadline(data.deadline ? new Date(data.deadline) : null);
+    setModality(data.modality || '');
+    setLocation(data.location || '');
+  } else {
+    Alert.alert('Error', 'No se pudo analizar el documento con IA.');
+  }
+};
 
-  const autoFillFromDocument = () => {
-    setTitle('Casting para Comercial de Verano');
-    setDescription('Buscamos hombres y mujeres entre 20 y 30 años para comercial publicitario. Se valoran habilidades como natación, trote y expresión corporal.');
-    setCategory('Modelo / Extra');
-    setPayment('80.000 CLP');
-    setAgencyName('Agencia Ficción Plus');
-    setDeadline(new Date('2025-05-30'));
-    setModality('Presencial');
-    setLocation('Santiago, Chile');
-    setOtherDetails('');
-    Alert.alert('Formulario autocompletado', 'Revisa los campos antes de publicar.');
-  };
+const autoFillFromImage = async () => {
+  const data = await parseImageToCasting();
+  if (data) {
+    setTitle(data.title || '');
+    setDescription(data.description || '');
+    setCategory(data.category || '');
+    setPayment(data.payment || '');
+    setAgencyName(data.agencyName || '');
+    setDeadline(data.deadline ? new Date(data.deadline) : null);
+    setModality(data.modality || '');
+    setLocation(data.location || '');
+  } else {
+    Alert.alert('Error', 'No se pudo analizar la imagen con IA.');
+  }
+};
 
   const handlePublish = async () => {
     if (!userData?.hasPaid) {
@@ -199,20 +220,18 @@ try {
   return (
     
     <View style={styles.screen}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={28} color="#fff" />
-      </TouchableOpacity>
+      <BackButton color="#fff" size={28} top={40} left={20} />
+<Text style={styles.title}>Publicar Casting</Text>
 
       <ScrollView contentContainerStyle={[styles.container, { flexGrow: 1 }]}>
 
-        {/* Botones IA */}
-        <TouchableOpacity style={styles.aiButton} onPress={autoFillFromDocument}>
-          <Text style={styles.aiButtonText}>📄 Subir documento (.docx)</Text>
-        </TouchableOpacity>
+       <TouchableOpacity style={styles.aiButton} onPress={autoFillFromDocument}>
+  <Text style={styles.aiButtonText}>📄 Subir documento (.docx)</Text>
+</TouchableOpacity>
 
-        <TouchableOpacity style={styles.aiButton} onPress={autoFillFromDocument}>
-          <Text style={styles.aiButtonText}>🧠 Usar imagen para completar formulario (IA)</Text>
-        </TouchableOpacity>
+<TouchableOpacity style={styles.aiButton} onPress={autoFillFromImage}>
+  <Text style={styles.aiButtonText}>🧠 Usar imagen para completar formulario (IA)</Text>
+</TouchableOpacity>
 
         {/* Subida de imagen */}
         <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
@@ -360,18 +379,12 @@ try {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    top: 5,
     backgroundColor: '#000',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 15,
-    left: 20,
-    zIndex: 10,
-    backgroundColor: 'transparent',
+  
   },
   container: {
-    padding: 20,
+    padding: 20, 
+    top: 30,
     paddingBottom: 140,
   },
   title: {
@@ -379,7 +392,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 30,
+    top: 50,
+    marginBottom: 20,
   },
   aiButton: {
     backgroundColor: '#222',
@@ -462,4 +476,5 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: 'center',
   },  
+
 });

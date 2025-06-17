@@ -11,12 +11,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
+import { generatePostulationsPdf } from '../utils/generatePostulationsPdf.js';
+import CheckBox from '@react-native-community/checkbox';
 
 export default function PostulationHistoryEliteScreen() {
   const navigation = useNavigation();
   const [postulations, setPostulations] = useState([]);
   const [agencyEmail, setAgencyEmail] = useState(null);
-
+const [selectedPostulations, setSelectedPostulations] = useState([]);
   useEffect(() => {
     const loadData = async () => {
       const json =
@@ -25,7 +27,7 @@ export default function PostulationHistoryEliteScreen() {
       const user = json ? JSON.parse(json) : null;
       const membership = user?.membershipType || 'free';
 
-      setAgencyEmail(user.email);
+      if (user?.email) setAgencyEmail(user.email);
 
       const allCastingsRaw = await AsyncStorage.getItem('allCastings');
       const allPostulationsRaw = await AsyncStorage.getItem('allPostulations');
@@ -35,9 +37,33 @@ export default function PostulationHistoryEliteScreen() {
 
       const myCastings = allCastings.filter(c => c.authorEmail === user.email);
 
-      const relevantPostulations = allPostulations.filter(p =>
-        myCastings.some(c => c.id === p.castingId)
-      );
+   const relevantPostulations = allPostulations
+  .filter(p => myCastings.some(c => c.id === p.castingId))
+  .map(p => ({
+    ...p,
+    age: p.age || '-',
+    estatura: p.estatura || '-',
+    shirtSize: p.shirtSize || '-',
+    pantsSize: p.pantsSize || '-',
+    shoeSize: p.shoeSize || '-',
+    phone: p.phone || '-',
+    email: p.email || '-',
+    instagram: p.instagram || '-',
+    skinColor: p.skinColor || '-',
+    hairColor: p.hairColor || '-',
+    eyeColor: p.eyeColor || '-',
+    tattoos: p.tattoos || '-',
+    piercings: p.piercings || '-',
+    region: p.region || '-',
+    ethnicity: p.ethnicity || '-',
+    sexo: p.sexo || '-',
+    acting1: p.acting1 || '',
+    acting2: p.acting2 || '',
+    acting3: p.acting3 || '',
+    profilePhoto: p.profilePhoto || '',
+    profileVideo: p.profileVideo || '',
+    bookPhotos: p.bookPhotos || [],
+  }));
 
       setPostulations(relevantPostulations.reverse());
     };
@@ -48,15 +74,9 @@ export default function PostulationHistoryEliteScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* 🔙 Botón atrás */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={{
-          position: 'absolute',
-          top: 40,
-          left: 20,
-          zIndex: 1000,
-        }}
+        style={{ position: 'absolute', top: 40, left: 20, zIndex: 1000 }}
       >
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
@@ -64,74 +84,69 @@ export default function PostulationHistoryEliteScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📥 Postulaciones Recibidas</Text>
 
-       {postulations.length === 0 ? (
-  <Text style={styles.info}>Aún no has recibido postulaciones.</Text>
-) : (
-  Object.entries(
-    postulations.reduce((acc, p) => {
-      if (!acc[p.castingId]) acc[p.castingId] = [];
-      acc[p.castingId].push(p);
-      return acc;
-    }, {})
-  ).map(([castingId, group]) => (
-    <View key={castingId}>
-      <Text style={styles.castingHeader}>🎬 {group[0].castingTitle || 'Sin título'}</Text>
-      {group.map((item, index) => (
-        <View key={index} style={styles.card}>
-          <Text style={styles.label}>🧑 Postulante:</Text>
-          <Text style={styles.value}>{item.name}</Text>
-
-          <Text style={styles.label}>📧 Email:</Text>
-          <Text style={styles.value}>{item.email}</Text>
-
-          <Text style={styles.label}>📅 Fecha:</Text>
-          <Text style={styles.value}>
-            {new Date(item.timestamp).toLocaleDateString('es-CL', {
-              day: '2-digit',
-              month: 'long',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
-
-          {item.videos?.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {item.videos.map((uri, i) => (
-                <Video
-                  key={i}
-                  source={{ uri }}
-                  useNativeControls
-                  resizeMode="contain"
-                  style={styles.video}
-                />
+        {postulations.length === 0 ? (
+          <Text style={styles.info}>Aún no has recibido postulaciones.</Text>
+        ) : (
+          Object.entries(
+            postulations.reduce((acc, p) => {
+              if (!acc[p.castingId]) acc[p.castingId] = [];
+              acc[p.castingId].push(p);
+              return acc;
+            }, {})
+          ).map(([castingId, group]) => (
+            <View key={castingId}>
+              <Text style={styles.castingHeader}>🎬 {group[0].castingTitle || 'Sin título'}</Text>
+              {group.map((item, index) => (
+                <View key={index} style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+                  <CheckBox
+                    value={selectedPostulations.includes(item.email)}
+                    onValueChange={() => {
+                      setSelectedPostulations(prev =>
+                        prev.includes(item.email)
+                          ? prev.filter(id => id !== item.email)
+                          : [...prev, item.email]
+                      );
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() =>
+                      navigation.navigate('ProfileDetail', {
+                        profileData: item,
+                        returnTo: 'PostulationHistoryElite',
+                      })
+                    }
+                  >
+                    <Image
+                      source={{ uri: item.profilePhoto || 'https://via.placeholder.com/100' }}
+                      style={styles.avatar}
+                    />
+                    <View style={styles.cardInfo}>
+                      <Text style={styles.name}>{item.name}</Text>
+                      <Text style={styles.category}>
+                        {Array.isArray(item.category) ? item.category.join(', ') : item.category}
+                      </Text>
+                      <Text style={styles.location}>{item.region || 'Región'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
               ))}
-            </ScrollView>
-          )}
-
-          {item.photos?.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {item.photos.map((uri, i) => (
-                <Image key={i} source={{ uri }} style={styles.image} />
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      ))}
-    </View>
-  ))
-)}
-
+            </View>
+          ))
+        )}
       </ScrollView>
-     <View style={styles.exportButtonsContainer}>
-  <TouchableOpacity
-    style={[styles.exportButton, { backgroundColor: '#FF0000' }]} // rojo PDF
-    onPress={() => console.log('📄 Exportar PDF')}
-  >
-    <Ionicons name="document-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
-    <Text style={[styles.exportButtonText, { color: '#fff' }]}>Exportar PDF</Text>
-  </TouchableOpacity>
-</View>
+
+      <View style={styles.exportButtonsContainer}>
+        <TouchableOpacity
+          style={[styles.exportButton, { backgroundColor: '#FF0000' }]}
+          onPress={() => generatePostulationsPdf(
+            postulations.filter(p => selectedPostulations.includes(p.email))
+          )}
+        >
+          <Ionicons name="document-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
+          <Text style={[styles.exportButtonText, { color: '#fff' }]}>Exportar seleccionados</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -226,6 +241,31 @@ castingHeader: {
   marginBottom: 10,
   marginTop: 30,
   textAlign: 'left',
+},
+avatar: {
+  width: 70,
+  height: 70,
+  borderRadius: 35,
+  marginRight: 10,
+  borderColor: '#D8A353',
+  borderWidth: 1,
+},
+cardInfo: {
+  flex: 1,
+  justifyContent: 'center',
+},
+name: {
+  color: '#fff',
+  fontWeight: 'bold',
+  fontSize: 16,
+},
+category: {
+  color: '#aaa',
+  fontSize: 14,
+},
+location: {
+  color: '#888',
+  fontSize: 13,
 },
 
 });

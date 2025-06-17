@@ -1,72 +1,31 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { isSameWeek, parseISO } from 'date-fns';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../src/firebase/firebaseConfig';
 
-//
-// 🔧 SERVICIOS
-//
+// 🔄 Cuenta cuántos servicios ha publicado un usuario esta semana en Firestore
+export const getWeeklyServicePostCountFromFirestore = async (email) => {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-// Guarda una publicación de servicio con la fecha actual
-export const registerServicePost = async () => {
-  const history = await AsyncStorage.getItem('servicePostHistory');
-  const now = new Date();
-  const todayKey = now.toISOString().split('T')[0];
+    const servicesRef = collection(db, 'services');
+    const q = query(
+      servicesRef,
+      where('creatorEmail', '==', email),
+      where('createdAt', '>=', sevenDaysAgo.toISOString())
+    );
 
-  const parsed = history ? JSON.parse(history) : {};
-  parsed[todayKey] = (parsed[todayKey] || 0) + 1;
-
-  await AsyncStorage.setItem('servicePostHistory', JSON.stringify(parsed));
-};
-
-// Cuenta cuántas publicaciones tipo servicio se han hecho esta semana
-export const getWeeklyServicePostCount = async () => {
-  const history = await AsyncStorage.getItem('servicePostHistory');
-  if (!history) return 0;
-
-  const parsed = JSON.parse(history);
-  const now = new Date();
-  let count = 0;
-
-  for (const [dateStr, qty] of Object.entries(parsed)) {
-    const date = parseISO(dateStr);
-    if (isSameWeek(now, date, { weekStartsOn: 1 })) {
-      count += qty;
-    }
+    const snapshot = await getDocs(q);
+    return snapshot.size;
+  } catch (error) {
+    console.error('❌ Error al contar servicios en Firebase:', error);
+    return 0;
   }
-
-  return count;
 };
 
-//
-// 🎬 CASTINGS
-//
+// 🧠 Valida si el usuario puede publicar un nuevo servicio esta semana
+export const canPostNewService = async (email, membershipType) => {
+  if (membershipType === 'pro') return true; // Pro puede publicar ilimitadamente
 
-// Guarda una publicación de casting con la fecha actual
-export const registerCastingPost = async () => {
-  const history = await AsyncStorage.getItem('castingPostHistory');
-  const now = new Date();
-  const todayKey = now.toISOString().split('T')[0];
-
-  const parsed = history ? JSON.parse(history) : {};
-  parsed[todayKey] = (parsed[todayKey] || 0) + 1;
-
-  await AsyncStorage.setItem('castingPostHistory', JSON.stringify(parsed));
-};
-
-// Cuenta cuántas publicaciones tipo casting se han hecho esta semana
-export const getWeeklyCastingPostCount = async () => {
-  const history = await AsyncStorage.getItem('castingPostHistory');
-  if (!history) return 0;
-
-  const parsed = JSON.parse(history);
-  const now = new Date();
-  let count = 0;
-
-  for (const [dateStr, qty] of Object.entries(parsed)) {
-    const date = parseISO(dateStr);
-    if (isSameWeek(now, date, { weekStartsOn: 1 })) {
-      count += qty;
-    }
-  }
-
-  return count;
+  const count = await getWeeklyServicePostCountFromFirestore(email);
+  return count < 1; // Free solo 1 por semana
 };

@@ -11,49 +11,46 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import { Ionicons } from '@expo/vector-icons';
+import { saveServicePost } from '../src/firebase/helpers/saveServicePost';
 
 export default function Publish({ navigation }) {
   const { userData } = useUser();
-  const [membershipType, setMembershipType] = useState('free');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
 
-  useEffect(() => {
-    if (userData?.membershipType) {
-      setMembershipType(userData.membershipType);
-    }
-  }, [userData]);
-
-  const handleSubmit = () => {
-    if (!title || !description) {
+  const handleSubmit = async () => {
+    if (!title || !description || !category) {
       Alert.alert('Completa todos los campos');
       return;
     }
 
-    // Aquí luego conectarás con la base de datos para guardar la publicación
-    Alert.alert('✅ Publicación enviada correctamente');
-    setTitle('');
-    setDescription('');
-  };
+    try {
+      const newPost = {
+        id: Date.now().toString(),
+        title,
+        description,
+        category,
+        creatorEmail: userData?.email || 'anonimo',
+        date: new Date().toISOString(),
+        type: 'servicio',
+      };
 
-  if (membershipType !== 'elite') {
-    return (
-      <View style={styles.restrictedContainer}>
-        <Text style={styles.restrictedText}>❌ Esta función es solo para miembros Elite</Text>
-        <TouchableOpacity
-          style={styles.goToPlans}
-          onPress={() => navigation.navigate('Subscription')}
-        >
-          <Ionicons name="arrow-forward" size={16} color="#FFF" />
-          <Text style={styles.goToPlansText}>Ver planes disponibles</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+      await saveServicePost(newPost);
+      Alert.alert('✅ Servicio publicado correctamente');
+      setTitle('');
+      setDescription('');
+      setCategory('');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error al guardar el servicio:', error);
+      Alert.alert('Error al publicar el servicio');
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>📢 Publicar un servicio o casting</Text>
+      <Text style={styles.title}>📢 Publicar un servicio</Text>
 
       <TextInput
         style={styles.input}
@@ -71,6 +68,14 @@ export default function Publish({ navigation }) {
         numberOfLines={5}
         value={description}
         onChangeText={setDescription}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Categoría"
+        placeholderTextColor="#888"
+        value={category}
+        onChangeText={setCategory}
       />
 
       <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
@@ -137,30 +142,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginLeft: 8,
     fontSize: 14,
-  },
-  restrictedContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-  },
-  restrictedText: {
-    color: '#fff',
-    fontSize: 16,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  goToPlans: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderColor: '#D8A353',
-    borderWidth: 1,
-    padding: 10,
-    borderRadius: 8,
-  },
-  goToPlansText: {
-    color: '#FFF',
-    marginLeft: 10,
   },
 });

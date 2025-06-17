@@ -9,11 +9,9 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
-import {
-  getWeeklyServicePostCount,
-  registerServicePost,
-} from '../utils/postLimits';
-import { Ionicons } from '@expo/vector-icons'; // ✅ Importamos la flecha
+import { canPostNewService } from '../utils/postLimits';
+import { saveServicePost } from '../src/firebase/helpers/saveServicePost';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function MyServicesScreen() {
   const navigation = useNavigation();
@@ -32,10 +30,13 @@ export default function MyServicesScreen() {
     }
   };
 
-  const createFakeService = async () => {
-    const count = await getWeeklyServicePostCount();
+  const handleCreateService = async () => {
+    const userRaw = await AsyncStorage.getItem('userData');
+    const user = userRaw ? JSON.parse(userRaw) : null;
+    const membershipType = user?.membershipType || 'free';
 
-    if (count >= 1) {
+    const allowed = await canPostNewService(user?.email, membershipType);
+    if (!allowed) {
       Alert.alert(
         'Límite alcanzado',
         'Solo puedes publicar 1 servicio por semana con el plan Free. Actualiza tu membresía para publicar más.'
@@ -44,35 +45,49 @@ export default function MyServicesScreen() {
     }
 
     try {
-      const fakeService = {
+      const newService = {
         id: Date.now().toString(),
         title: '🎬 Edición de Video Profesional',
         description:
           'Ofrezco edición profesional para comerciales, videoclips, y cortos. Entrega rápida y calidad de cine.',
         category: 'Editor de video',
         type: 'servicio',
-        date: new Date().toISOString().split('T')[0],
+        creatorEmail: user?.email,
         isPromotional: false,
       };
 
-      const existing = await AsyncStorage.getItem('posts');
-      const posts = existing ? JSON.parse(existing) : [];
-
-      posts.push(fakeService);
-      await AsyncStorage.setItem('posts', JSON.stringify(posts));
-
-      await registerServicePost();
-      Alert.alert('✅ Servicio de prueba creado', 'Ya puedes verlo en Mis Servicios.');
+      await saveServicePost(newService);
+      Alert.alert('✅ Servicio creado', 'Tu servicio ha sido publicado.');
       loadServices();
     } catch (error) {
-      console.error('Error creando servicio de prueba:', error);
+      console.error('Error creando servicio:', error);
       Alert.alert('❌ Error', 'No se pudo crear el servicio.');
     }
   };
 
+  const handleDelete = async (id) => {
+    Alert.alert(
+      'Eliminar servicio',
+      '¿Estás seguro de que quieres eliminar este servicio?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            const data = await AsyncStorage.getItem('posts');
+            const posts = data ? JSON.parse(data) : [];
+            const updated = posts.filter(p => p.id !== id);
+            await AsyncStorage.setItem('posts', JSON.stringify(updated));
+            loadServices();
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.screen}>
-      {/* ✅ Flecha profesional de volver */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
         style={{
@@ -88,10 +103,6 @@ export default function MyServicesScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📋 Mis Servicios</Text>
 
-        <TouchableOpacity style={styles.testButton} onPress={createFakeService}>
-          <Text style={styles.testButtonText}>⚙️ Crear servicio de prueba</Text>
-        </TouchableOpacity>
-
         {services.length === 0 ? (
           <Text style={styles.empty}>No has publicado servicios aún.</Text>
         ) : (
@@ -99,6 +110,14 @@ export default function MyServicesScreen() {
             <View key={index} style={styles.card}>
               <Text style={styles.cardTitle}>{item.title}</Text>
               <Text style={styles.cardDescription}>{item.description}</Text>
+              <View style={styles.cardButtons}>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDelete(item.id)}
+                >
+                  <Text style={styles.buttonText}>🗑️ Eliminar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))
         )}
@@ -113,10 +132,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   container: {
-    marginTop:30,
+    marginTop: 30,
     padding: 20,
     paddingBottom: 120,
-   
   },
   title: {
     color: '#D8A353',
@@ -124,17 +142,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 20,
-  },
-  testButton: {
-    backgroundColor: '#444',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  testButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
   },
   empty: {
     color: '#999',
@@ -159,5 +166,21 @@ const styles = StyleSheet.create({
   cardDescription: {
     color: '#ccc',
     fontSize: 13,
+  },
+  cardButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+  },
+  deleteButton: {
+    backgroundColor: '#cc0000',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
 });

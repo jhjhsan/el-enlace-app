@@ -27,16 +27,21 @@ export default function PublishFocusScreen({ navigation }) {
       return;
     }
 
-    const newFocus = {
-      id: uuid.v4(),
-      title,
-      requirements,
-      dateTime,
-      duration,
-      payment,
-      paymentMethod,
-      description,
-    };
+const userRaw = await AsyncStorage.getItem('userProfile');
+const user = userRaw ? JSON.parse(userRaw) : {};
+
+const newFocus = {
+  id: uuid.v4(),
+  title,
+  requirements,
+  dateTime,
+  duration,
+  payment,
+  paymentMethod,
+  description,
+  authorEmail: user?.email || '',
+  authorName: user?.name || '',
+};
 
     try {
       const existingData = await AsyncStorage.getItem('focusList');

@@ -78,30 +78,28 @@ export default function DashboardEliteScreen({ navigation }) {
   }
 };
 
-  const loadHighlightedProfiles = async () => {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const profileKeys = keys.filter(k => k.startsWith('userProfile_') && !k.includes('Elite'));
-      const stores = await AsyncStorage.multiGet(profileKeys);
-  
-      const profiles = stores
-        .map(([, value]) => {
-          try {
-            const parsed = JSON.parse(value);
-            return parsed?.membershipType === 'pro' && parsed?.isHighlighted ? parsed : null;
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean)
-        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)) // orden por fecha descendente
-        .slice(0, 20); // limitar a 20
-  
-      setHighlightedProfiles(profiles);
-    } catch (error) {
-      console.error('Error cargando perfiles destacados:', error);
-    }
-  };  
+const loadHighlightedProfiles = async () => {
+  try {
+    const stored = await AsyncStorage.getItem('allProfiles');
+    const parsed = stored ? JSON.parse(stored) : [];
+    const now = new Date();
+
+    const highlighted = parsed
+      .filter(p =>
+        p.membershipType === 'pro' &&
+        p.isHighlighted &&
+        p.highlightedUntil &&
+        new Date(p.highlightedUntil) > now
+      )
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 20);
+
+    setHighlightedProfiles(highlighted);
+  } catch (error) {
+    console.error('Error cargando perfiles destacados desde allProfiles:', error);
+  }
+};
+
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -280,7 +278,7 @@ const crearPerfilDePrueba = async () => {
                 <View style={styles.cardInfo}>
                   <Text style={styles.name}>{profile.name}</Text>
                   <Text style={styles.category}>{Array.isArray(profile.category) ? profile.category.join(', ') : profile.category}</Text>
-                  <Text style={styles.location}>{profile.city || 'Ciudad'}, {profile.region || 'Región'}</Text>
+                  <Text style={styles.location}>{profile.region || 'Región'}</Text>
                 </View>
               </TouchableOpacity>
             ))

@@ -44,6 +44,11 @@ export default function PublishMenuScreen() {
   const isEliteBlocked = membershipType === 'elite' && !hasPaid;
   const isFreeBlocked = membershipType === 'free';
   const isProBlockedCasting = membershipType === 'pro';
+const isBlocked = (requiredPlan) => {
+  if (membershipType === 'elite' && !hasPaid) return true;
+  if (requiredPlan === 'pro' && membershipType === 'free') return true;
+  return false;
+};
 
   return (
     <View style={styles.screen}>
@@ -54,111 +59,112 @@ export default function PublishMenuScreen() {
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Opciones de publicación</Text>
+<ScrollView contentContainerStyle={styles.container}>
+  <Text style={styles.title}>Opciones de publicación</Text>
 
-        <TouchableOpacity
-  style={[styles.button, (isEliteBlocked || isFreeBlocked || isProBlockedCasting) && styles.lockedButton]}
+  <Text style={styles.sectionTitle}>📤 Publicar contenido</Text>
+{/* 🎬 Publicar casting (solo para Elite pagado, sin texto explicativo) */}
+<TouchableOpacity
+  style={[
+    styles.button,
+    (membershipType !== 'elite' || !hasPaid) && styles.lockedButton
+  ]}
   onPress={() => {
-    if (isEliteBlocked) {
+    if (membershipType !== 'elite' || !hasPaid) {
       setShowUpgradeModal(true);
-    } else if (isFreeBlocked || isProBlockedCasting) {
-      setShowProModal(true);
     } else {
       navigation.navigate('PublishCastingScreen');
     }
   }}
 >
   <Text style={styles.buttonText}>
-    {(isEliteBlocked || isFreeBlocked || isProBlockedCasting) ? '🔒 🎬 Publicar casting' : '🎬 Publicar casting'}
+    {(membershipType !== 'elite' || !hasPaid) ? '🔒 🎬 Publicar casting' : '🎬 Publicar casting'}
   </Text>
 </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
-          onPress={() => {
-            if (isEliteBlocked) {
-              setShowUpgradeModal(true);
-            } else if (isFreeBlocked) {
-              setShowProModal(true);
-            } else {
-              navigation.navigate('Publish');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 🛠️ Publicar servicio' : '🛠️ Publicar servicio'}
-          </Text>
-        </TouchableOpacity>
+  {/* 🛠️ Publicar servicio */}
+  <TouchableOpacity
+    style={[styles.button, isBlocked('pro') && styles.lockedButton]}
+    onPress={() => {
+      if (isBlocked('pro')) {
+        membershipType === 'elite' ? setShowUpgradeModal(true) : setShowProModal(true);
+      } else {
+        navigation.navigate('Publish');
+      }
+    }}
+  >
+    <Text style={styles.buttonText}>
+      {isBlocked('pro') ? '🔒 🛠️ Publicar servicio' : '🛠️ Publicar servicio'}
+    </Text>
+  </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
-          onPress={() => {
-            if (isEliteBlocked) {
-              setShowUpgradeModal(true);
-            } else if (isFreeBlocked) {
-              setShowProModal(true);
-            } else {
-              navigation.navigate('PublishFocusScreen');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 🎯 Publicar focus' : '🎯 Publicar focus'}
-          </Text>
-        </TouchableOpacity>
+  {/* 🎯 Publicar focus */}
+  <TouchableOpacity
+    style={[styles.button, isBlocked('pro') && styles.lockedButton]}
+    onPress={() => {
+      if (isBlocked('pro')) {
+        membershipType === 'elite' ? setShowUpgradeModal(true) : setShowProModal(true);
+      } else {
+        navigation.navigate('PublishFocusScreen');
+      }
+    }}
+  >
+    <Text style={styles.buttonText}>
+      {isBlocked('pro') ? '🔒 🎯 Publicar focus' : '🎯 Publicar focus'}
+    </Text>
+  </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
-          onPress={() => {
-            if (isEliteBlocked) {
-              setShowUpgradeModal(true);
-            } else if (isFreeBlocked) {
-              setShowProModal(true);
-            } else {
-              navigation.navigate('CreateAdScreen');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 📢 Publicar anuncio publicitario' : '📢 Publicar anuncio publicitario'}
-          </Text>
-        </TouchableOpacity>
+  {/* 📢 Publicar anuncio */}
+  <TouchableOpacity
+    style={[styles.button, isBlocked('pro') && styles.lockedButton]}
+    onPress={() => {
+      if (isBlocked('pro')) {
+        membershipType === 'elite' ? setShowUpgradeModal(true) : setShowProModal(true);
+      } else {
+        navigation.navigate('CreateAdScreen');
+      }
+    }}
+  >
+    <Text style={styles.buttonText}>
+      {isBlocked('pro') ? '🔒 📢 Publicar anuncio publicitario' : '📢 Publicar anuncio publicitario'}
+    </Text>
+  </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
-          onPress={() => {
-            if (isEliteBlocked) {
-              setShowUpgradeModal(true);
-            } else if (isFreeBlocked) {
-              setShowProModal(true);
-            } else {
-              navigation.navigate('PromoteProfile');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 💎 Promocionar perfil' : '💎 Promocionar perfil'}
-          </Text>
-        </TouchableOpacity>
+  <Text style={styles.sectionTitle}>📣 Promocionar</Text>
 
-        <TouchableOpacity
-          style={[styles.button, (isEliteBlocked || isFreeBlocked) && styles.lockedButton]}
-          onPress={() => {
-            if (isEliteBlocked) {
-              setShowUpgradeModal(true);
-            } else if (isFreeBlocked) {
-              setShowProModal(true);
-            } else {
-              navigation.navigate('PromotePost');
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 📣 Promocionar publicación' : '📣 Promocionar publicación'}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+  {/* 💎 Promocionar perfil */}
+  <TouchableOpacity
+    style={[styles.button, isBlocked('pro') && styles.lockedButton]}
+    onPress={() => {
+      if (isBlocked('pro')) {
+        membershipType === 'elite' ? setShowUpgradeModal(true) : setShowProModal(true);
+      } else {
+        navigation.navigate('PromoteProfile');
+      }
+    }}
+  >
+    <Text style={styles.buttonText}>
+      {isBlocked('pro') ? '🔒 💎 Destacar perfil' : '💎 Destacar perfil'}
+    </Text>
+  </TouchableOpacity>
+
+  {/* 📣 Promocionar publicación */}
+  <TouchableOpacity
+    style={[styles.button, isBlocked('pro') && styles.lockedButton]}
+    onPress={() => {
+      if (isBlocked('pro')) {
+        membershipType === 'elite' ? setShowUpgradeModal(true) : setShowProModal(true);
+      } else {
+        navigation.navigate('PromotePost');
+      }
+    }}
+  >
+    <Text style={styles.buttonText}>
+      {isBlocked('pro') ? '🔒 📣 Promocionar publicación' : '📣 Promocionar publicación'}
+    </Text>
+  </TouchableOpacity>
+</ScrollView>
+
 
       <Modal
         visible={showUpgradeModal}
@@ -294,4 +300,21 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
   },
+  sectionTitle: {
+  color: '#D8A353',
+  fontSize: 18,
+  fontWeight: 'bold',
+  marginTop: 20,
+  marginBottom: 10,
+  textAlign: 'left',
+  width: '90%',
+  alignSelf: 'center',
+},
+restrictionText: {
+  color: '#999',
+  fontSize: 12,
+  marginTop: 4,
+  textAlign: 'center',
+},
+
 });

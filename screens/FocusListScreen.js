@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons'; // ✅ flecha
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 export default function FocusListScreen() {
@@ -21,8 +21,8 @@ export default function FocusListScreen() {
         const user = JSON.parse(json);
         const membership = user?.membershipType || 'free';
         if (membership === 'free') {
-          alert('Esta función es exclusiva para usuarios Pro o Elite.');
           navigation.goBack();
+          // Ideal: usar modal elegante en vez de alert
         }
       }
     };
@@ -47,20 +47,14 @@ export default function FocusListScreen() {
 
   return (
     <View style={styles.container}>
-      {/* ✅ Flecha profesional */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={{
-          position: 'absolute',
-          top: 40,
-          left: 20,
-          zIndex: 2000,
-        }}
+        style={styles.backButton}
       >
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
-      <ScrollView contentContainerStyle={{ paddingTop: 60, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>🧠 Anuncios de Focus Group</Text>
 
         {focusList.length === 0 ? (
@@ -69,26 +63,56 @@ export default function FocusListScreen() {
           focusList.map((focus) => (
             <View key={focus.id} style={styles.card}>
               <Text style={styles.cardTitle}>{focus.title}</Text>
+
               <Text style={styles.label}>👤 Requisitos:</Text>
               <Text style={styles.text}>{focus.requirements}</Text>
+
               <Text style={styles.label}>🗓️ Fecha y hora:</Text>
               <Text style={styles.text}>{focus.dateTime}</Text>
+
               {focus.duration ? (
                 <>
                   <Text style={styles.label}>⏱️ Duración:</Text>
                   <Text style={styles.text}>{focus.duration}</Text>
                 </>
               ) : null}
+
               <Text style={styles.label}>💰 Pago:</Text>
               <Text style={styles.text}>
                 {focus.payment} ({focus.paymentMethod})
               </Text>
+
               {focus.description ? (
                 <>
                   <Text style={styles.label}>📝 Descripción:</Text>
                   <Text style={styles.text}>{focus.description}</Text>
                 </>
               ) : null}
+
+              {focus.authorName && (
+                <>
+                  <Text style={styles.label}>👤 Publicado por:</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('ProfileDetailScreen', {
+                        email: focus.authorEmail,
+                      })
+                    }
+                  >
+                    <Text style={styles.authorLink}>{focus.authorName}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* Botón "Ver más" por si quieres expandir más adelante */}
+              <TouchableOpacity
+                onPress={() => {
+                  navigation.navigate('FocusDetailScreen', { focus });
+                }}
+                style={styles.detailButton}
+              >
+                <Text style={styles.detailButtonText}>Ver más</Text>
+              </TouchableOpacity>
             </View>
           ))
         )}
@@ -102,6 +126,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     flex: 1,
     paddingHorizontal: 20,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    zIndex: 2000,
+  },
+  scrollContent: {
+    paddingTop: 60,
+    paddingBottom: 100,
   },
   title: {
     color: '#D8A353',
@@ -137,5 +171,21 @@ const styles = StyleSheet.create({
   },
   text: {
     color: '#fff',
+  },
+  authorLink: {
+    color: '#4da6ff',
+    textDecorationLine: 'underline',
+    marginBottom: 10,
+  },
+  detailButton: {
+    marginTop: 10,
+    backgroundColor: '#D8A353',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  detailButtonText: {
+    color: '#000',
+    fontWeight: 'bold',
   },
 });

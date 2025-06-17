@@ -16,7 +16,8 @@ import XLSX from 'xlsx';
 import RNHTMLtoPDF from 'react-native-html-to-pdf';
 import * as Sharing from 'expo-sharing';
 
-export default function PostulationHistoryEliteScreen() {
+export default function PostulationHistoryScreen() {
+
   const navigation = useNavigation();
   const [postulations, setPostulations] = useState([]);
   const [agencyEmail, setAgencyEmail] = useState(null);
@@ -26,12 +27,6 @@ export default function PostulationHistoryEliteScreen() {
       const json = await AsyncStorage.getItem('userProfile');
       const user = json ? JSON.parse(json) : null;
       const membership = user?.membershipType || 'free';
-
-      if (membership !== 'elite') {
-        alert('Esta sección es exclusiva para cuentas Elite.');
-        navigation.goBack();
-        return;
-      }
 
       setAgencyEmail(user.email);
 

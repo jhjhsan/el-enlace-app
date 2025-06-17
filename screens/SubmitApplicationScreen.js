@@ -12,6 +12,7 @@ import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { checkAndIncrementPostulation } from '../utils/postulationLimiter';
 import { Ionicons } from '@expo/vector-icons';
+import { syncApplicationToFirestore } from '../src/firebase/helpers/syncApplicationToFirestore';
 
 export default function SubmitApplicationScreen({ route, navigation }) {
   const { castingId, castingTitle } = route.params || {};
@@ -129,6 +130,7 @@ export default function SubmitApplicationScreen({ route, navigation }) {
 
       parsed.push(applicationData);
       await AsyncStorage.setItem('applications', JSON.stringify(parsed));
+      await syncApplicationToFirestore(applicationData);
 
       Alert.alert('✅ Postulación enviada', 'Tu postulación fue guardada con éxito.');
       navigation.goBack();
@@ -142,7 +144,7 @@ export default function SubmitApplicationScreen({ route, navigation }) {
     <View style={styles.screen}>
       {/* Flecha de volver */}
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={24} color="#fff" />
+        <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.container}>
@@ -190,11 +192,12 @@ export default function SubmitApplicationScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    top: 20,
     backgroundColor: '#000',
   },
   backButton: {
     position: 'absolute',
-    top: 15,
+    top: 20,
     left: 20,
     zIndex: 10,
     backgroundColor: 'transparent',
@@ -206,9 +209,10 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#D8A353',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
+    top: 0,
     marginBottom: 5,
   },
   castingTitle: {

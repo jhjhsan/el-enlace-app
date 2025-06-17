@@ -20,7 +20,6 @@ export default function MenuScreen({ navigation }) {
   const [newNotificationsCount, setNewNotificationsCount] = useState(0);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
   const hasPaid = String(userData?.hasPaid) === 'true';
 const [loadingUserData, setLoadingUserData] = useState(true);
 
@@ -62,6 +61,8 @@ const membership = userData?.membershipType || 'free';
     }, [])
   );
 
+console.log('🔎 membership:', membership);
+console.log('🔎 hasPaid:', hasPaid);
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -73,22 +74,38 @@ const membership = userData?.membershipType || 'free';
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Menú de usuario</Text>
-
-        {/* 📋 Mis castings */}
-        <TouchableOpacity
-  style={[styles.menuButton, (isEliteBlocked || isFreeBlocked || isProBlocked) && styles.disabledButton]}
+{/* 🔍 Explorar servicios */}
+<TouchableOpacity
+  style={[styles.menuButton, isFreeBlocked && styles.disabledButton]}
   onPress={() => {
-    if (isEliteBlocked || isFreeBlocked || isProBlocked) {
+    if (isFreeBlocked) {
       setShowUpgradeModal(true);
     } else {
-      navigation.navigate('MyCastings');
+      navigation.navigate('ExplorePosts');
     }
   }}
 >
   <Text style={styles.menuButtonText}>
-    {(isEliteBlocked || isFreeBlocked || isProBlocked) ? '🔒 📋 Mis castings' : '📋 Mis castings'}
+    {isFreeBlocked ? '🔒 🔍 Explorar servicios' : '🔍 Explorar servicios'}
   </Text>
 </TouchableOpacity>
+
+      {membership === 'elite' && (
+  <TouchableOpacity
+    style={[styles.menuButton, isEliteBlocked && styles.disabledButton]}
+    onPress={() => {
+      if (isEliteBlocked) {
+        setShowUpgradeModal(true);
+      } else {
+        navigation.navigate('MyCastings');
+      }
+    }}
+  >
+    <Text style={styles.menuButtonText}>
+      {isEliteBlocked ? '🔒 📋 Mis castings' : '📋 Mis castings'}
+    </Text>
+  </TouchableOpacity>
+)}
 
         {/* 📋 Mis servicios */}
         <TouchableOpacity
@@ -121,6 +138,20 @@ const membership = userData?.membershipType || 'free';
             {(isEliteBlocked || isFreeBlocked) ? '🔒 📢 Ver publicaciones guardadas' : '📢 Ver publicaciones guardadas'}
           </Text>
         </TouchableOpacity>
+       <TouchableOpacity
+  style={[styles.menuButton, (isEliteBlocked || isFreeBlocked) && styles.disabledButton]}
+  onPress={() => {
+    if (isEliteBlocked || isFreeBlocked) {
+      setShowUpgradeModal(true);
+    } else {
+      navigation.navigate('MyFocusScreen');
+    }
+  }}
+>
+  <Text style={styles.menuButtonText}>
+    {(isEliteBlocked || isFreeBlocked) ? '🔒 🧠 Mis Focus publicados' : '🧠 Mis Focus publicados'}
+  </Text>
+</TouchableOpacity>
 
         {/* 🎯 Publicar Focus */}
         <TouchableOpacity
@@ -133,17 +164,20 @@ const membership = userData?.membershipType || 'free';
             }
           }}
         >
-          <Text style={styles.menuButtonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 🧠 Ver Focus Group' : '🧠 Ver Focus Group'}
-          </Text>
+       <Text style={styles.menuButtonText}>
+  {(isEliteBlocked || isFreeBlocked) ? '🔒 🗣️ Ver Focus Group' : '🗣️ Ver Focus Group'}
+</Text>
         </TouchableOpacity>
 
-       {/* 📦 Historial de postulaciones (solo talentos Pro) */}
+{/* 📦 Historial de postulaciones (solo para talentos Free y Pro) */}
 {membership !== 'elite' && (
   <TouchableOpacity
-    style={[styles.menuButton, (isEliteBlocked || isFreeBlocked) && styles.disabledButton]}
+    style={[
+      styles.menuButton,
+      membership === 'free' && styles.disabledButton
+    ]}
     onPress={() => {
-      if (isEliteBlocked || isFreeBlocked) {
+      if (membership === 'free') {
         setShowUpgradeModal(true);
       } else {
         navigation.navigate('PostulationHistory');
@@ -151,7 +185,7 @@ const membership = userData?.membershipType || 'free';
     }}
   >
     <Text style={styles.menuButtonText}>
-      {(isEliteBlocked || isFreeBlocked)
+      {membership === 'free'
         ? '🔒 📦 Historial de postulaciones'
         : '📦 Historial de postulaciones'}
     </Text>
@@ -209,41 +243,6 @@ const membership = userData?.membershipType || 'free';
           <Text style={styles.menuButtonText}>🆘 Ayuda y soporte</Text>
         </TouchableOpacity>
 
-        {/* 📢 Contactar al soporte */}
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() =>
-            Linking.openURL(
-              'mailto:soporte@elenlace.app?subject=Necesito%20ayuda%20con%20la%20app&body=Hola%20equipo%20de%20El%20Enlace,%20tengo%20una%20consulta...'
-            )
-          }
-        >
-          <Text style={styles.menuButtonText}>📢 Contactar al soporte</Text>
-        </TouchableOpacity>
-{/* 🛡️ Política de privacidad */}
-<TouchableOpacity
-  style={styles.menuButton}
-  onPress={() => navigation.navigate('PrivacyPolicy')}
->
-  <Text style={styles.menuButtonText}>🛡️ Política de privacidad</Text>
-</TouchableOpacity>
-
-{/* 📄 Términos y condiciones */}
-<TouchableOpacity
-  style={styles.menuButton}
-  onPress={() => navigation.navigate('TermsAndConditions')}
->
-  <Text style={styles.menuButtonText}>📄 Términos y condiciones</Text>
-</TouchableOpacity>
-
-{/* 📌 Aviso legal */}
-<TouchableOpacity
-  style={styles.menuButton}
-  onPress={() => navigation.navigate('LegalNotice')}
->
-  <Text style={styles.menuButtonText}>📌 Aviso legal</Text>
-</TouchableOpacity>
-
         {/* Cerrar sesión */}
         <TouchableOpacity
           style={[styles.menuButton, { backgroundColor: '#400000', marginTop: 40 }]}
@@ -251,15 +250,7 @@ const membership = userData?.membershipType || 'free';
         >
           <Text style={[styles.menuButtonText, { color: '#FFDADA' }]}>🚪 Cerrar sesión</Text>
         </TouchableOpacity>
-
-        {/* Reiniciar app (desarrollo) */}
-        <TouchableOpacity
-          style={[styles.menuButton, { backgroundColor: '#222', marginTop: 10 }]}
-          onPress={() => setShowResetModal(true)}
-        >
-          <Text style={styles.menuButtonText}>🧹 Reiniciar app (desarrollo)</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          </ScrollView>
 
       {/* Modal de membresía */}
       <Modal
@@ -270,13 +261,12 @@ const membership = userData?.membershipType || 'free';
       >
         <View style={styles.modalOverlay}>
           <View style={styles.upgradeModal}>
-          <Text style={styles.upgradeTitle}>🔒 Acceso restringido</Text>
-          <Text style={styles.upgradeText}>
-
-          {membership === 'elite' && !hasPaid
-  ? "Tu cuenta Elite aún no está activa. Completa el pago para desbloquear las funciones exclusivas para agencias."
-  : "Función exclusiva para usuarios con plan Pro. Mejora tu cuenta para acceder a herramientas profesionales."}
-</Text>
+            <Text style={styles.upgradeTitle}>🔒 Acceso restringido</Text>
+            <Text style={styles.upgradeText}>
+              {membership === 'free'
+                ? 'Esta función está disponible solo para cuentas Pro. Mejora tu cuenta para acceder a herramientas profesionales.'
+                : 'Función no disponible para tu cuenta actual.'}
+            </Text>
 
             <TouchableOpacity
               style={styles.upgradeButton}
@@ -307,26 +297,24 @@ const membership = userData?.membershipType || 'free';
             <Text style={styles.upgradeText}>Tu sesión se cerrará, pero los datos permanecerán guardados en el dispositivo.</Text>
             <TouchableOpacity
               style={styles.upgradeButton}
-            onPress={async () => {
-  try {
-// ⚠️ IMPORTANTE: No borrar 'allProfiles' ni 'allProfilesElite' para no romper el explorador de perfiles
-await AsyncStorage.multiRemove([
-  'userData',
-  'userProfile',
-  'userProfileElite',
-  'userProfilePro',
-  'userProfileFree',
-  'eliteProfileCompleted',
-  'isLoggedIn'
-]); // ✅ Solo borra sesión y perfil activo
-
-    setUserData(null);
-    setIsLoggedIn(false); // Esto automáticamente mostrará Login
-    setShowLogoutModal(false); // Oculta el modal
-  } catch (error) {
-    console.error('❌ Error al cerrar sesión:', error);
-  }
-}}
+              onPress={async () => {
+                try {
+                  await AsyncStorage.multiRemove([
+                    'userData',
+                    'userProfile',
+                    'userProfileElite',
+                    'userProfilePro',
+                    'userProfileFree',
+                    'eliteProfileCompleted',
+                    'isLoggedIn',
+                  ]);
+                  setUserData(null);
+                  setIsLoggedIn(false);
+                  setShowLogoutModal(false);
+                } catch (error) {
+                  console.error('❌ Error al cerrar sesión:', error);
+                }
+              }}
             >
               <Text style={styles.upgradeButtonText}>✅ Cerrar sesión</Text>
             </TouchableOpacity>
@@ -336,58 +324,6 @@ await AsyncStorage.multiRemove([
           </View>
         </View>
       </Modal>
-
-      {/* Modal de reinicio de app */}
-      <Modal
-        visible={showResetModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowResetModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.upgradeModal}>
-            <Text style={styles.upgradeTitle}>🧹 Reiniciar Aplicación</Text>
-            <Text style={styles.upgradeText}>
-              ¿Estás seguro de que deseas borrar todos los datos locales? Esta acción no se puede deshacer.
-            </Text>
-            <TouchableOpacity
-              style={styles.upgradeButton}
-              onPress={async () => {
-                await AsyncStorage.multiRemove([
-  'userData',
-  'userProfile',
-  'userProfileElite',
-  'userProfilePro',
-  'userProfileFree',
-  'eliteProfileCompleted',
-  'isLoggedIn',
-]);
-                setUserData(null);
-                setIsLoggedIn(false);
-                setShowResetModal(false);
-                navigation.reset({
-  index: 0,
-  routes: [{ name: 'InitialRedirect' }],
-});
-
-              }}
-            >
-              <Text style={styles.upgradeButtonText}>✅ Sí, borrar todo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowResetModal(false)}>
-              <Text style={{ color: '#aaa', marginTop: 10 }}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-  style={[styles.menuButton, { backgroundColor: '#222', marginTop: 10 }]}
-  onPress={() => navigation.navigate('DebugUserData')}
->
-  <Text style={styles.menuButtonText}>🔍 Debug User Data</Text>
-</TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-     
     </View>
   );
 }

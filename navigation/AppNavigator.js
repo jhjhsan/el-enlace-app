@@ -68,6 +68,9 @@ import EmailNotVerifiedScreen from '../screens/EmailNotVerifiedScreen';
 import ChatWithIA from '../screens/ChatWithIA';
 import IASuggestionsHistoryScreen from '../screens/IASuggestionsHistoryScreen';
 import AssistantIAProfileScreen from '../screens/AssistantIAProfileScreen';
+import FocusDetailScreen from '../screens/FocusDetailScreen';
+import MyFocusScreen from '../screens/MyFocusScreen';
+import PromoteServiceScreen from '../screens/PromoteServiceScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -154,7 +157,10 @@ export default function AppNavigator() {
       <Stack.Screen name="ChatWithIA" component={ChatWithIA} />
       <Stack.Screen name="IASuggestionsHistory" component={IASuggestionsHistoryScreen} />
       <Stack.Screen name="AssistantIAProfile" component={AssistantIAProfileScreen} />
-
+      <Stack.Screen name="FocusDetailScreen" component={FocusDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="MyFocusScreen" component={MyFocusScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PromoteServiceScreen" component={PromoteServiceScreen} options={{ headerShown: false }} />
+      
     </Stack.Navigator>
   );
 }

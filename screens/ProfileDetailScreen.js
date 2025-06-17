@@ -377,7 +377,8 @@ console.log('📦 Categorías cargadas:', profile.category);
   )}
 </View>
 
-            ) : (userData?.membershipType === 'free' && profile?.email === userData?.email) ? (
+            ) : isFree ? (
+
           <View style={styles.inner}>
             <Text style={[styles.title, { marginTop: 20 }]}>Mi Perfil Free 🎬</Text>
 
@@ -420,7 +421,7 @@ console.log('📦 Categorías cargadas:', profile.category);
 
 {/* 🔒 Botón de mensajería interna */}
 <TouchableOpacity
-  style={[styles.contactCard, { backgroundColor: '#D8A353', marginTop: 16 }]}
+  style={[styles.contactCard, { backgroundColor: '#D8A353', marginTop: 12 }]}
   onPress={() =>
     navigation.navigate('Messages', {
       recipient: profile.name,

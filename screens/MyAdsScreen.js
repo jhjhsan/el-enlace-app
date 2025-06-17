@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getAdsFromFirestore } from '../src/firebase/helpers/getAdsFromFirestore';
 import { syncAdToFirestore } from '../src/firebase/helpers/syncAdToFirestore';
+import { deleteAdFromFirestore } from '../src/firebase/helpers/deleteAdFromFirestore';
 
 export default function MyAdsScreen() {
   const { userData } = useUser();
@@ -61,17 +62,23 @@ export default function MyAdsScreen() {
     }
   };
 
-  const handleDeleteAd = async (index) => {
-    try {
-      const adToDelete = myAds[index];
-      const updatedAds = myAds.filter((_, i) => i !== index);
-      setMyAds(updatedAds);
-      await AsyncStorage.setItem('adsList', JSON.stringify(updatedAds));
-      Alert.alert('🗑️ Anuncio eliminado');
-    } catch (error) {
-      console.error('Error al eliminar anuncio:', error);
-    }
-  };
+const handleDeleteAd = async (index) => {
+  try {
+    const adToDelete = myAds[index];
+
+    // 🔥 Eliminar de Firestore
+    await deleteAdFromFirestore(adToDelete.id);
+
+    // 🧹 Eliminar del estado y AsyncStorage
+    const updatedAds = myAds.filter((_, i) => i !== index);
+    setMyAds(updatedAds);
+    await AsyncStorage.setItem('adsList', JSON.stringify(updatedAds));
+
+    Alert.alert('🗑️ Anuncio eliminado');
+  } catch (error) {
+    console.error('Error al eliminar anuncio:', error);
+  }
+};
 
   return (
     <ScrollView style={styles.container}>
@@ -93,14 +100,12 @@ export default function MyAdsScreen() {
               </Text>
             )}
 
-            {ad.enEspera && !ad.aprobado && (
-              <TouchableOpacity
-                style={{ marginTop: 6, alignSelf: 'flex-start' }}
-                onPress={() => handleDeleteAd(index)}
-              >
-                <Text style={{ color: '#ff4d4d', fontSize: 13 }}>🗑️ Eliminar anuncio</Text>
-              </TouchableOpacity>
-            )}
+        <TouchableOpacity
+  style={{ marginTop: 6, alignSelf: 'flex-start' }}
+  onPress={() => handleDeleteAd(index)}
+>
+  <Text style={{ color: '#ff4d4d', fontSize: 13 }}>🗑️ Eliminar anuncio</Text>
+</TouchableOpacity>
 
             {ad.link && ad.link.trim() !== '' && (
               <Text style={styles.link}>🔗 {ad.link}</Text>

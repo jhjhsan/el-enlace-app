@@ -79,7 +79,7 @@ useEffect(() => {
 
   return (
     <View style={styles.container}>
-      <BackButton color="#fff" />
+      <BackButton color="#fff" size={28} top={40} left={20} />
       <Text style={styles.header}>🎯 Publicidad y promociones</Text>
 {ads.length < 20 && ads.some(ad => ad.enEspera) && (
   <Text style={{ color: '#888', fontSize: 12, marginBottom: 10, textAlign: 'center' }}>
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    paddingTop: 20,
+    paddingTop: 40,
     alignItems: 'center',
   },
   header: {

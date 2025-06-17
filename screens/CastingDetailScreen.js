@@ -114,11 +114,11 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
-    marginTop:30,
+   
   },
   backButton: {
     position: 'absolute',
-    top: -5,
+    top: 40,
     left: 20,
     zIndex: 10,
     backgroundColor: 'transparent',
@@ -126,19 +126,21 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     padding: 20,
+    top: 30,
     paddingBottom: 120,
   },
   title: {
     fontSize: 22,
     color: '#D8A353',
     fontWeight: 'bold',
+    top: 15,
     marginBottom: 20,
     textAlign: 'center',
   },
   description: {
     fontSize: 14,
     color: '#ccc',
-    marginBottom: 15,
+    marginBottom: 25,
     textAlign: 'justify',
   },
   image: {

@@ -37,6 +37,7 @@ export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState('');
@@ -130,6 +131,11 @@ export default function RegisterScreen({ navigation }) {
     setIsLoading(true);
 
     try {
+      if (!acceptedPolicies) {
+  Alert.alert('Debes aceptar las políticas', 'Para continuar, debes aceptar los términos y condiciones y la política de privacidad.');
+  setIsLoading(false);
+  return;
+}
       if (!membershipType) {
         Alert.alert('Error', 'Selecciona un tipo de cuenta.');
         setIsLoading(false);
@@ -203,6 +209,7 @@ if (membershipType === 'elite') {
       users.push(newUser);
       await AsyncStorage.setItem('allUsers', JSON.stringify(users));
       await AsyncStorage.setItem('userData', JSON.stringify(newUser));
+      await AsyncStorage.setItem('acceptedPolicies', 'true');
       setUserData(newUser);
       // Si es Pro o Elite, agregar 30 días de prueba gratuita
 if (membershipType === 'pro' || membershipType === 'elite') {
@@ -271,6 +278,17 @@ setTimeout(() => {
           <Ionicons name={showConfirmPassword ? 'eye-off' : 'eye'} size={20} color="#ccc" />
         </TouchableOpacity>
       </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 10 }}>
+  <TouchableOpacity onPress={() => setAcceptedPolicies(!acceptedPolicies)} style={styles.checkbox}>
+    {acceptedPolicies && <View style={styles.checkboxChecked} />}
+  </TouchableOpacity>
+  <Text style={styles.checkboxText}>
+    Acepto los{' '}
+    <Text style={styles.linkText} onPress={() => navigation.navigate('TermsAndConditionsScreen')}>Términos</Text>{' '}
+    y la{' '}
+    <Text style={styles.linkText} onPress={() => navigation.navigate('PrivacyPolicyScreen')}>Política de Privacidad</Text>.
+  </Text>
+</View>
 
       <TouchableOpacity style={[styles.button, isLoading && { opacity: 0.6 }]} onPress={handleRegister} disabled={isLoading}>
         {isLoading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>REGISTRARSE</Text>}
@@ -356,4 +374,31 @@ const styles = StyleSheet.create({
   modalItem: { color: '#ccc', fontSize: 14, marginVertical: 2 },
   modalClose: { alignSelf: 'flex-end', marginTop: 5 },
   modalCloseText: { color: '#D8A353', fontSize: 14, fontWeight: 'bold' },
+  checkbox: {
+  width: 20,
+  height: 20,
+  borderWidth: 2,
+  borderColor: '#D8A353',
+  borderRadius: 4,
+  marginRight: 10,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+checkboxChecked: {
+  width: 12,
+  height: 12,
+  backgroundColor: '#D8A353',
+  borderRadius: 2,
+},
+checkboxText: {
+  color: '#ccc',
+  flex: 1,
+  fontSize: 13,
+  lineHeight: 18,
+},
+linkText: {
+  color: '#4DA6FF',
+  textDecorationLine: 'underline',
+},
+
 });
