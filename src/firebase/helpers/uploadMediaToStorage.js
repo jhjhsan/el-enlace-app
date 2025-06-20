@@ -3,9 +3,9 @@ import { storage } from '../firebaseConfig'; // ✅ Corrección
 import * as FileSystem from 'expo-file-system'; // ← NECESARIO PARA APKS
 
 /**
- * 📤 Sube un archivo de imagen o video a Firebase Storage
- * @param {string} localUri - URI local del archivo (debe empezar con file://)
- * @param {string} path - Ruta en Firebase Storage (ej: 'profile_photos/usuario.jpg')
+ * 📤 Sube un archivo de imagen o video a Firebase Storage (funciona en APK real)
+ * @param {string} localUri - URI local del archivo (debe comenzar con file://)
+ * @param {string} path - Ruta de destino en Firebase Storage
  * @returns {Promise<string|null>} - URL pública o null si falla
  */
 export const uploadMediaToStorage = async (localUri, path) => {
@@ -17,12 +17,17 @@ export const uploadMediaToStorage = async (localUri, path) => {
       return null;
     }
 
-    // ✅ Convierte el archivo local a blob (válido en APK)
-    const fileInfo = await FileSystem.readAsStringAsync(localUri, {
-      encoding: FileSystem.EncodingType.Base64,
+    // ✅ Convertir URI a blob con XMLHttpRequest (funciona en APK real)
+    const blob = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = () => resolve(xhr.response);
+      xhr.onerror = () => reject(new TypeError('❌ Error al convertir URI a blob'));
+      xhr.responseType = 'blob';
+      xhr.open('GET', localUri, true);
+      xhr.send();
     });
-    const blob = await fetch(`data:image/jpeg;base64,${fileInfo}`).then(res => res.blob());
 
+    const storage = getStorage();
     const storageRef = ref(storage, path);
 
     await uploadBytes(storageRef, blob);
