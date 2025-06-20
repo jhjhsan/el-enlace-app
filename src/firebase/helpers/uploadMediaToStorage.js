@@ -1,5 +1,5 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firebase/helpers/firebaseConfig'; // ✅ usa tu instancia correcta
+import { storage } from '../firebaseConfig'; // ✅ Corrección
 import * as FileSystem from 'expo-file-system'; // ← NECESARIO PARA APKS
 
 /**
