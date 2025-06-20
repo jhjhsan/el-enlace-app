@@ -1,19 +1,30 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 export const backupAllProfiles = async () => {
   try {
-    const allProfilesRaw = await AsyncStorage.getItem('allProfiles');
-    const allProfilesEliteRaw = await AsyncStorage.getItem('allProfilesElite');
+    // 🔄 Obtener perfiles Pro
+    const proSnapshot = await getDocs(collection(db, 'profilesPro'));
+    const allProfiles = proSnapshot.docs.map((doc) => ({
+      ...doc.data(),
+      email: doc.id.replace(/_/g, '@'),
+      membershipType: 'pro',
+    }));
 
-    const allProfiles = allProfilesRaw ? JSON.parse(allProfilesRaw) : [];
-    const allProfilesElite = allProfilesEliteRaw ? JSON.parse(allProfilesEliteRaw) : [];
+    // 🔄 Obtener perfiles Elite
+    const eliteSnapshot = await getDocs(collection(db, 'profiles'));
+    const allProfilesElite = eliteSnapshot.docs.map((doc) => ({
+      ...doc.data(),
+      email: doc.id.replace(/_/g, '@'),
+      membershipType: 'elite',
+    }));
 
-    await setDoc(doc(db, 'backups', 'allProfiles'), { list: allProfiles });
-    await setDoc(doc(db, 'backups', 'allProfilesElite'), { list: allProfilesElite });
+    // 💾 Guardar en AsyncStorage
+    await AsyncStorage.setItem('allProfiles', JSON.stringify(allProfiles));
+    await AsyncStorage.setItem('allProfilesElite', JSON.stringify(allProfilesElite));
 
-    console.log('✅ Perfiles respaldados correctamente en Firestore');
+    console.log('✅ Perfiles descargados y guardados localmente');
   } catch (error) {
     console.error('❌ Error al respaldar perfiles:', error);
   }

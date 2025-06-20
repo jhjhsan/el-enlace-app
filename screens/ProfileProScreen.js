@@ -7,31 +7,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ActivityIndicator } from 'react-native';
 import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { getApp } from "firebase/app";
 import { Alert } from 'react-native';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../src/firebase/firebaseConfig';
-import { saveSuggestionToFirestore } from '../src/firebase/helpers/saveSuggestionToFirestore';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { getProfileSuggestions } from '../src/firebase/helpers/getProfileSuggestions';
 import { saveSubscriptionHistory } from '../src/firebase/helpers/saveSubscriptionHistory';
 
 export default function ProfileProScreen({ navigation }) {
   const { userData, setUserData } = useUser();
   const [selectedImage, setSelectedImage] = useState(null);
-  const [loadingIA, setLoadingIA] = useState(false);
-  const [iaModalVisible, setIaModalVisible] = useState(false);
-  const [iaSuggestions, setIaSuggestions] = useState([]);
-  const [iaLastTimestamp, setIaLastTimestamp] = useState(null);
-  const [autoSuggestion, setAutoSuggestion] = useState(null);
-  const [showAutoModal, setShowAutoModal] = useState(false);
-  
-useEffect(() => {
-  if (userData?.membershipType === 'pro') {
-    checkAndGenerateAutoSuggestion();
-  }
-}, [userData]);
 
 useEffect(() => {
   const loadProfilePro = async () => {
@@ -53,24 +37,6 @@ useEffect(() => {
           status: 'active',
         });
 
-        // Verificación IA:
-        const docRef = doc(db, "suggestionsHistory", parsed.email.toLowerCase());
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const lastIA = docSnap.data().timestamp;
-          setIaLastTimestamp(lastIA);
-          const seisMeses = 1000 * 60 * 60 * 24 * 30 * 6;
-          const tiempoPasado = Date.now() - lastIA;
-
-          if (tiempoPasado > seisMeses) {
-            const suggestions = docSnap.data().suggestions || [];
-            setIaSuggestions(suggestions);
-            setIaModalVisible(true);
-          } else {
-            setIaSuggestions(docSnap.data().suggestions || []);
-          }
-        }
       } else if (parsed) {
         console.warn('⚠️ Perfil cargado no es Pro. Ignorado.');
       }
@@ -109,73 +75,6 @@ useEffect(() => {
       Linking.openURL(`https://wa.me/${phoneNumber}`);
     }
   };
-const checkAndGenerateAutoSuggestion = async () => {
-  const email = userData?.email?.toLowerCase();
-  if (!email || !userData) return;
-
-  const shownTodayKey = `iaSuggestionShown_${email}`;
-  const alreadyShown = await AsyncStorage.getItem(shownTodayKey);
-  if (alreadyShown === 'true') return;
-
-  const profile = {
-    name: userData.name,
-    membershipType: userData.membershipType,
-    category: userData.category,
-    description: userData.description,
-    profilePhoto: userData.profilePhoto || null,
-    profileVideo: userData.profileVideo || null,
-  };
-
-  const { suggestions, error } = await getProfileSuggestions(profile, userData);
-
-  if (!error && suggestions?.length > 0) {
-    setAutoSuggestion(suggestions[0]);
-    setShowAutoModal(true);
-    await AsyncStorage.setItem(shownTodayKey, 'true');
-  }
-};
-<TouchableOpacity
-  style={styles.iaFloatingButton}
-  onPress={async () => {
-    try {
-      setLoadingIA(true);
-      const profile = {
-        name: userData.name,
-        membershipType: userData.membershipType,
-        category: userData.category,
-        description: userData.description,
-        profilePhoto: userData.profilePhoto || null,
-        profileVideo: userData.profileVideo || null,
-      };
-
-      const { suggestions, error } = await getProfileSuggestions(profile, userData);
-
-      if (error) {
-        Alert.alert("Error", error);
-      } else {
-        setIaSuggestions(suggestions);
-        setIaModalVisible(true);
-      }
-    } catch (err) {
-      console.log("Error IA:", err);
-      Alert.alert("Error", "No se pudieron obtener sugerencias en este momento.");
-    } finally {
-      setLoadingIA(false);
-    }
-  }}
->
-  <Ionicons name="sparkles-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
-  <Text style={{ color: '#fff', fontWeight: 'bold' }}>IA</Text>
-</TouchableOpacity>
-
-{loadingIA && (
-  <Modal transparent animationType="fade" visible={true}>
-    <View style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color="#fff" />
-      <Text style={{ color: 'white', marginTop: 10 }}>Generando sugerencias IA...</Text>
-    </View>
-  </Modal>
-)}
 
 return (
   <View style={styles.screen}>
@@ -281,7 +180,7 @@ return (
   <Video
     source={{ uri: userData.profileVideo }}
     useNativeControls
-    resizeMode="contain"
+    resizeMode="contain"quiero borrar el boton de ia en 
     style={styles.video}
     onError={(e) => {
       console.log('❌ Error al cargar el video:', e);
@@ -289,114 +188,7 @@ return (
     }}
   />
 )}
-{iaSuggestions.length > 0 && (
-  <View style={{ backgroundColor: '#1B1B1B', padding: 12, marginBottom: 20, borderRadius: 10, width: 360 }}>
-    <Text style={{ color: '#D8A353', fontWeight: 'bold', marginBottom: 6, fontSize: 16, textAlign: 'center' }}>
-      Sugerencias para mejorar tu perfil
-    </Text>
-    {iaLastTimestamp && (
-      <Text style={{ color: '#888', fontSize: 12, marginBottom: 6, textAlign: 'center' }}>
-        Última IA: {new Date(iaLastTimestamp).toLocaleDateString()}
-      </Text>
-    )}
-    {iaSuggestions.map((item, index) => (
-      <View key={index} style={{ flexDirection: 'row', marginBottom: 5 }}>
-        <Ionicons name="sparkles-outline" size={18} color="#D8A353" style={{ marginRight: 6 }} />
-        <Text style={{ color: '#fff', fontSize: 14, flexShrink: 1 }}>{item}</Text>
-      </View>
-    ))}
-  </View>
-)}
-<Modal
-  visible={iaModalVisible}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setIaModalVisible(false)}
->
-  <View style={styles.iaModalOverlay}>
-    <View style={styles.iaModalContent}>
-      <Text style={styles.iaModalTitle}>Sugerencias IA</Text>
-      {iaLastTimestamp && (
-  <Text style={{ color: '#888', fontSize: 12, marginBottom: 9, textAlign: 'center' }}>
-    Última generación: {new Date(iaLastTimestamp).toLocaleDateString()}
-  </Text>
-)}
-      <ScrollView style={{ maxHeight: 300 }}>
-        {iaSuggestions.map((item, index) => (
-          <View key={index} style={styles.iaSuggestionItem}>
-            <Ionicons name="bulb-outline" size={18} color="#D8A353" />
-            <Text style={styles.iaSuggestionText}>{item}</Text>
-          </View>
-        ))}
       </ScrollView>
-      <TouchableOpacity style={styles.iaCloseButton} onPress={() => setIaModalVisible(false)}>
-        <Text style={styles.iaCloseButtonText}>Cerrar</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
-      </ScrollView>
-      <TouchableOpacity
-  style={styles.iaFloatingButton}
-  onPress={async () => {
-    try {
-      setLoadingIA(true); // <- mejora UX al mostrar cargando inmediatamente
-      const profile = {
-  name: userData.name,
-  membershipType: userData.membershipType,
-  category: userData.category,
-  description: userData.description,
-  profilePhoto: userData.profilePhoto || null,
-  profileVideo: userData.profileVideo || null,
-};
-
-console.log("📦 Enviando a IA (Pro):", profile); // ✅ Aquí
-
-      const functions = getFunctions(getApp());
-      const getSuggestions = httpsCallable(functions, 'generateSuggestions');
-      const result = await getSuggestions({ profile });
-
-      if (result.data?.suggestions) {
-        const text = result.data.suggestions;
-
-        const lines = typeof text === 'string'
-          ? text.split(/\n+/).map(line => line.trim()).filter(line => line.length > 0)
-          : Array.isArray(text) ? text : [];
-
-await saveSuggestionToFirestore(userData.email, lines, userData.membershipType);
-
-        setIaSuggestions(lines);
-        setIaModalVisible(true);
-      } else {
-        Alert.alert("Error", result.data?.error || "No se pudo generar sugerencias.");
-      }
-    } catch (err) {
-      console.log("Error IA:", err);
-      Alert.alert("Error", "No se pudieron obtener sugerencias en este momento.");
-    } finally {
-      setLoadingIA(false);
-    }
-  }}
->
-  <Ionicons name="sparkles-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
-  <Text style={{ color: '#fff', fontWeight: 'bold' }}>IA</Text>
-</TouchableOpacity>
-{showAutoModal && (
-  <Modal transparent animationType="fade" visible={showAutoModal}>
-    <View style={styles.modalBackdrop}>
-      <View style={styles.modalBox}>
-        <Text style={styles.modalTitle}>🧠 Sugerencia IA para tu perfil</Text>
-        <Text style={styles.modalText}>{autoSuggestion}</Text>
-        <TouchableOpacity
-          style={styles.modalButton}
-          onPress={() => setShowAutoModal(false)}
-        >
-          <Text style={styles.modalButtonText}>Entendido</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-)}
     </View>
   );
 }
@@ -534,103 +326,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-
-iaModalOverlay: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.85)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-iaModalContent: {
-  backgroundColor: '#1B1B1B',
-  padding: 10,
-  borderRadius: 12,
-  width: '90%',
-  maxHeight: '90%',
-},
-iaModalTitle: {
-  fontSize: 18,
-  fontWeight: 'bold',
-  color: '#D8A353',
-  marginBottom: 10,
-  textAlign: 'center',
-},
-iaSuggestionItem: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  marginBottom: 10,
-},
-iaSuggestionText: {
-  color: '#FFFFFF',
-  marginLeft: 10,
-  fontSize: 14,
-  flex: 1,
-},
-iaCloseButton: {
-  backgroundColor: '#D8A353',
-  paddingVertical: 10,
-  borderRadius: 8,
-  marginTop: 15,
-  alignItems: 'center',
-},
-iaCloseButtonText: {
-  color: '#000',
-  fontWeight: 'bold',
-  fontSize: 14,
-},
-iaFloatingButton: {
-  position: 'absolute',
-  top: 99, // 👈 posición más abajo del botón editar
-  right: 20,
-  backgroundColor: '#D8A353', // DORADO
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  borderRadius: 30,
-  flexDirection: 'row',
-  alignItems: 'center',
-  zIndex: 10,
-  elevation: 6,
-},
-modalBackdrop: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.85)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  paddingHorizontal: 30,
-},
-modalBox: {
-  backgroundColor: '#1B1B1B',
-  padding: 25,
-  borderRadius: 12,
-  borderWidth: 1,
-  borderColor: '#D8A353',
-  width: '100%',
-  maxWidth: 360,
-  alignItems: 'center',
-},
-modalTitle: {
-  fontSize: 20,
-  color: '#D8A353',
-  fontWeight: 'bold',
-  marginBottom: 10,
-  textAlign: 'center',
-},
-modalText: {
-  color: '#CCCCCC',
-  fontSize: 15,
-  textAlign: 'center',
-  marginBottom: 20,
-},
-modalButton: {
-  backgroundColor: '#D8A353',
-  paddingVertical: 10,
-  paddingHorizontal: 30,
-  borderRadius: 8,
-},
-modalButtonText: {
-  color: '#000',
-  fontWeight: 'bold',
-  fontSize: 14,
-},
 
 });

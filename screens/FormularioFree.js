@@ -20,6 +20,12 @@ import { saveUserProfile } from '../utils/profileStorage';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { goToDashboardTab } from '../utils/navigationHelpers';
+import { validateImageWithIA } from '../src/firebase/helpers/validateMediaContent';
+import * as FileSystem from 'expo-file-system'; // si aún no está
+import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage'; 
+import { getAuth, sendEmailVerification } from 'firebase/auth';
+import { ScrollView } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -39,16 +45,6 @@ const [modalMessage, setModalMessage] = useState('');
 const [category, setCategory] = useState([]);
 const [showCategoryModal, setShowCategoryModal] = useState(false);
 const [searchCategory, setSearchCategory] = useState('');
-const filteredCategories = categoriesList.filter(cat =>
-  cat.toLowerCase().includes(searchCategory.toLowerCase())
-);
-
-const toggleCategory = (cat) => {
-  setCategory(prev => 
-    prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-  );
-};
-
 const categoriesList = [
   "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
   "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
@@ -66,6 +62,17 @@ const categoriesList = [
   "Estudio fotográfico", "Transporte de producción", "Vans de producción",
   "Coffee break / snacks", "Otros / No especificado"
 ];
+const filteredCategories = categoriesList.filter(cat =>
+  cat.toLowerCase().includes(searchCategory.toLowerCase())
+);
+
+const toggleCategory = (cat) => {
+  setCategory(prev => 
+    prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+  );
+};
+
+
 
 useEffect(() => {
   const loadProfile = async () => {
@@ -94,34 +101,121 @@ useEffect(() => {
     { label: 'Mujer', value: 'Mujer' },
   ];
 
-  const pickProfilePhoto = async () => {
+const pickProfilePhoto = async () => {
+  try {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería para subir imágenes.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 1,
     });
-    if (!result.canceled && result.assets.length > 0) {
-      setProfilePhoto(result.assets[0].uri);
-    }
-  };
 
-  const pickBookPhotos = async () => {
-    if (bookPhotos.length >= 3) {
-        setModalMessage('Solo puedes subir hasta 3 fotos.');
+    if (result.canceled) return;
+
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+
+    console.log('🧪 Imagen seleccionada:', asset.uri);
+
+    // 🧪 Si estás en Expo, simulamos URL real para testear visualmente
+    if (__DEV__ && asset.uri.startsWith('file://')) {
+      setProfilePhoto(asset.uri);
+      Alert.alert('⚠️ Imagen cargada localmente (solo en Expo)');
+      return;
+    }
+
+    const emailKey = email.toLowerCase().trim();
+
+    const firebaseUrl = await uploadMediaToStorage(
+      asset.uri,
+      `profile_photos/${emailKey}_photo.jpg`
+    );
+
+    if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
+      setModalMessage('No se pudo subir la imagen.');
+      setModalVisible(true);
+      return;
+    }
+
+    const validation = await validateImageWithIA(firebaseUrl);
+    if (!validation.valid) {
+      setModalMessage('La imagen contiene contenido ofensivo.');
+      setModalVisible(true);
+      return;
+    }
+
+    setProfilePhoto(firebaseUrl);
+    Alert.alert('✅ Foto de perfil subida y validada');
+  } catch (error) {
+    console.log('❌ Error al seleccionar imagen de perfil:', error);
+  }
+};
+
+const pickBookPhotos = async () => {
+  if (bookPhotos.length >= 3) {
+    setModalMessage('Solo puedes subir hasta 3 fotos.');
+    setModalVisible(true);
+    return;
+  }
+
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
+    return;
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsMultipleSelection: true,
+    quality: 1,
+  });
+
+  if (!result.canceled && result.assets.length > 0) {
+    const safeUris = [];
+    const emailKey = email.toLowerCase().trim();
+
+    for (let i = 0; i < result.assets.length && bookPhotos.length + safeUris.length < 3; i++) {
+      const asset = result.assets[i];
+      if (!asset?.uri) continue;
+     
+      console.log('🧪 URI imagen seleccionada:', asset.uri);
+
+      // En modo desarrollo (Expo), simular subida para ver resultado
+      if (__DEV__ && asset.uri.startsWith('file://')) {
+        safeUris.push(asset.uri);
+        continue;
+      }
+
+      const firebaseUrl = await uploadMediaToStorage(
+        asset.uri,
+        `book_photos/${emailKey}_book${Date.now()}_${i + 1}.jpg`
+      );
+
+      if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
+        setModalMessage('Error al subir una imagen.');
         setModalVisible(true);
         return;
+      }
+
+      const validation = await validateImageWithIA(firebaseUrl);
+      if (!validation.valid) {
+        setModalMessage('Una imagen fue rechazada por contenido ofensivo.');
+        setModalVisible(true);
+        return;
+      }
+
+      safeUris.push(firebaseUrl);
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 1,
-    });
-    if (!result.canceled && result.assets.length > 0) {
-      const uris = result.assets.map((a) => a.uri);
-      const total = [...bookPhotos, ...uris].slice(0, 3);
-      setBookPhotos(total);
-    }
-  };
+
+    const total = [...bookPhotos, ...safeUris].slice(0, 3);
+    setBookPhotos(total);
+  }
+};
 
   const handleDeletePhoto = (index) => {
     const updated = [...bookPhotos];
@@ -132,74 +226,86 @@ useEffect(() => {
 const handleSave = async () => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!name || !email || !profilePhoto || bookPhotos.length < 1 || !sexo || !edad) {
-      setModalMessage('Completa todos los campos obligatorios.');
-      setModalVisible(true);
-      return;
+    setModalMessage('Completa todos los campos obligatorios.');
+    setModalVisible(true);
+    return;
   }
 
   if (!emailRegex.test(email)) {
-      setModalMessage('Ingresa un correo válido.');
-      setModalVisible(true);
-      return;        
+    setModalMessage('Ingresa un correo válido.');
+    setModalVisible(true);
+    return;
   }
 
   if (isNaN(Number(edad))) {
-      setModalMessage('Ingresa una edad válida en números.');
-      setModalVisible(true);
-      return;        
+    setModalMessage('Ingresa una edad válida en números.');
+    setModalVisible(true);
+    return;
   }
+
   if (name && edad && name.trim() === edad.trim()) {
-      setModalMessage('Nombre y edad no deben coincidir. Verifica los datos.');
-      setModalVisible(true);
-      return;
-  }      
-  const fullProfile = {
-    id: email,
-    name,
-    email,
-    accountType: 'talent',
-    membershipType: 'free',
-    profilePhoto,
-    bookPhotos,
-    sexo,
-    edad,
-    category,
-    visibleInExplorer: true,
-    timestamp: Date.now(),
-  };
+    setModalMessage('Nombre y edad no deben coincidir. Verifica los datos.');
+    setModalVisible(true);
+    return;
+  }
 
   try {
+    const emailKey = email.toLowerCase().trim();
+
+    const uploadedProfilePhoto = profilePhoto;
+    const uploadedBookPhotos = bookPhotos;
+
+    const fullProfile = {
+      id: email,
+      name,
+      email,
+      accountType: 'talent',
+      membershipType: 'free',
+      profilePhoto: uploadedProfilePhoto,
+      bookPhotos: uploadedBookPhotos,
+      sexo,
+      edad,
+      category,
+      visibleInExplorer: true,
+      timestamp: Date.now(),
+    };
+
     const fromRegister = await AsyncStorage.getItem('fromRegister');
 
     if (fromRegister === 'true') {
-      console.log('🚨 Categorías antes de guardar:', category);
+  await saveUserProfile(fullProfile, 'free', setUserData, setIsLoggedIn, true);
+  await AsyncStorage.setItem('sessionActive', 'true');
+  await AsyncStorage.removeItem('fromRegister');
+  try {
+    goToDashboardTab(navigation);
+  } catch (e) {
+    console.log('⚠️ Error al redirigir:', e);
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'DashboardScreen' }],
+      })
+    );
+  }
+} else {
+  await saveUserProfile(fullProfile, 'free', setUserData, setIsLoggedIn);
+}
 
-      await saveUserProfile(
-        fullProfile,
-        'free',
-        setUserData,
-        setIsLoggedIn,
-        true
+    const auth = getAuth();
+    if (auth.currentUser && !auth.currentUser.emailVerified) {
+      await sendEmailVerification(auth.currentUser);
+      Alert.alert(
+        'Verificación enviada',
+        'Te hemos enviado un correo para verificar tu cuenta. Revisa tu bandeja de entrada.'
       );
-      await AsyncStorage.setItem('sessionActive', 'true');
-      await AsyncStorage.removeItem('fromRegister');
-      console.log('✅ Perfil guardado y sesión activada tras registro');
-     goToDashboardTab(navigation);
-    } else {
-      await saveUserProfile(
-        fullProfile,
-        'free',
-        setUserData,
-        setIsLoggedIn
-      );
-      console.log('📄 Perfil editado y contexto actualizado');
     }
+
   } catch (e) {
     console.log('Error al guardar perfil:', e);
     setModalMessage('No se pudo guardar el perfil.');
     setModalVisible(true);
-  } 
-}; 
+  }
+};
 
   return (
     <>
@@ -315,9 +421,9 @@ const handleSave = async () => {
           </View>
           </View>        
       )}
-      {showCategoryModal && (
+{showCategoryModal && (
   <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
+    <View style={[styles.modalContent, { maxHeight: '80%' }]}>
       <TextInput
         style={styles.searchInput}
         placeholder="Buscar categoría..."
@@ -325,13 +431,22 @@ const handleSave = async () => {
         value={searchCategory}
         onChangeText={setSearchCategory}
       />
-      {filteredCategories.map((cat, index) => (
-        <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
-          <Text style={[styles.modalItem, category.includes(cat) && styles.selectedCategory]}>
-            {cat}
-          </Text>
-        </TouchableOpacity>
-      ))}
+
+      <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator>
+        {filteredCategories.map((cat, index) => (
+          <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
+            <Text
+              style={[
+                styles.modalItem,
+                category.includes(cat) && styles.selectedCategory,
+              ]}
+            >
+              {cat}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       <TouchableOpacity
         style={styles.modalButton}
         onPress={() => setShowCategoryModal(false)}

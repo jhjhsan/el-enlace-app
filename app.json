@@ -6,8 +6,10 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "backgroundColor": "#000000"
+   "splash": {
+  "image": "./assets/logo.png",
+  "resizeMode": "contain",
+  "backgroundColor": "#000000"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -16,16 +18,19 @@
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
-      },
-      "permissions": [
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "MEDIA_LIBRARY"
-      ]
-    },
+  "adaptiveIcon": {
+    "foregroundImage": "./assets/adaptive-icon.png",
+    "backgroundColor": "#000000"
+  },
+  "permissions": [
+    "CAMERA",
+    "READ_MEDIA_IMAGES",
+    "READ_MEDIA_VIDEO",
+    "READ_EXTERNAL_STORAGE",
+    "WRITE_EXTERNAL_STORAGE"
+  ],
+  "package": "com.elenlace.app"
+},
     "web": {
       "favicon": "./assets/favicon.png"
     },

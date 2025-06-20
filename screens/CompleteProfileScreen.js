@@ -10,6 +10,8 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
 import { goToProfileTab } from '../utils/navigationHelpers';
+import { validateImageWithIA } from '../src/firebase/helpers/validateMediaContent';
+import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
 
 export default function CompleteProfileScreen({ navigation }) {
   const { userData, setUserData } = useUser();
@@ -164,17 +166,21 @@ export default function CompleteProfileScreen({ navigation }) {
           setRegion(profile.region || '');
           setComuna(profile.comuna || '');
           // Validación del video
-          if (profile.profileVideo) {
-            const fileInfo = await FileSystem.getInfoAsync(profile.profileVideo);
-            if (fileInfo.exists) {
-              setProfileVideo(profile.profileVideo);
-            } else {
-              setProfileVideo(null);
-              console.warn('⚠️ El video guardado no existe en el sistema de archivos.');
-            }
-          } else {
-            setProfileVideo(null);
-          }
+         if (profile.profileVideo?.startsWith('http')) {
+  // ✅ Es una URL de Firebase
+  setProfileVideo(profile.profileVideo);
+} else if (profile.profileVideo?.startsWith('file://')) {
+  // ✅ Es un archivo local (solo sirve en Expo)
+  const fileInfo = await FileSystem.getInfoAsync(profile.profileVideo);
+  if (fileInfo.exists) {
+    setProfileVideo(profile.profileVideo);
+  } else {
+    setProfileVideo(null);
+    console.warn('⚠️ El video guardado localmente no existe.');
+  }
+} else {
+  setProfileVideo(null); // 🚫 No hay video válido
+}
         }
       } catch (error) {
         console.error('❌ Error al cargar perfil:', error);
@@ -184,40 +190,58 @@ export default function CompleteProfileScreen({ navigation }) {
     loadProfile();
   }, []);
 
-  const pickProfilePhoto = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: false,
-        quality: 1,
-      });
+const pickProfilePhoto = async () => {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    quality: 1,
+    aspect: [1, 1],
+  });
 
-      if (!result.canceled && result.assets.length > 0) {
-        setProfilePhoto(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.log('Error al seleccionar la foto de perfil:', error);
-      alert('Error al seleccionar la foto. Intenta nuevamente.');
-    }
-  };
+  if (!result.canceled) {
+    const selectedUri = result.assets[0].uri;
+    const base64 = await FileSystem.readAsStringAsync(selectedUri, { encoding: 'base64' });
+    const isSafe = await validateImageWithIA(base64);
 
-  const pickBookPhotos = async () => {
-    if (bookPhotos.length >= 12) {
-      alert('Solo puedes subir hasta 12 fotos.');
+    if (!isSafe) {
+      Alert.alert('Imagen no permitida', 'Selecciona una imagen sin contenido ofensivo.');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 1,
-    });
+    setProfilePhoto(selectedUri);
+  }
+};
 
-    if (!result.canceled && result.assets.length > 0) {
-      const uris = result.assets.map(asset => asset.uri);
-      setBookPhotos([...bookPhotos, ...uris].slice(0, 12));
+const pickBookPhotos = async () => {
+  if (bookPhotos.length >= 12) {
+    alert('Solo puedes subir hasta 12 fotos.');
+    return;
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsMultipleSelection: true,
+    quality: 1,
+  });
+
+  if (!result.canceled && result.assets.length > 0) {
+    const safeUris = [];
+
+    for (const asset of result.assets) {
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      const isSafe = await validateImageWithIA(base64);
+
+      if (!isSafe) {
+        Alert.alert('Imagen ofensiva', 'Una de las imágenes fue rechazada por contener contenido inapropiado.');
+        return;
+      }
+
+      safeUris.push(asset.uri);
     }
-  };
+
+    setBookPhotos([...bookPhotos, ...safeUris].slice(0, 12));
+  }
+};
 
   const pickProfileVideo = async () => {
     if (profileVideo) {
@@ -344,35 +368,50 @@ export default function CompleteProfileScreen({ navigation }) {
     const formattedEstatura =
   parseInt(estatura) > 100 ? (parseInt(estatura) / 100).toFixed(2) : estatura;
 
-    const profileData = {
-      profilePhoto,
-      name,
-      sexo,
-      age,
-      estatura: formattedEstatura,
-      skinColor,
-      eyeColor,
-      hairColor,
-      tattoos,
-      tattoosLocation,
-      piercings,
-      piercingsLocation,
-      shirtSize,
-      pantsSize,
-      shoeSize,
-      email,
-      phone,
-      instagram: `@${instagram.replace(/^@/, '')}`,
-      bookPhotos,
-      profileVideo,
-      category,
-      country,
-      ciudad,
-      address,
-      ethnicity,
-      region,
-      comuna,
-    };
+    const uploadedProfilePhoto = profilePhoto
+  ? await uploadMediaToStorage(profilePhoto, `profile_photos/${email.toLowerCase().trim()}_photo.jpg`)
+  : null;
+
+const uploadedBookPhotos = [];
+for (let i = 0; i < bookPhotos.length; i++) {
+  const downloadUrl = await uploadMediaToStorage(bookPhotos[i], `book_photos/${email.toLowerCase().trim()}_book${i + 1}.jpg`);
+  if (downloadUrl) uploadedBookPhotos.push(downloadUrl);
+}
+
+const uploadedProfileVideo = profileVideo
+  ? await uploadMediaToStorage(profileVideo, `profile_videos/${email.toLowerCase().trim()}_video.mp4`)
+  : null;
+
+const profileData = {
+  profilePhoto: uploadedProfilePhoto,
+  name,
+  sexo,
+  age,
+  estatura: formattedEstatura,
+  skinColor,
+  eyeColor,
+  hairColor,
+  tattoos,
+  tattoosLocation,
+  piercings,
+  piercingsLocation,
+  shirtSize,
+  pantsSize,
+  shoeSize,
+  email,
+  phone,
+  instagram: `@${instagram.replace(/^@/, '')}`,
+  bookPhotos: uploadedBookPhotos,
+  profileVideo: uploadedProfileVideo,
+  category,
+  country,
+  ciudad,
+  address,
+  ethnicity,
+  region,
+  comuna,
+};
+
   
     const success = await saveUserProfile(profileData, 'pro', setUserData, null, true);
   
@@ -386,9 +425,28 @@ export default function CompleteProfileScreen({ navigation }) {
         setShowSuccessBanner(false);
         if (success) {
   setModalVisible(true);
-  setTimeout(() => {
-    goToProfileTab(navigation);
-  }, 300);
+ setTimeout(() => {
+  navigation.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [
+        {
+          name: 'MainAppContainer',
+          state: {
+            routes: [
+              {
+                name: 'MainTabs',
+                state: {
+                  routes: [{ name: 'ProfileTab' }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+  );
+}, 300);
 }
 
       });

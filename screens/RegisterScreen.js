@@ -20,7 +20,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { registerWithEmail } from '../src/firebase/helpers/authHelper';
 import { saveProfileToFirestore } from '../src/firebase/helpers/saveProfileToFirestore';
-import { goToInitialRedirect } from '../utils/navigationHelpers';
+import {
+  goToInitialRedirect,
+  goToFormularioFree, // ✅ AGREGA ESTO
+} from '../utils/navigationHelpers';
 
 
 export default function RegisterScreen({ navigation }) {
@@ -227,9 +230,11 @@ if (membershipType === 'pro' || membershipType === 'elite') {
  setIsLoading(false);
 setIsLoggedIn(true);
 
-setTimeout(() => {
+if (membershipType === 'free') {
+  goToFormularioFree(navigation);
+} else {
   goToInitialRedirect(navigation);
-}, 100);
+}
 
     } catch (error) {
       console.error('Error al registrar:', error);
@@ -319,15 +324,18 @@ setTimeout(() => {
           }]}>
             <Text style={styles.modalTitle}>{modalTitle}</Text>
 
-            <ScrollView
-              style={{ maxHeight: '100%' }}
-              showsVerticalScrollIndicator={true}
-              nestedScrollEnabled
-            >
-              {modalContent.map((cat, idx) => (
-                <Text key={idx} style={styles.modalItem}>• {cat}</Text>
-              ))}
-            </ScrollView>
+       <ScrollView
+  style={{
+    maxHeight: membershipType === 'free' ? 400 : '100%',
+  }}
+  showsVerticalScrollIndicator={true}
+  nestedScrollEnabled
+>
+  {modalContent.map((cat, idx) => (
+    <Text key={idx} style={styles.modalItem}>• {cat}</Text>
+  ))}
+</ScrollView>
+
 
             <TouchableOpacity style={styles.modalClose} onPress={hideModal}>
               <Text style={styles.modalCloseText}>✕ Cerrar</Text>

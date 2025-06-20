@@ -1,34 +1,37 @@
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase/helpers/firebaseConfig'; // ✅ usa tu instancia correcta
+import * as FileSystem from 'expo-file-system'; // ← NECESARIO PARA APKS
 
-export const uploadMediaToStorage = async (localUri, storagePath) => {
+/**
+ * 📤 Sube un archivo de imagen o video a Firebase Storage
+ * @param {string} localUri - URI local del archivo (debe empezar con file://)
+ * @param {string} path - Ruta en Firebase Storage (ej: 'profile_photos/usuario.jpg')
+ * @returns {Promise<string|null>} - URL pública o null si falla
+ */
+export const uploadMediaToStorage = async (localUri, path) => {
   try {
-    const response = await fetch(localUri);
-    const blob = await response.blob();
+    console.log('🧪 URI recibida en uploadMediaToStorage:', localUri);
 
-    const fileType = blob.type || 'application/octet-stream';
-    const metadata = { contentType: fileType };
+    if (!localUri || !localUri.startsWith('file://')) {
+      console.warn('⚠️ URI inválida:', localUri);
+      return null;
+    }
 
-    const storage = getStorage();
-    const fileRef = ref(storage, storagePath);
-
-    const uploadTask = uploadBytesResumable(fileRef, blob, metadata);
-
-    return new Promise((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        null,
-        (error) => {
-          console.error('❌ Error al subir:', error);
-          reject(null);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve(downloadURL);
-        }
-      );
+    // ✅ Convierte el archivo local a blob (válido en APK)
+    const fileInfo = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
     });
+    const blob = await fetch(`data:image/jpeg;base64,${fileInfo}`).then(res => res.blob());
+
+    const storageRef = ref(storage, path);
+
+    await uploadBytes(storageRef, blob);
+    const downloadURL = await getDownloadURL(storageRef);
+
+    console.log('✅ Subida completa:', downloadURL);
+    return downloadURL;
   } catch (error) {
-    console.error('❌ Error en uploadMediaToStorage:', error);
+    console.error('❌ Error al subir a Firebase:', error);
     return null;
   }
 };

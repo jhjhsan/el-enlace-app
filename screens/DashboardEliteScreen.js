@@ -309,9 +309,6 @@ const crearPerfilDePrueba = async () => {
 </TouchableOpacity>
 )}
 
-      <TouchableOpacity onPress={crearPerfilDePrueba} style={styles.testButton}>
-        <Text style={styles.testButtonText}>+ Test</Text>
-      </TouchableOpacity>
       {showUpgradeModal && (
   <View style={styles.modalOverlay}>
     <View style={styles.modalBox}>
@@ -415,21 +412,6 @@ height: (width - 40) * 9 / 16,
     textAlign: 'center',
     paddingVertical: 30,
     fontStyle: 'italic',
-  },
-  testButton: {
-    position: 'absolute',
-    bottom: 90,
-    right: 20,
-    backgroundColor: '#D8A353',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 30,
-    elevation: 5,
-  },
-  testButtonText: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 14,
   },
   blockedButton: {
     backgroundColor: '#1E1E1E',

@@ -15,6 +15,8 @@ import { Picker } from '@react-native-picker/picker';
 import { useUser } from '../contexts/UserContext';
 import BackButton from '../components/BackButton';
 import { Video } from 'expo-av';
+import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';  
+import { goToProfileTab } from '../utils/navigationHelpers';
 
 const regionCityMap = {
   'arica_parinacota': [ { label: 'Arica', value: 'arica' }, { label: 'Putre', value: 'putre' } ],
@@ -89,29 +91,38 @@ export default function EditProfileEliteScreen({ navigation }) {
     loadData();
   }, []);
 
-  const pickProfilePhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-    if (!result.canceled) {
-      setProfilePhoto(result.assets[0].uri);
-    }
-  };
+const pickProfilePhoto = async () => {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    aspect: [1, 1],
+    quality: 1,
+  });
 
-  const pickLogo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-      aspect: [1, 1],
-    });
-    if (!result.canceled) {
-      setLogos((prev) => [...prev, result.assets[0].uri].slice(0, 5));
+  if (!result.canceled) {
+    const uri = result.assets[0].uri;
+    const downloadUrl = await uploadMediaToStorage(uri, `profile_photos/${Date.now()}_profile.jpg`);
+    if (downloadUrl) setProfilePhoto(downloadUrl);
+  }
+};
+
+const pickLogo = async () => {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    quality: 1,
+    aspect: [1, 1],
+  });
+
+  if (!result.canceled) {
+    const uri = result.assets[0].uri;
+    const downloadUrl = await uploadMediaToStorage(uri, `logos/${Date.now()}_logo.jpg`);
+    if (downloadUrl) {
+      setLogos((prev) => [...prev, downloadUrl].slice(0, 5));
     }
-  };
+  }
+};
+
 const pickVideo = async () => {
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -120,7 +131,9 @@ const pickVideo = async () => {
   });
 
   if (!result.canceled) {
-    setProfileVideo(result.assets[0].uri);
+    const uri = result.assets[0].uri;
+    const downloadUrl = await uploadMediaToStorage(uri, `videos/${Date.now()}_institutional.mp4`);
+    if (downloadUrl) setProfileVideo(downloadUrl);
   }
 };
 
@@ -374,10 +387,10 @@ const pickVideo = async () => {
       <Text style={styles.modalText}>✅ Perfil actualizado correctamente</Text>
       <TouchableOpacity
         style={styles.modalButton}
-        onPress={() => {
-          setModalVisible(false);
-          navigation.goBack();
-        }}
+      onPress={() => {
+  setModalVisible(false);
+  goToProfileTab(navigation);
+}}
       >
         <Text style={styles.modalButtonText}>Volver</Text>
       </TouchableOpacity>

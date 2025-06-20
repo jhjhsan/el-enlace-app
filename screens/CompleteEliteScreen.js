@@ -23,6 +23,8 @@ import { Video } from 'expo-av';
 import { CommonActions } from '@react-navigation/native';
 import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
 import { goToDashboardTab } from '../utils/navigationHelpers';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../src/firebase/firebaseConfig'; // Ajusta la ruta si cambia
 
 const regionCityMap = {
   'arica_parinacota': [
@@ -198,26 +200,65 @@ const pickLogo = async () => {
     allowsMultipleSelection: true,
     quality: 1,
     selectionLimit: 5 - logos.length,
+    base64: true, // ✅ Necesario para IA
   });
 
   if (!result.canceled) {
-    const newUris = result.assets.map(asset => asset.uri);
-    const combined = [...logos, ...newUris].slice(0, 5); // máximo 5
+    const validatedUris = [];
+
+    for (let asset of result.assets) {
+      const isValid = await validateImageWithIA(asset.base64);
+      if (isValid) {
+        validatedUris.push(asset.uri);
+      }
+    }
+
+    const combined = [...logos, ...validatedUris].slice(0, 5);
     setLogos(combined);
   }
 };
+const validateImageWithIA = async (base64) => {
+  try {
+    const validateMedia = httpsCallable(functions, 'validateMediaContent');
+    const result = await validateMedia({ base64Image: base64 });
 
-  const pickProfilePhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-      aspect: [1, 1],
-    });
-    if (!result.canceled) {
+    if (result.data?.flagged) {
+      const categories = Object.keys(result.data.categories)
+        .filter((key) => result.data.categories[key])
+        .join(', ');
+      Alert.alert(
+        'Contenido no permitido',
+        `La imagen contiene contenido inapropiado (${categories}). Por favor, selecciona otra.`
+      );
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('⚠️ Error al validar imagen con IA:', error);
+    Alert.alert('Error', 'No se pudo validar la imagen con IA.');
+    return false;
+  }
+};
+const pickProfilePhoto = async () => {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    quality: 1,
+    base64: true, // ✅ Necesario para IA
+    aspect: [1, 1],
+  });
+
+  if (!result.canceled) {
+    const base64 = result.assets[0].base64;
+    const isValid = await validateImageWithIA(base64);
+
+    if (isValid) {
       setProfilePhoto(result.assets[0].uri);
     }
-  };
+  }
+};
+
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -270,11 +311,21 @@ if (!isFormValid()) {
           ? webLink.trim()
           : `https://${webLink.trim()}`
         : '';
+// ⬇️ Subidas reales a Firebase Storage
+const uploadedProfilePhoto = profilePhoto
+  ? await uploadMediaToStorage(profilePhoto, `profile_photos/${email.toLowerCase().trim()}_photo.jpg`)
+  : null;
 
-   // ⬇️ OMITIMOS subida a Firebase mientras usamos Expo Go
-const uploadedProfilePhoto = profilePhoto || null;
-const uploadedLogos = logos || [];
-const uploadedVideo = profileVideo || null;
+const uploadedLogos = [];
+for (let i = 0; i < logos.length; i++) {
+  const downloadUrl = await uploadMediaToStorage(logos[i], `logos/${email.toLowerCase().trim()}_logo${i + 1}.jpg`);
+  if (downloadUrl) uploadedLogos.push(downloadUrl);
+}
+
+const uploadedVideo = profileVideo
+  ? await uploadMediaToStorage(profileVideo, `videos/${email.toLowerCase().trim()}_presentation.mp4`)
+  : null;
+
 
 console.log('FOTO local:', uploadedProfilePhoto);
 console.log('VIDEO local:', uploadedVideo);
@@ -558,10 +609,28 @@ if (!description || description.trim().length < 30) {
   style={styles.modalButton}
   onPress={() => {
     setModalVisible(false);
-    setTimeout(() => {
-     goToDashboardTab(navigation);
-
-    }, 300); // Espera breve para evitar conflictos con montado de contextos
+setTimeout(() => {
+  navigation.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [
+        {
+          name: 'MainAppContainer',
+          state: {
+            routes: [
+              {
+                name: 'MainTabs',
+                state: {
+                  routes: [{ name: 'DashboardTab' }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+  );
+}, 300);
   }}
 >
 
@@ -751,11 +820,6 @@ marginHorizontal: 'auto',
     alignItems: 'center',
     alignSelf: 'center',
     marginBottom: 10,
-  },
-  profilePhotoPreview: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
   },
   cameraIconWrapper: {
     justifyContent: 'center',

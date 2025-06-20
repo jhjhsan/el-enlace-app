@@ -18,6 +18,9 @@ import { resetPassword } from '../src/firebase/helpers/authHelper';
 import { loginWithEmail } from '../src/firebase/helpers/authHelper';
 import { getProfileFromFirestore } from '../src/firebase/helpers/getProfileFromFirestore.js'; // ✅
 import { getMembershipType } from '../src/firebase/helpers/getMembershipType';
+import { getPushToken } from '../src/firebase/helpers/pushHelper';
+import { saveUserProfile } from '../utils/profileStorage';
+import { ActivityIndicator } from 'react-native';
 
 import {
   goToProfileTab,
@@ -35,13 +38,10 @@ export default function LoginScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
 const handleLogin = async () => {
-  if (!email || !password) {
-    Alert.alert('Error', 'Por favor ingresa tu email y contraseña.');
-    return;
-  }
-
+  setIsLoading(true);
   try {
     const cleanedEmail = email.trim().toLowerCase();
     const cleanedPassword = password.trim();
@@ -75,14 +75,12 @@ const handleLogin = async () => {
 
     await AsyncStorage.setItem('sessionActive', 'true');
 
-    // 🔎 Detectar tipo de cuenta desde Firestore
     const detectedMembershipType = await getMembershipType(cleanedEmail);
     if (!detectedMembershipType) {
       Alert.alert('Error', 'No se pudo detectar el tipo de cuenta del usuario.');
       return;
     }
 
-    // 📥 Cargar perfil desde Firestore
     const firestoreProfile = await getProfileFromFirestore(cleanedEmail, detectedMembershipType);
     if (!firestoreProfile) {
       Alert.alert('Error', 'No se pudo cargar el perfil desde Firestore.');
@@ -91,51 +89,55 @@ const handleLogin = async () => {
 
     const { membershipType } = firestoreProfile;
 
-    // 💾 Guardar perfil en AsyncStorage según tipo
- await AsyncStorage.setItem('userData', JSON.stringify(firestoreProfile));
+    await AsyncStorage.setItem('userData', JSON.stringify(firestoreProfile));
 
-if (membershipType === 'pro') {
-  await AsyncStorage.setItem('userProfilePro', JSON.stringify(firestoreProfile));
-} else if (membershipType === 'elite') {
-  await AsyncStorage.setItem('userProfileElite', JSON.stringify(firestoreProfile));
-} else if (membershipType === 'free') {
-  await AsyncStorage.setItem('userProfileFree', JSON.stringify(firestoreProfile));
-}
+    if (membershipType === 'pro') {
+      await AsyncStorage.setItem('userProfilePro', JSON.stringify(firestoreProfile));
+    } else if (membershipType === 'elite') {
+      await AsyncStorage.setItem('userProfileElite', JSON.stringify(firestoreProfile));
+    } else if (membershipType === 'free') {
+      await AsyncStorage.setItem('userProfileFree', JSON.stringify(firestoreProfile));
+    }
 
     setUserData(firestoreProfile);
-    setIsLoggedIn(true); // 🧠 Esto activará RootNavigator → InitialRedirectScreen
-// 🔁 Reconstruir allProfiles incluyendo Pro y, si existe, también Elite
-try {
-  const list = [firestoreProfile];
-if (membershipType === 'pro') {
-  const eliteProfile = await getProfileFromFirestore(cleanedEmail, 'elite');
-  if (eliteProfile && eliteProfile.membershipType === 'elite') {
-    if (eliteProfile.visibleInExplorer === undefined) {
-      eliteProfile.visibleInExplorer = true;
+    setIsLoggedIn(true);
+
+    const pushToken = await getPushToken();
+    if (pushToken) {
+      firestoreProfile.pushToken = pushToken;
     }
-    list.push(eliteProfile);
-    await AsyncStorage.setItem('userProfileElite', JSON.stringify(eliteProfile));
-    await AsyncStorage.setItem('allProfilesElite', JSON.stringify([eliteProfile]));
-    console.log('✅ Perfil Elite también recuperado desde Firestore');
-  } else {
-    console.log('ℹ️ No se encontró perfil Elite adicional');
-  }
-}
+    await saveUserProfile(firestoreProfile, membershipType, setUserData, setIsLoggedIn, true);
+    try {
+      const list = [firestoreProfile];
+      if (membershipType === 'pro') {
+        const eliteProfile = await getProfileFromFirestore(cleanedEmail, 'elite');
+        if (eliteProfile && eliteProfile.membershipType === 'elite') {
+          if (eliteProfile.visibleInExplorer === undefined) {
+            eliteProfile.visibleInExplorer = true;
+          }
+          list.push(eliteProfile);
+          await AsyncStorage.setItem('userProfileElite', JSON.stringify(eliteProfile));
+          await AsyncStorage.setItem('allProfilesElite', JSON.stringify([eliteProfile]));
+          console.log('✅ Perfil Elite también recuperado desde Firestore');
+        } else {
+          console.log('ℹ️ No se encontró perfil Elite adicional');
+        }
+      }
 
-  const seen = new Set();
-  const deduplicated = list.filter(p => {
-    const email = p.email?.toLowerCase();
-    if (!email || seen.has(email)) return false;
-    seen.add(email);
-    return p.visibleInExplorer !== false;
-  });
+      const seen = new Set();
+      const deduplicated = list.filter(p => {
+        const email = p.email?.toLowerCase();
+        if (!email || seen.has(email)) return false;
+        seen.add(email);
+        return p.visibleInExplorer !== false;
+      });
 
-  await combinarPerfilesLocales(deduplicated);
+      await combinarPerfilesLocales(deduplicated);
 
-  console.log('✅ allProfiles reconstruido con', deduplicated.length, 'perfiles');
-} catch (error) {
-  console.warn('⚠️ No se pudo reconstruir allProfiles:', error.message);
-}
+      console.log('✅ allProfiles reconstruido con', deduplicated.length, 'perfiles');
+    } catch (error) {
+      console.warn('⚠️ No se pudo reconstruir allProfiles:', error.message);
+    }
 
     console.log('🟢 Login completo. Redirección a cargo de InitialRedirectScreen.');
 
@@ -144,6 +146,7 @@ if (membershipType === 'pro') {
     Alert.alert('Error', error.message || 'Ocurrió un error inesperado.');
   }
 };
+
 const handleRecoverPassword = async () => {
   if (!recoveryEmail) {
     Alert.alert('Campo vacío', 'Ingresa un correo válido.');
@@ -186,7 +189,6 @@ const combinarPerfilesLocales = async (nuevos) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Iniciar sesión</Text>
 
       <TextInput
         style={styles.input}

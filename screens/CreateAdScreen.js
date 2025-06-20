@@ -20,6 +20,10 @@ import { syncAdToFirestore } from '../src/firebase/helpers/syncAdToFirestore';
 import { analyzeAdContent } from '../src/firebase/helpers/analyzeAdContent';
 import { db } from '../src/firebase/firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApp } from 'firebase/app';
+import * as FileSystem from 'expo-file-system';
+import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
 
 export default function CreateAdScreen() {
   const { userData } = useUser();
@@ -64,15 +68,20 @@ const openGallery = async () => {
     videoMaxDuration: 30,
   });
 
-  if (!result.canceled) {
-    if (mediaType === 'imagen') {
-      setImageUri(result.assets[0].uri);
-      setVideoUri(null);
-    } else {
-      setVideoUri(result.assets[0].uri);
-      setImageUri(null);
-    }
+if (!result.canceled) {
+  const uri = result.assets[0].uri;
+
+  if (mediaType === 'imagen') {
+    const isValid = await validateImageBeforeUpload(uri);
+    if (!isValid) return;
+
+    setImageUri(uri);
+    setVideoUri(null);
+  } else {
+    setVideoUri(uri);
+    setImageUri(null);
   }
+}
 };
 
   const getExpiration = () => {
@@ -81,94 +90,103 @@ const openGallery = async () => {
     return Date.now() + duration * 24 * 60 * 60 * 1000;
   };
 
-  const handlePublishAd = async () => {
-    // 🚨 Antes de guardar, revisar si hay cupo
-const allAdsJson = await AsyncStorage.getItem('adsList');
-const allAds = allAdsJson ? JSON.parse(allAdsJson) : [];
-const now = Date.now();
-const activeAds = allAds.filter(ad => ad.aprobado && ad.expiresAt > now);
-
-if (activeAds.length >= 20) {
-  const pendingAd = {
-  id: Date.now().toString(),
-  imageUri: mediaType === 'imagen' ? imageUri : null,
-  videoUri: mediaType === 'video' ? videoUri : null,
-  tipo: mediaType,
-  title,
-  link,
-  creatorEmail: userData.email,
-  membershipType: userData.membershipType,
-  expiresAt: getExpiration(),
-  plan: selectedDuration,
-  monto: mediaType === 'video'
-    ? preciosVideo[selectedPlan]?.[selectedDuration]
-    : precios[selectedPlan][selectedDuration],
-  destacado: selectedPlan === 'destacado',
-  aprobado: false,
-  enEspera: true,
-};
-  setPendingAdData(pendingAd);
-  setShowWaitModal(true);
-  return;
-}
-
-    if ((!imageUri && !videoUri) || title.trim() === '' || !selectedDuration || !selectedPlan) {
-      return alert('Debes subir una imagen, colocar un título y seleccionar tipo de anuncio.');
-    }
-
-    const urlRegex = /^(https?:\/\/)?([\w.-]+)\.([a-z\.]{2,6})([\/\w\.-]*)*\/?$/;
-    if (link && !urlRegex.test(link.trim())) {
-      return alert('Ingresa un enlace válido, como https://instagram.com/mi_perfil');
-    }
-
-    const monto = mediaType === 'video'
-  ? preciosVideo[selectedPlan]?.[selectedDuration]
-  : precios[selectedPlan][selectedDuration];
-
-   try {
-  const adData = { title, description: title + ' ' + link }; // usa el título + link como descripción base
-  const result = await analyzeAdContent(adData);
-
-  if (result.error) {
-    return alert('Error al analizar anuncio: ' + result.error);
+const handlePublishAd = async () => {
+  // 🟢 PRIMERO validamos datos mínimos
+  if ((!imageUri && !videoUri) || title.trim() === '' || !selectedDuration || !selectedPlan) {
+    return alert('Debes subir una imagen, colocar un título y seleccionar tipo de anuncio.');
   }
 
-  setIaAnalysisText(result.analysis);
-  setShowIaModal(true);
+  const allAdsJson = await AsyncStorage.getItem('adsList');
+  const allAds = allAdsJson ? JSON.parse(allAdsJson) : [];
+  const now = Date.now();
+  const activeAds = allAds.filter(ad => ad.aprobado && ad.expiresAt > now);
 
-  await setDoc(doc(db, 'adAnalysisLogs', Date.now().toString()), {
-  email: userData.email,
-  title,
-  link,
-  analysis: result.analysis,
-  membershipType: userData.membershipType,
-destacado: selectedPlan === 'destacado',
-  createdAt: new Date().toISOString()
-});
-} catch (error) {
-  console.error('❌ Error al analizar con IA:', error);
-  alert('Ocurrió un error al analizar el contenido.');
-}
+  let uploadedUri;
+  try {
+    uploadedUri = mediaType === 'imagen'
+      ? await uploadMediaToStorage(imageUri, `ads/${userData.email}_img_${Date.now()}.jpg`)
+      : await uploadMediaToStorage(videoUri, `ads/${userData.email}_vid_${Date.now()}.mp4`);
+  } catch (error) {
+    alert('❌ Error al subir el archivo. Intenta nuevamente.');
+    console.error('Error al subir media:', error);
+    return;
+  }
 
-  };
-const guardarYPublicarAnuncio = async () => {
-  const newAd = {
-  id: Date.now().toString(),
-  imageUri: mediaType === 'imagen' ? imageUri : null,
-  videoUri: mediaType === 'video' ? videoUri : null,
-  tipo: mediaType,
-  title,
-  link,
-  creatorEmail: userData.email,
-  membershipType: userData.membershipType,
-  expiresAt: getExpiration(),
-  plan: selectedDuration,
-  monto: mediaType === 'video'
-    ? preciosVideo[selectedPlan]?.[selectedDuration]
-    : precios[selectedPlan][selectedDuration],
-  destacado: selectedPlan === 'destacado',
-  aprobado: true,
+  // Si está lleno el cupo de 20 anuncios activos
+  if (activeAds.length >= 20) {
+    const pendingAd = {
+      id: Date.now().toString(),
+      imageUri: mediaType === 'imagen' ? uploadedUri : null,
+      videoUri: mediaType === 'video' ? uploadedUri : null,
+      tipo: mediaType,
+      title,
+      link,
+      creatorEmail: userData.email,
+      membershipType: userData.membershipType,
+      expiresAt: getExpiration(),
+      plan: selectedDuration,
+      monto: mediaType === 'video'
+        ? preciosVideo[selectedPlan]?.[selectedDuration]
+        : precios[selectedPlan][selectedDuration],
+      destacado: selectedPlan === 'destacado',
+      aprobado: false,
+      enEspera: true,
+    };
+
+    setPendingAdData(pendingAd);
+    setShowWaitModal(true);
+    return;
+  }
+
+  // 🧠 Ahora sí llamamos a la IA
+  try {
+    const adData = {
+      title,
+      description: title + ' ' + link,
+    };
+
+    const result = await analyzeAdContent(adData);
+
+    if (result.error) {
+      return alert('Error al analizar anuncio: ' + result.error);
+    }
+
+    setIaAnalysisText(result.analysis);
+    setShowIaModal(true);
+
+    await setDoc(doc(db, 'adAnalysisLogs', Date.now().toString()), {
+      email: userData.email,
+      title,
+      link,
+      analysis: result.analysis,
+      membershipType: userData.membershipType,
+      destacado: selectedPlan === 'destacado',
+      createdAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error al analizar con IA:', error);
+    alert('Ocurrió un error al analizar el contenido.');
+  }
 };
+
+const guardarYPublicarAnuncio = async (uploadedUri) => {
+  const newAd = {
+    id: Date.now().toString(),
+    imageUri: mediaType === 'imagen' ? uploadedUri : null,
+    videoUri: mediaType === 'video' ? uploadedUri : null,
+    tipo: mediaType,
+    title,
+    link,
+    creatorEmail: userData.email,
+    membershipType: userData.membershipType,
+    expiresAt: getExpiration(),
+    plan: selectedDuration,
+    monto: mediaType === 'video'
+      ? preciosVideo[selectedPlan]?.[selectedDuration]
+      : precios[selectedPlan][selectedDuration],
+    destacado: selectedPlan === 'destacado',
+    aprobado: true,
+  };
 
   try {
     const existing = await AsyncStorage.getItem('adsList');
@@ -181,6 +199,7 @@ const guardarYPublicarAnuncio = async () => {
     console.log('Error al guardar anuncio:', error);
   }
 };
+
    const precios = {
       normal: { '3': 990, '7': 1490, '15': 2490 },
       destacado: { '3': 4990, '7': 8900, '15': 14990 },
@@ -208,6 +227,31 @@ const opcionesVideo = {
     { duracion: '7', texto: '🎬 7 días – $14.990' },
     { duracion: '15', texto: '🎬 15 días – $24.990' },
   ],
+};
+const validateImageBeforeUpload = async (uri) => {
+  const base64Image = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const functions = getFunctions(getApp());
+  const validateMedia = httpsCallable(functions, 'validateMediaContent');
+
+  try {
+    const result = await validateMedia({ base64Image });
+    const { flagged, categories } = result.data;
+
+    if (flagged) {
+      console.warn("🚫 Imagen bloqueada por IA:", categories);
+      alert('La imagen contiene contenido ofensivo (ej. violencia o desnudez). Usa otra imagen.');
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("❌ Error al validar la imagen:", error);
+    alert('Ocurrió un error al validar la imagen. Intenta nuevamente.');
+    return false;
+  }
 };
 
   return (
@@ -442,7 +486,7 @@ const opcionesVideo = {
         style={styles.modalButton}
         onPress={async () => {
           setShowIaModal(false);
-          await guardarYPublicarAnuncio(); // función nueva que llamará a tu lógica de guardado
+          await guardarYPublicarAnuncio(uploadedUri);
         }}
       >
         <Text style={styles.modalButtonText}>✅ Publicar de todos modos</Text>

@@ -55,8 +55,19 @@ const fetchProfiles = async () => {
     const parsedFreePro = storedFreePro ? JSON.parse(storedFreePro) : [];
     const parsedElite = storedElite ? JSON.parse(storedElite) : [];
 
-    // ✅ Mezclar ambos sin duplicados
-    const allCombined = [...parsedFreePro, ...parsedElite];
+    const membershipType = userData?.membershipType || 'free';
+
+    let allCombined = [];
+
+    if (membershipType === 'elite') {
+      allCombined = [...parsedElite, ...parsedFreePro.filter(p => p.membershipType !== 'pro')];
+    } else if (membershipType === 'pro') {
+      allCombined = [...parsedFreePro.filter(p => p.membershipType !== 'elite')];
+    } else {
+      // free user: ve todo
+      allCombined = [...parsedFreePro, ...parsedElite];
+    }
+
     const seen = new Set();
     const uniqueProfiles = allCombined.filter((p) => {
       const email = p?.email?.toLowerCase();
@@ -78,9 +89,12 @@ const filtered = uniqueProfiles.filter((profile) => {
 
   return categories.includes(normalize(normalizedCategory));
 });
+const activeEmail = userData?.email?.toLowerCase();
+const filteredWithoutSelf = filtered.filter(p => p.email?.toLowerCase() !== activeEmail);
 
-    console.log(`✅ Mostrando ${filtered.length} perfiles para: ${normalize(normalizedCategory)}`);
-    setProfiles(filtered);
+console.log(`✅ Mostrando ${filteredWithoutSelf.length} perfiles (sin el propio) para: ${normalize(normalizedCategory)}`);
+setProfiles(filteredWithoutSelf);
+
   } catch (error) {
     console.error('❌ Error al cargar perfiles:', error);
   }

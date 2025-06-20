@@ -153,24 +153,6 @@ setCarouselImages(mergedImages);
     return () => clearInterval(interval);
   }, [isPlaying, carouselImages]);
 
-  const crearCastingDePrueba = async () => {
-    const nuevoCasting = {
-      id: Date.now().toString(),
-      title: '🎬 Casting de prueba automático',
-      agencyName: 'Agencia Demo',
-      timestamp: Date.now(),
-    };
-    try {
-      const data = await AsyncStorage.getItem('castings');
-      const existentes = data ? JSON.parse(data) : [];
-      const actualizados = [nuevoCasting, ...existentes];
-      await AsyncStorage.setItem('castings', JSON.stringify(actualizados));
-      await loadRecentCastings();
-      Alert.alert('✅ Listo', 'Se agregó un casting de prueba.');
-    } catch (error) {
-      console.error('❌ Error al crear casting de prueba:', error);
-    }
-  };
 const formatDate = (isoDate) => {
   const d = new Date(isoDate);
   return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1)
@@ -339,10 +321,6 @@ const formatDate = (isoDate) => {
           </View>
         </View>
       </Modal>
-
-      <TouchableOpacity onPress={crearCastingDePrueba} style={styles.testButton}>
-        <Text style={styles.testButtonText}>+ Test</Text>
-      </TouchableOpacity>
       {userData?.membershipType !== 'free' && (
  <TouchableOpacity
   style={{
@@ -477,21 +455,7 @@ const styles = StyleSheet.create({
   modalTitle: { color: '#D8A353', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   modalText: { color: '#ccc', marginBottom: 20 },
   modalButton: { backgroundColor: '#D8A353', padding: 10, borderRadius: 8, alignItems: 'center' },
-  testButton: {
-    position: 'absolute',
-    bottom: 80,
-    right: 20,
-    backgroundColor: '#D8A353',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 30,
-    elevation: 5,
-  },
-  testButtonText: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
+
   emptyMessage: {
     color: '#888',
     fontSize: 14,

@@ -32,11 +32,6 @@ export default function ProfileEliteScreen({ navigation }) {
   const [showModal, setShowModal] = useState(false);
   const [hasPaid, setHasPaid] = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
-  const [iaModalVisible, setIaModalVisible] = useState(false);
-const [iaSuggestions, setIaSuggestions] = useState([]);
-const [loadingIA, setLoadingIA] = useState(false);
-const [autoSuggestion, setAutoSuggestion] = useState(null);
-const [showAutoModal, setShowAutoModal] = useState(false);
 
   useEffect(() => {
     const checkIfShouldShowModal = async () => {
@@ -98,32 +93,6 @@ useFocusEffect(
   }
   const isBlocked = userData?.membershipType === 'elite' && userData?.hasPaid === false;
 console.log('VIDEO EN PERFIL:', profile.profileVideo);
-
-const getIASuggestions = async (profileData) => {
-  try {
-    const functions = getFunctions(getApp());
-    const generateSuggestions = httpsCallable(functions, "generateSuggestions");
-
-    const result = await generateSuggestions({ profile: profileData });
-    const suggestions = result.data.suggestions;
-
-    return suggestions;
-  } catch (error) {
-    console.error("Error al generar sugerencias IA:", error);
-    return null;
-  }
-};
-
-{loadingIA && (
-  <Modal transparent animationType="fade" visible={true}>
-    <View style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ color: 'white', marginBottom: 10 }}>Generando sugerencias IA...</Text>
-      <View style={{ padding: 20, backgroundColor: '#1B1B1B', borderRadius: 10 }}>
-        <ActivityIndicator size="large" color="#D8A353" />
-      </View>
-    </View>
-  </Modal>
-)}
 
   return (
     <View style={styles.container}>
@@ -298,59 +267,6 @@ const getIASuggestions = async (profileData) => {
 )}
         </View>
       </ScrollView>
-     <TouchableOpacity
-  style={styles.iaFloatingButton}
-onPress={async () => {
-  try {
-    setLoadingIA(true);
-
-    const profileData = {
-      category: [profile.eliteCategory],
-      description: profile.description,
-      membershipType: userData.membershipType,
-      name: profile.agencyName,
-      profilePhoto: profile.profilePhoto,
-      profileVideo: profile.profileVideo,
-    };
-
-    const result = await getProfileSuggestions(profileData, userData);
-
- if (result?.error) {
-  Alert.alert('Error', result.error);
-  return;
-}
-
-if (result?.reused) {
-  Alert.alert(
-    'IA ya utilizada',
-    `Estas sugerencias fueron generadas el ${result.lastUsed}. Puedes volver a usar la IA en unos días.`
-  );
-}
-
-    const lines = Array.isArray(result.suggestions)
-      ? result.suggestions
-      : result.suggestions?.split(/\n+/).map(line => line.trim()).filter(line => line.length > 0) || [];
-
-    if (!userData.hasPaid) {
-      lines.push('');
-      lines.push('💡 Si deseas acceder a más herramientas avanzadas de IA y beneficios exclusivos de agencias elite, activa tu plan Elite desde la sección de Suscripción.');
-      lines.push('👉 ¡Haz crecer tu agencia con El Enlace Pro!');
-    }
-
-    setIaSuggestions(lines);
-    setIaModalVisible(true);
-
-  } catch (err) {
-    console.log("Error IA:", err);
-    Alert.alert("Error", "No se pudieron obtener sugerencias en este momento.");
-  } finally {
-    setLoadingIA(false);
-  }
-}}
->
-  <Ionicons name="sparkles-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
-  <Text style={{ color: '#fff', fontWeight: 'bold' }}>IA</Text>
-</TouchableOpacity>
 
       {showPayModal && (
         <Modal
@@ -383,29 +299,6 @@ if (result?.reused) {
           </View>
         </Modal>
       )}
-      <Modal
-  visible={iaModalVisible}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setIaModalVisible(false)}
->
-  <View style={styles.iaModalOverlay}>
-    <View style={styles.iaModalContent}>
-      <Text style={styles.iaModalTitle}>Sugerencias IA</Text>
-      <ScrollView style={{ maxHeight: 300 }}>
-        {iaSuggestions.map((item, index) => (
-          <View key={index} style={styles.iaSuggestionItem}>
-            <Ionicons name="bulb-outline" size={18} color="#D8A353" />
-            <Text style={styles.iaSuggestionText}>{item}</Text>
-          </View>
-        ))}
-      </ScrollView>
-      <TouchableOpacity style={styles.iaCloseButton} onPress={() => setIaModalVisible(false)}>
-        <Text style={styles.iaCloseButtonText}>Cerrar</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
     </View>
   );
 }
@@ -585,63 +478,6 @@ videoPreview: {
   inner: {
   width: '100%',
   alignItems: 'center',
-},
-
-iaModalOverlay: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.85)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-iaModalContent: {
-  backgroundColor: '#1B1B1B',
-  padding: 15,
-  borderRadius: 12,
-  width: '90%',
-  maxHeight: '85%',
-},
-iaModalTitle: {
-  fontSize: 18,
-  fontWeight: 'bold',
-  color: '#D8A353',
-  marginBottom: 10,
-  textAlign: 'center',
-},
-iaSuggestionItem: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  marginBottom: 10,
-},
-iaSuggestionText: {
-  color: '#FFFFFF',
-  marginLeft: 10,
-  fontSize: 14,
-  flex: 1,
-},
-iaCloseButton: {
-  backgroundColor: '#D8A353',
-  paddingVertical: 10,
-  borderRadius: 8,
-  marginTop: 15,
-  alignItems: 'center',
-},
-iaCloseButtonText: {
-  color: '#000',
-  fontWeight: 'bold',
-  fontSize: 14,
-},
-iaFloatingButton: {
-  position: 'absolute',
-  top: 110,
-  right: 20,
-  backgroundColor: '#D8A353', // dorado como el resto del perfil Elite
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  borderRadius: 30,
-  flexDirection: 'row',
-  alignItems: 'center',
-  zIndex: 10,
-  elevation: 6,
 },
 modalBackdrop: {
   flex: 1,

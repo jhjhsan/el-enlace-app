@@ -18,7 +18,9 @@ import { useUser } from '../contexts/UserContext';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { saveUserProfile } from '../utils/profileStorage';
 import { goToProfileTab } from '../utils/navigationHelpers';
-
+import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
+import * as FileSystem from 'expo-file-system';
+import { validateImageWithIA } from '../src/firebase/helpers/validateMediaContent'; // ✅ Ruta correcta
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -90,36 +92,93 @@ const toggleCategory = (cat) => {
     loadUserData();
   }, []);
 
-  const pickProfilePhoto = async () => {
+const pickProfilePhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 1,
     });
 
-    if (!result.canceled && result.assets.length > 0) {
-      setProfilePhoto(result.assets[0].uri);
+    if (!result.canceled && result.assets?.length > 0) {
+      const asset = result.assets[0];
+      if (__DEV__ && asset.uri.startsWith('file://')) {
+        setProfilePhoto(asset.uri);
+        return;
+      }
+
+      const emailKey = email.toLowerCase().trim();
+      if (!asset.uri.startsWith('file://')) {
+  Alert.alert('Ruta inválida de imagen');
+  return;
+}
+const firebaseUrl = await uploadMediaToStorage(asset.uri, `profile_photos/${emailKey}_photo.jpg`);
+
+      const validation = await validateImageWithIA(firebaseUrl);
+
+      if (!validation.valid) {
+        Alert.alert('Imagen rechazada', 'La foto contiene contenido inapropiado.');
+        return;
+      }
+
+      setProfilePhoto(firebaseUrl);
     }
   };
 
-  const pickBookPhotos = async () => {
-    if (bookPhotos.length >= 3) {
-      Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 3 fotos.');
-      return;
-    }
+const pickBookPhotos = async () => {
+  if (bookPhotos.length >= 3) {
+    Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 3 fotos.');
+    return;
+  }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 1,
-    });
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsMultipleSelection: true,
+    quality: 1,
+  });
 
-    if (!result.canceled && result.assets.length > 0) {
-      const uris = result.assets.map((a) => a.uri);
-      const total = [...bookPhotos, ...uris].slice(0, 3);
-      setBookPhotos(total);
+  if (!result.canceled && result.assets.length > 0) {
+    const emailKey = email.toLowerCase().trim();
+    const newPhotos = [];
+
+    for (let i = 0; i < result.assets.length && bookPhotos.length + newPhotos.length < 3; i++) {
+      const uri = result.assets[i].uri;
+
+      // ✅ Si estamos en Expo, usamos el archivo local directamente
+      if (__DEV__ && uri.startsWith('file://')) {
+        newPhotos.push(uri);
+        continue;
+      }
+
+      // ✅ Si la URI no comienza con "file://", es inválida en la APK
+      if (!uri.startsWith('file://')) {
+        Alert.alert('Ruta inválida', 'No se pudo procesar esta imagen.');
+        continue;
+      }
+
+      const firebaseUrl = await uploadMediaToStorage(uri, `book_photos/${emailKey}_book${Date.now()}_${i}.jpg`);
+      if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
+        Alert.alert('Error', 'No se pudo subir una imagen del book.');
+        continue;
+      }
+
+      const validation = await validateImageWithIA(firebaseUrl);
+      if (!validation.valid) {
+        Alert.alert('Imagen rechazada', 'Una imagen contiene contenido inapropiado.');
+        continue;
+      }
+
+      newPhotos.push(firebaseUrl);
     }
-  };
+e
+    setBookPhotos([...bookPhotos, ...newPhotos]);
+  }
+};
 
   const handleDeletePhoto = (index) => {
     const updated = [...bookPhotos];
@@ -133,15 +192,6 @@ const toggleCategory = (cat) => {
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert('Correo inválido', 'Por favor ingresa un correo electrónico válido.');
-      return;
-    }
-    if (name && edad && name.trim() === edad.trim()) {
-        Alert.alert('Datos inválidos', 'Nombre y edad no deben ser iguales.');
-        return;
-      }      
     const profile = {
       profilePhoto,
       name,
@@ -153,26 +203,15 @@ const toggleCategory = (cat) => {
       membershipType: 'free',
     };
 
-    try {
-      await saveUserProfile(profile, 'free');
-      await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
-      await AsyncStorage.setItem('userData', JSON.stringify({
-        email,
-        membershipType: 'free',
-        name,
-        profilePhoto,
-        sexo,
-        edad,
-      }));
-      setUserData(profile);
+    await saveUserProfile(profile, 'free');
+    await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
+    await AsyncStorage.setItem('userData', JSON.stringify({ email, membershipType: 'free', name, profilePhoto, sexo, edad }));
+setUserData(profile);
+
+  Alert.alert('Perfil guardado', 'Tu perfil ha sido actualizado con éxito.');
+
 goToProfileTab(navigation);
-
-    } catch (err) {
-      console.log('Error al guardar perfil:', err);
-      Alert.alert('Error', 'No se pudo guardar el perfil.');
-    }
-  };
-
+}; 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}

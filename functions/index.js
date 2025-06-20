@@ -12,6 +12,7 @@ const { sendTrialEmail } = require("./sendTrialAlertEmail");
 const { checkProfileUpdateReminder } = require("./checkProfileUpdateReminder");
 const { analyzeCastingDocx } = require('./analyzeCastingDocx');
 const { analyzeCastingImage } = require('./analyzeCastingImage');
+const { validateMediaContent } = require("./validateMediaContent");
 
 exports.analyzeAd = analyzeAd;
 exports.generateSuggestions = generateSuggestions;
@@ -20,3 +21,5 @@ exports.sendTrialEmail = sendTrialEmail;
 exports.checkProfileUpdateReminder = checkProfileUpdateReminder;
 exports.analyzeCastingDocx = analyzeCastingDocx;
 exports.analyzeCastingImage = analyzeCastingImage;
+exports.sendCastingPushNotifications = require('./sendCastingPushNotifications');
+exports.validateMediaContent = validateMediaContent;

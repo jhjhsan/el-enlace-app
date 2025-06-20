@@ -53,19 +53,10 @@ export const UserProvider = ({ children }) => {
 
     loadSession();
   }, []);
-
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (sessionExpiry && Date.now() > sessionExpiry) {
-        console.log('⏰ Sesión expirada automáticamente');
-        setUserData(null);
-        setIsLoggedIn(false);
-        await AsyncStorage.multiRemove(['userData', 'sessionExpiry', 'sessionActive']);
-      }
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [sessionExpiry]);
+   useEffect(() => {
+  if (!sessionExpiry) return;
+  console.log('🔁 Sesión persistente habilitada. Ya no se cerrará automáticamente.');
+}, [sessionExpiry]);
 
   return (
     <UserContext.Provider

@@ -71,6 +71,7 @@ import AssistantIAProfileScreen from '../screens/AssistantIAProfileScreen';
 import FocusDetailScreen from '../screens/FocusDetailScreen';
 import MyFocusScreen from '../screens/MyFocusScreen';
 import PromoteServiceScreen from '../screens/PromoteServiceScreen';
+import WelcomeScreen from '../screens/WelcomeScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -92,6 +93,7 @@ export default function AppNavigator() {
       }}
     >
       <Stack.Screen name="InitialRedirect" component={InitialRedirectScreen} />
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="MainTabs" component={MainTabs} />
 
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
