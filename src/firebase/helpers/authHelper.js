@@ -1,4 +1,3 @@
-// src/firebase/helpers/authHelper.js
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -8,12 +7,13 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 
-// Registrar nuevo usuario y enviar verificación por correo
 export const registerWithEmail = async (email, password) => {
   try {
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      console.error('❌ Email inválido:', email);
+      throw new Error('Correo electrónico inválido');
+    }
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await sendEmailVerification(userCredential.user);
-
     return {
       success: true,
       user: userCredential.user,
@@ -27,14 +27,16 @@ export const registerWithEmail = async (email, password) => {
   }
 };
 
-// Verifica si el usuario ya confirmó su email
 export const isEmailVerified = (user) => {
   return user?.emailVerified === true;
 };
 
-// Iniciar sesión y validar si el correo ya está verificado
 export const loginWithEmail = async (email, password) => {
   try {
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      console.error('❌ Email inválido:', email);
+      throw new Error('Correo electrónico inválido');
+    }
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
     if (!userCredential.user.emailVerified) {
@@ -58,9 +60,12 @@ export const loginWithEmail = async (email, password) => {
   }
 };
 
-// Enviar correo de recuperación de contraseña
 export const resetPassword = async (email) => {
   try {
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      console.error('❌ Email inválido:', email);
+      throw new Error('Correo electrónico inválido');
+    }
     await sendPasswordResetEmail(auth, email);
     console.log('📧 Email de recuperación enviado a:', email);
     return { success: true };
@@ -70,9 +75,8 @@ export const resetPassword = async (email) => {
   }
 };
 
-// Verifica si hay un usuario activo y si su correo está verificado
 export const checkAuthState = (callback) => {
-  onAuthStateChanged(auth, (user) => {
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
     if (user) {
       callback({
         user,
@@ -82,4 +86,5 @@ export const checkAuthState = (callback) => {
       callback(null);
     }
   });
+  return unsubscribe; // Devolver la función de desuscripción
 };

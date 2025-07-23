@@ -10,14 +10,14 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 import { BlurView } from 'expo-blur';
 import { Animated } from 'react-native';
 import { useRef, useEffect } from 'react';
 import BackButton from '../components/BackButton';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
-
+import { getConversationFromFirestore } from '../src/firebase/helpers/getConversationFromFirestore';
 
 export default function ProfileDetailScreen({ route }) {
 
@@ -51,6 +51,19 @@ const isBlocked = false; // Ya no se bloquea ningún perfil Free
   const [isZoomedProfile, setIsZoomedProfile] = useState(false);
 const scaleAnim = useRef(new Animated.Value(0.5)).current;
 const opacityAnim = useRef(new Animated.Value(0)).current;
+
+useEffect(() => {
+  const loadRemoteConversation = async () => {
+    const remote = await getConversationFromFirestore(userData.email, profile.email);
+    if (remote) {
+      setConversation(remote);
+      const sentByMe = remote.messages?.filter(m => m.sender === userData.email) || [];
+      setMyMessageCount(sentByMe.length);
+    }
+  };
+
+  loadRemoteConversation();
+}, []);
 
 useEffect(() => {
   if (selectedImage) {
@@ -380,7 +393,7 @@ console.log('📦 Categorías cargadas:', profile.category);
             ) : isFree ? (
 
           <View style={styles.inner}>
-            <Text style={[styles.title, { marginTop: 20 }]}>Mi Perfil Free 🎬</Text>
+            <Text style={[styles.title, { marginTop: 20 }]}>Perfil Free 🎬</Text>
 
             {profile.profilePhoto ? (
               <TouchableOpacity
@@ -614,8 +627,8 @@ const styles = StyleSheet.create({
     borderColor: '#D8A353',
   },
   portfolioImage: {
-    width: 120, // MÁS GRANDE
-    height: 160,
+    width: 110, // MÁS GRANDE
+    height: 150,
     borderRadius: 8,
   },
   videoSection: {

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { guardarAllProfiles } from './profileHelpers';
 
 export const restoreProfilesFromBackup = async () => {
   try {
@@ -9,7 +10,8 @@ export const restoreProfilesFromBackup = async () => {
 
     if (allProfilesSnap.exists()) {
       const { list } = allProfilesSnap.data();
-      await AsyncStorage.setItem('allProfiles', JSON.stringify(list));
+      await guardarAllProfiles(list);
+
       console.log('📥 allProfiles restaurado desde Firestore');
     }
 

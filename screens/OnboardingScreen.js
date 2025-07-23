@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { goToProfileTab } from '../utils/navigationHelpers';

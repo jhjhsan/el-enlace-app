@@ -22,8 +22,6 @@ const transporter = nodemailer.createTransport({
 });
 
 exports.sendTrialNotificationsCron = functions
-  .runWith({ timeoutSeconds: 60, memory: "512MB" })
-  .region("us-central1")
   .pubsub.schedule("every 24 hours")
   .timeZone("America/Santiago")
   .onRun(async (context) => {

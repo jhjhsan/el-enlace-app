@@ -18,13 +18,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
-import { registerWithEmail } from '../src/firebase/helpers/authHelper';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { saveProfileToFirestore } from '../src/firebase/helpers/saveProfileToFirestore';
 import {
   goToInitialRedirect,
-  goToFormularioFree, // ✅ AGREGA ESTO
+  goToFormularioFree,
+  goToCompleteElite,
 } from '../utils/navigationHelpers';
-
+import { registerWithEmail } from '../src/firebase/helpers/authHelper';
+import BackButton from '../components/BackButton';
+import AgencyRegisterForm from './AgencyRegisterForm';
+import TalentRegisterForm from './TalentRegisterForm';
+import { sendEmailVerification } from 'firebase/auth';
+import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 
 export default function RegisterScreen({ navigation }) {
   const { setUserData, setIsLoggedIn } = useUser();
@@ -45,6 +51,14 @@ export default function RegisterScreen({ navigation }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  const [isMinor, setIsMinor] = useState(false);
+  const [representativeName, setRepresentativeName] = useState('');
+  const [representativeID, setRepresentativeID] = useState('');
+  const [relationship, setRelationship] = useState('');
+  const [legalConsent, setLegalConsent] = useState(false);
+  const [representativeEmail, setRepresentativeEmail] = useState('');
 
   const talentCategories = [
     "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
@@ -111,7 +125,33 @@ export default function RegisterScreen({ navigation }) {
     ]).start(() => setModalVisible(false));
   };
 
-  const isValidEmail = (email) => /\S+@\S+\.\S+/.test(email);
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') {
+    return false;
+  }
+
+  const cleaned = email
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9@._\-+]/gi, '')
+    .replace(/@{2,}/g, '@')
+
+  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned);
+
+  if (
+    !isValid &&
+    cleaned &&
+    typeof cleaned === 'string' &&
+    cleaned.includes('@') &&
+    cleaned.length > 5 &&
+    !cleaned.includes('@gmail@') // ← evita falsos positivos molestos
+  ) {
+    console.warn('Correo normalizado no válido:', cleaned);
+  }
+
+  return isValid;
+};
 
   const evaluatePasswordStrength = (password) => {
     const hasLetters = /[a-zA-Z]/.test(password);
@@ -130,79 +170,145 @@ export default function RegisterScreen({ navigation }) {
 
   const getStrengthColor = () => passwordStrength === 'Fuerte' ? '#00ff99' : passwordStrength === 'Media' ? '#ffcc00' : '#ff4444';
 
+  const cleanAsyncStorage = async () => {
+    try {
+
+      const allUsersJson = await AsyncStorage.getItem('allUsers');
+      let allUsers = allUsersJson ? JSON.parse(allUsersJson) : [];
+      const allProfilesJson = await AsyncStorage.getItem('allProfiles');
+      let allProfiles = allProfilesJson ? JSON.parse(allProfilesJson) : [];
+      const allProfilesEliteJson = await AsyncStorage.getItem('allProfilesElite');
+      let allProfilesElite = allProfilesEliteJson ? JSON.parse(allProfilesEliteJson) : [];
+
+      console.log('📦 allUsers antes de limpieza:', allUsers);
+      console.log('📦 allProfiles antes de limpieza:', allProfiles);
+      console.log('📦 allProfilesElite antes de limpieza:', allProfilesElite);
+
+      allUsers = allUsers.filter((user) => isValidEmail(user.email));
+      allProfiles = allProfiles.filter((profile) => isValidEmail(profile.email));
+      allProfilesElite = allProfilesElite.filter((profile) => isValidEmail(profile.email));
+
+      console.log('🧹 Limpiando allUsers, entradas válidas:', allUsers);
+      console.log('🧹 Limpiando allProfiles, entradas válidas:', allProfiles);
+      console.log('🧹 Limpiando allProfilesElite, entradas válidas:', allProfilesElite);
+
+      await AsyncStorage.setItem('allUsers', JSON.stringify(allUsers));
+      await guardarAllProfiles(allProfiles);
+      await AsyncStorage.setItem('allProfilesElite', JSON.stringify(allProfilesElite));
+      console.log('✅ AsyncStorage limpiado correctamente');
+    } catch (error) {
+      console.error('❌ Error al limpiar AsyncStorage:', error);
+    }
+  };
+
   const handleRegister = async () => {
     setIsLoading(true);
+    await cleanAsyncStorage();
+
+    // Validar campos de menor de edad
+    if (isMinor) {
+      if (!representativeName || !representativeID || !representativeEmail || !relationship || !legalConsent) {
+        Alert.alert('Datos incompletos', 'Completa todos los campos del representante legal y acepta el consentimiento.');
+        setIsLoading(false);
+        return;
+      }
+      if (!isValidEmail(representativeEmail)) {
+        Alert.alert('Error', 'Correo del representante inválido.');
+        setIsLoading(false);
+        return;
+      }
+    }
 
     try {
+      // Validar campos principales
       if (!acceptedPolicies) {
-  Alert.alert('Debes aceptar las políticas', 'Para continuar, debes aceptar los términos y condiciones y la política de privacidad.');
-  setIsLoading(false);
-  return;
-}
+        Alert.alert('Debes aceptar las políticas', 'Para continuar, debes aceptar los términos y condiciones y la política de privacidad.');
+        setIsLoading(false);
+        return;
+      }
       if (!membershipType) {
         Alert.alert('Error', 'Selecciona un tipo de cuenta.');
         setIsLoading(false);
         return;
       }
       if (!name || !email || !password || !confirmPassword) {
+        console.warn('Campos vacíos detectados:', { name, email, password, confirmPassword });
         Alert.alert('Error', 'Completa todos los campos.');
         setIsLoading(false);
         return;
       }
       if (!isValidEmail(email)) {
+        console.warn('Correo inválido:', email);
         Alert.alert('Error', 'Correo inválido.');
         setIsLoading(false);
         return;
       }
       const passwordIsSecure = password.length >= 6 && /[A-Z]/.test(password);
-
-if (!passwordIsSecure) {
-  Alert.alert('Contraseña insegura', 'Debe tener al menos 6 caracteres y una letra mayúscula.');
-  setIsLoading(false);
-  return;
-}
-
+      if (!passwordIsSecure) {
+        Alert.alert('Contraseña insegura', 'Debe tener al menos 6 caracteres y una letra mayúscula.');
+        setIsLoading(false);
+        return;
+      }
       if (password !== confirmPassword) {
         Alert.alert('Error', 'Las contraseñas no coinciden.');
         setIsLoading(false);
         return;
       }
 
-     const firebaseResult = await registerWithEmail(email.trim().toLowerCase(), password.trim());
-if (!firebaseResult.success) {
-  if (firebaseResult.error?.code === 'auth/email-already-in-use') {
-    Alert.alert('Este correo ya está registrado', 'Inicia sesión o usa otro correo.');
-  } else {
-    Alert.alert('Error al registrar', 'No se pudo crear la cuenta en Firebase.');
-  }
-  setIsLoading(false);
-  return;
-}
+      const auth = getAuth();
+      console.log('👤 Usuario actual antes de crear cuenta:', auth.currentUser);
 
-// LIMPIAR DATOS ANTIGUOS
-await AsyncStorage.multiRemove([
-  'userData',
-  'userProfileFree',
-  'userProfilePro',
-  'userProfileElite',
-  'fromRegister',
-  'allUsers' // Esto eliminará todos los usuarios anteriores al registrar uno nuevo
-]);
+      const firebaseResult = await registerWithEmail(email.trim().toLowerCase(), password.trim());
+      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password.trim());
+      console.log('✅ Usuario autenticado tras registro:', auth.currentUser);
 
-    const newUser = {
-  name: name.trim(),
-  email: email.trim().toLowerCase(),
-  accountType: membershipType === 'elite' ? 'agency' : 'talent',
-  membershipType: membershipType,
-};
+   // ⏳ Esperar a enviar verificación luego del guardado en el perfil
 
-if (membershipType === 'elite') {
-  newUser.hasPaid = false;
-}
+      if (!firebaseResult.success) {
+        if (firebaseResult.error?.code === 'auth/email-already-in-use') {
+          Alert.alert('Este correo ya está registrado', 'Inicia sesión o usa otro correo.');
+        } else {
+          Alert.alert('Error al registrar', 'No se pudo crear la cuenta en Firebase.');
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Limpiar datos antiguos
+      await AsyncStorage.multiRemove([
+        'userData',
+        'userProfileFree',
+        'userProfilePro',
+        'userProfileElite',
+        'fromRegister',
+        'allUsers',
+      ]);
+
+      const newUser = {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        accountType: membershipType === 'elite' ? 'agency' : 'talent',
+        membershipType: membershipType,
+        ...(isMinor && {
+          representativeEmail: representativeEmail.trim().toLowerCase(),
+          representativeName,
+          representativeID,
+          relationship,
+          legalConsent,
+        }),
+      };
+      console.log('🆕 New User:', newUser);
+
+      // Validar antes de guardar
+      if (!isValidEmail(newUser.email) || (isMinor && !isValidEmail(newUser.representativeEmail))) {
+        console.warn('Correo inválido detectado antes de guardar:', newUser);
+        Alert.alert('Error', 'Correo inválido detectado.');
+        setIsLoading(false);
+        return;
+      }
 
       const storedUsers = await AsyncStorage.getItem('allUsers');
       const users = storedUsers ? JSON.parse(storedUsers) : [];
-
       if (users.some((u) => u.email === newUser.email)) {
         Alert.alert('Error', 'Correo ya registrado.');
         setIsLoading(false);
@@ -214,28 +320,32 @@ if (membershipType === 'elite') {
       await AsyncStorage.setItem('userData', JSON.stringify(newUser));
       await AsyncStorage.setItem('acceptedPolicies', 'true');
       setUserData(newUser);
-      // Si es Pro o Elite, agregar 30 días de prueba gratuita
-if (membershipType === 'pro' || membershipType === 'elite') {
-  const now = new Date();
-  const trialEndDate = new Date(now.setDate(now.getDate() + 30));
-  newUser.trialEndsAt = trialEndDate.toISOString(); // Se guarda como ISO para Firestore
-  newUser.subscriptionStart = new Date().toISOString();
-  newUser.subscriptionType = 'trial';
-  newUser.hasPaid = false; // Garantizamos el estado inicial
-}
+
+      if (membershipType === 'free') {
+        await AsyncStorage.setItem('hasCompletedFreeForm', 'false');
+      }
+      if (membershipType === 'pro' || membershipType === 'elite') {
+        const now = new Date();
+        const trialEndDate = new Date(now.setDate(now.getDate() + 30));
+        newUser.trialEndsAt = trialEndDate.toISOString();
+        newUser.subscriptionStart = new Date().toISOString();
+        newUser.subscriptionType = 'trial';
+        newUser.hasPaid = false;
+      }
+
       await saveProfileToFirestore(newUser);
       await AsyncStorage.setItem('fromRegister', 'true');
       await AsyncStorage.setItem('sessionActive', 'true');
 
- setIsLoading(false);
-setIsLoggedIn(true);
-
-if (membershipType === 'free') {
-  goToFormularioFree(navigation);
-} else {
-  goToInitialRedirect(navigation);
-}
-
+      setIsLoading(false);
+      setIsLoggedIn(true);
+      if (membershipType === 'free') {
+        goToFormularioFree(navigation);
+      } else if (membershipType === 'elite') {
+        goToCompleteElite(navigation);
+      } else {
+        goToCompleteProfile(navigation);
+      }
     } catch (error) {
       console.error('Error al registrar:', error);
       Alert.alert('Error', 'No se pudo registrar. Intenta de nuevo.');
@@ -245,63 +355,99 @@ if (membershipType === 'free') {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Crear cuenta</Text>
-      <Text style={styles.subtitle}>Selecciona tu tipo de cuenta</Text>
+      {!showForm && (
+        <>
+          <Text style={styles.title}>Crear cuenta</Text>
+          <Text style={styles.subtitle}>Selecciona tu tipo de cuenta</Text>
 
-      <TouchableOpacity style={[styles.card, membershipType === 'free' && styles.selectedCard]} onPress={() => showModal('free')}>
-        <Text style={styles.cardTitle}>🧑‍🎤 Talento / Profesional Independiente</Text>
-        <Text style={styles.cardText}>Para quienes ofrecen sus habilidades en el mundo audiovisual.</Text>
-      </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.card, membershipType === 'free' && styles.selectedCard]}
+            onPress={() => showModal('free')}
+          >
+            <Text style={styles.cardTitle}>🎭 Talento / Profesional Independiente</Text>
+            <Text style={styles.cardText}>Para quienes ofrecen sus habilidades en el mundo audiovisual.</Text>
+          </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.card, membershipType === 'elite' && styles.selectedCard]} onPress={() => showModal('elite')}>
-        <Text style={styles.cardTitle}>🏢 Agencia / Productora / Proveedor</Text>
-        <Text style={styles.cardText}>Para empresas o servicios que contratan talentos o apoyan rodajes.</Text>
-      </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.card, membershipType === 'elite' && styles.selectedCard]}
+            onPress={() => showModal('elite')}
+          >
+            <Text style={styles.cardTitle}>🏢 Agencia / Productora / Proveedor</Text>
+            <Text style={styles.cardText}>Para empresas o servicios que contratan talentos o apoyan rodajes.</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
-      <TextInput style={styles.input} placeholder="Nombre completo" placeholderTextColor="#999" value={name} onChangeText={setName} />
-
-      <View style={styles.inputContainer}>
-        <TextInput style={styles.input} placeholder="Correo electrónico" placeholderTextColor="#999" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
-        <Ionicons name="checkmark-circle" size={20} color={isValidEmail(email) ? '#D8A353' : '#555'} style={styles.iconRight} />
-      </View>
-
-      <View style={styles.inputContainer}>
-        <TextInput style={styles.input} placeholder="Contraseña" placeholderTextColor="#999" secureTextEntry={!showPassword} value={password} onChangeText={handlePasswordChange} />
-        <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconRight}>
-          <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#ccc" />
-        </TouchableOpacity>
-      </View>
-<Text style={{ color: '#888', fontSize: 12, marginBottom: 5 }}>
-  Mínimo 6 caracteres y una letra mayúscula
-</Text>
-
-      {password.length > 0 && <Text style={[styles.strengthLabel, { color: getStrengthColor() }]}>Seguridad: {passwordStrength}</Text>}
-
-      <View style={styles.inputContainer}>
-        <TextInput style={styles.input} placeholder="Repetir contraseña" placeholderTextColor="#999" secureTextEntry={!showConfirmPassword} value={confirmPassword} onChangeText={setConfirmPassword} />
-        <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconRight}>
-          <Ionicons name={showConfirmPassword ? 'eye-off' : 'eye'} size={20} color="#ccc" />
-        </TouchableOpacity>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 10 }}>
-  <TouchableOpacity onPress={() => setAcceptedPolicies(!acceptedPolicies)} style={styles.checkbox}>
-    {acceptedPolicies && <View style={styles.checkboxChecked} />}
-  </TouchableOpacity>
-  <Text style={styles.checkboxText}>
-    Acepto los{' '}
-    <Text style={styles.linkText} onPress={() => navigation.navigate('TermsAndConditionsScreen')}>Términos</Text>{' '}
-    y la{' '}
-    <Text style={styles.linkText} onPress={() => navigation.navigate('PrivacyPolicyScreen')}>Política de Privacidad</Text>.
-  </Text>
-</View>
-
-      <TouchableOpacity style={[styles.button, isLoading && { opacity: 0.6 }]} onPress={handleRegister} disabled={isLoading}>
-        {isLoading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>REGISTRARSE</Text>}
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-        <Text style={styles.loginText}>¿Ya tienes cuenta? Inicia sesión</Text>
-      </TouchableOpacity>
+      {showForm && membershipType === 'free' && (
+        <TalentRegisterForm
+          name={name}
+          setName={setName}
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          confirmPassword={confirmPassword}
+          setConfirmPassword={setConfirmPassword}
+          acceptedPolicies={acceptedPolicies}
+          setAcceptedPolicies={setAcceptedPolicies}
+          showPassword={showPassword}
+          setShowPassword={setShowPassword}
+          showConfirmPassword={showConfirmPassword}
+          setShowConfirmPassword={setShowConfirmPassword}
+          passwordStrength={passwordStrength}
+          handlePasswordChange={handlePasswordChange}
+          getStrengthColor={getStrengthColor}
+          isValidEmail={isValidEmail}
+          isMinor={isMinor}
+          setIsMinor={setIsMinor}
+          representativeName={representativeName}
+          setRepresentativeName={setRepresentativeName}
+          representativeID={representativeID}
+          setRepresentativeID={setRepresentativeID}
+          representativeEmail={representativeEmail}
+          setRepresentativeEmail={setRepresentativeEmail}
+          relationship={relationship}
+          setRelationship={setRelationship}
+          legalConsent={legalConsent}
+          setLegalConsent={setLegalConsent}
+          navigation={navigation}
+          setShowForm={setShowForm}
+          membershipType={membershipType}
+          setMembershipType={setMembershipType}
+          isLoading={isLoading}
+          handleRegisterPress={handleRegister}
+        />
+      )}
+      {showForm && membershipType === 'elite' && (
+        <AgencyRegisterForm
+          name={name}
+          setName={setName}
+          representativeName={representativeName}
+          setRepresentativeName={setRepresentativeName}
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          confirmPassword={confirmPassword}
+          setConfirmPassword={setConfirmPassword}
+          acceptedPolicies={acceptedPolicies}
+          setAcceptedPolicies={setAcceptedPolicies}
+          showPassword={showPassword}
+          setShowPassword={setShowPassword}
+          showConfirmPassword={showConfirmPassword}
+          setShowConfirmPassword={setShowConfirmPassword}
+          passwordStrength={passwordStrength}
+          handlePasswordChange={handlePasswordChange}
+          getStrengthColor={getStrengthColor}
+          isValidEmail={isValidEmail}
+          isLoading={isLoading}
+          handleRegisterPress={handleRegister}
+          navigation={navigation}
+          setShowForm={setShowForm}
+          membershipType={membershipType}
+          setMembershipType={setMembershipType}
+        />
+      )}
 
       <Modal
         visible={modalVisible}
@@ -310,39 +456,43 @@ if (membershipType === 'free') {
         onRequestClose={hideModal}
       >
         <View style={styles.modalOverlay}>
-          {/* Área fuera del modal (para cerrar) */}
           <TouchableOpacity
             style={{ flex: 1 }}
             activeOpacity={1}
             onPress={hideModal}
           />
-
-          {/* Contenido del modal */}
           <Animated.View style={[styles.modalContent, {
             transform: [{ scale: scaleAnim }],
             opacity: opacityAnim,
           }]}>
             <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <ScrollView
+              style={{
+                maxHeight: membershipType === 'free' ? 500 : '100%',
+              }}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled
+            >
+              {modalContent.map((cat, idx) => (
+                <Text key={idx} style={styles.modalItem}>• {cat}</Text>
+              ))}
+            </ScrollView>
 
-       <ScrollView
-  style={{
-    maxHeight: membershipType === 'free' ? 400 : '100%',
-  }}
-  showsVerticalScrollIndicator={true}
-  nestedScrollEnabled
->
-  {modalContent.map((cat, idx) => (
-    <Text key={idx} style={styles.modalItem}>• {cat}</Text>
-  ))}
-</ScrollView>
-
-
-            <TouchableOpacity style={styles.modalClose} onPress={hideModal}>
-              <Text style={styles.modalCloseText}>✕ Cerrar</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 }}>
+              <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 5 }]} onPress={hideModal}>
+                <Text style={styles.buttonText}>Cerrar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, { flex: 1, marginLeft: 5 }]}
+                onPress={() => {
+                  hideModal();
+                  setShowForm(true);
+                }}
+              >
+                <Text style={styles.buttonText}>Aceptar</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
-
-          {/* Área debajo del modal (para cerrar si toca abajo) */}
           <TouchableOpacity
             style={{ flex: 1 }}
             activeOpacity={1}
@@ -383,30 +533,29 @@ const styles = StyleSheet.create({
   modalClose: { alignSelf: 'flex-end', marginTop: 5 },
   modalCloseText: { color: '#D8A353', fontSize: 14, fontWeight: 'bold' },
   checkbox: {
-  width: 20,
-  height: 20,
-  borderWidth: 2,
-  borderColor: '#D8A353',
-  borderRadius: 4,
-  marginRight: 10,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-checkboxChecked: {
-  width: 12,
-  height: 12,
-  backgroundColor: '#D8A353',
-  borderRadius: 2,
-},
-checkboxText: {
-  color: '#ccc',
-  flex: 1,
-  fontSize: 13,
-  lineHeight: 18,
-},
-linkText: {
-  color: '#4DA6FF',
-  textDecorationLine: 'underline',
-},
-
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#D8A353',
+    borderRadius: 4,
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    width: 12,
+    height: 12,
+    backgroundColor: '#D8A353',
+    borderRadius: 2,
+  },
+  checkboxText: {
+    color: '#ccc',
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  linkText: {
+    color: '#4DA6FF',
+    textDecorationLine: 'underline',
+  },
 });

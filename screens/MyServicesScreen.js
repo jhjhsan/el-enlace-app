@@ -12,6 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import { canPostNewService } from '../utils/postLimits';
 import { saveServicePost } from '../src/firebase/helpers/saveServicePost';
 import { Ionicons } from '@expo/vector-icons';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApp } from 'firebase/app';
 
 export default function MyServicesScreen() {
   const navigation = useNavigation();
@@ -57,6 +59,20 @@ export default function MyServicesScreen() {
       };
 
       await saveServicePost(newService);
+      // Enviar notificación push al creador (opcional)
+try {
+  const functions = getFunctions(getApp());
+  const sendPush = httpsCallable(functions, 'sendServicePushNotifications');
+  await sendPush({
+    recipientEmail: user?.email,
+    title: newService.title,
+    description: newService.description,
+  });
+  console.log('✅ Notificación de servicio enviada');
+} catch (err) {
+  console.error('❌ Error enviando notificación push de servicio:', err);
+}
+
       Alert.alert('✅ Servicio creado', 'Tu servicio ha sido publicado.');
       loadServices();
     } catch (error) {

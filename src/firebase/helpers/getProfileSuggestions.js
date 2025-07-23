@@ -22,9 +22,9 @@ export const getProfileSuggestions = async (profile, userData) => {
         return { suggestions: data.suggestions };
       }
     }
-
+    console.log("📦 membershipType enviado:", userData?.membershipType);
     const callable = httpsCallable(functions, "generateSuggestions");
-    const result = await callable({ profile });
+    const result = await callable({ profile, userData });
 
     if (result.data?.error) return { error: result.data.error };
 

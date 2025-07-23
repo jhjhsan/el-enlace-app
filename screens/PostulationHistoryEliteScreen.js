@@ -10,7 +10,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 import { generatePostulationsPdf } from '../utils/generatePostulationsPdf.js';
 import CheckBox from '@react-native-community/checkbox';
 

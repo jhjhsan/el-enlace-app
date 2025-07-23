@@ -5,21 +5,41 @@ if (!getApps().length) {
   initializeApp();
 }
 
-const { analyzeAd } = require("./analyzeAd");
 const { generateSuggestions } = require("./generateSuggestions");
-const { interpretSearchPhrase } = require("./interpretSearchPhrase");
-const { sendTrialEmail } = require("./sendTrialAlertEmail");
-const { checkProfileUpdateReminder } = require("./checkProfileUpdateReminder");
-const { analyzeCastingDocx } = require('./analyzeCastingDocx');
-const { analyzeCastingImage } = require('./analyzeCastingImage');
-const { validateMediaContent } = require("./validateMediaContent");
-
-exports.analyzeAd = analyzeAd;
 exports.generateSuggestions = generateSuggestions;
+
+const { analyzeAd } = require("./analyzeAd");
+exports.analyzeAd = analyzeAd;
+
+const { interpretSearchPhrase } = require("./interpretSearchPhrase");
 exports.interpretSearchPhrase = interpretSearchPhrase;
-exports.sendTrialEmail = sendTrialEmail;
-exports.checkProfileUpdateReminder = checkProfileUpdateReminder;
-exports.analyzeCastingDocx = analyzeCastingDocx;
-exports.analyzeCastingImage = analyzeCastingImage;
-exports.sendCastingPushNotifications = require('./sendCastingPushNotifications');
+
+const { sendTrialAlertEmail } = require("./sendTrialAlertEmail");
+exports.sendTrialAlertEmail = sendTrialAlertEmail;
+
+const { validateMediaContent } = require("./validateMediaContent");
 exports.validateMediaContent = validateMediaContent;
+
+const { analyzeCastingDocx } = require("./analyzeCastingDocx");
+exports.analyzeCastingDocx = analyzeCastingDocx;
+
+const { analyzeCastingImage } = require("./analyzeCastingImage");
+exports.analyzeCastingImage = analyzeCastingImage;
+
+const { sendTrialNotificationsCron } = require("./sendTrialNotificationsCron");
+exports.sendTrialNotificationsCron = sendTrialNotificationsCron;
+
+const { sendCastingPushNotifications } = require("./sendCastingPushNotifications");
+exports.sendCastingPushNotifications = sendCastingPushNotifications;
+
+const { sendMessagePushNotifications } = require("./sendMessagePushNotifications");
+exports.sendMessagePushNotifications = sendMessagePushNotifications;
+
+const { sendServicePushNotifications } = require("./sendServicePushNotifications");
+exports.sendServicePushNotifications = sendServicePushNotifications;
+
+const { sendFocusPushNotifications } = require("./sendFocusPushNotifications");
+exports.sendFocusPushNotifications = sendFocusPushNotifications;
+
+const { syncFocusToFirestore } = require("./syncFocusToFirestore");
+exports.syncFocusToFirestore = syncFocusToFirestore;

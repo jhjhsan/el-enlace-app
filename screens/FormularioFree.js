@@ -10,28 +10,59 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { useUser } from '../contexts/UserContext';
 import { saveUserProfile } from '../utils/profileStorage';
-// Si deseas usar Ionicons en vez de emoji flecha:
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { goToDashboardTab } from '../utils/navigationHelpers';
 import { validateImageWithIA } from '../src/firebase/helpers/validateMediaContent';
-import * as FileSystem from 'expo-file-system'; // si aún no está
+import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { FlatList } from 'react-native';
 import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage'; 
 import { getAuth, sendEmailVerification } from 'firebase/auth';
-import { ScrollView } from 'react-native';
-import * as MediaLibrary from 'expo-media-library';
+
+console.log('🧪 ImagePicker cargado:', ImagePicker);
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
+const resizeProfilePhoto = async (uri) => {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 720 } }],
+      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    return result.uri;
+  } catch (e) {
+    console.error('Error al redimensionar perfil:', e);
+    return uri;
+  }
+};
+
+const resizeBookPhoto = async (uri) => {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 1080 } }],
+      { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    return result.uri;
+  } catch (e) {
+    console.error('Error al redimensionar book:', e);
+    return uri;
+  }
+};
+
 export default function FormularioFree({ navigation }) {
   const { setUserData, setIsLoggedIn, userData } = useUser();
-
+  const [loading, setLoading] = useState(false);
   const [name, setName] = useState(userData?.name || '');
   const [email, setEmail] = useState(userData?.email || '');
   const [profilePhoto, setProfilePhoto] = useState(null);
@@ -41,181 +72,223 @@ export default function FormularioFree({ navigation }) {
   const [openSexo, setOpenSexo] = useState(false);
   const [zIndexSexo, setZIndexSexo] = useState(500);
   const [modalVisible, setModalVisible] = useState(false);
-const [modalMessage, setModalMessage] = useState('');
-const [category, setCategory] = useState([]);
-const [showCategoryModal, setShowCategoryModal] = useState(false);
-const [searchCategory, setSearchCategory] = useState('');
-const categoriesList = [
-  "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
-  "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
-  "Continuista", "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
-  "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
-  "Extra", "Fotógrafo de backstage", "Iluminador", "Ilustrador / storyboarder",
-  "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Niño actor",
-  "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
-  "Promotoras", "Servicios de catering", "Sonidista", "Stage manager",
-  "Técnico de efectos especiales", "Técnico de grúa", "Vestuarista",
-  "Ambientador", "Asistente de cámara", "Asistente de dirección",
-  "Asistente de producción", "Asistente de vestuario",
-  "Transporte de talentos", "Autos personales", "Motos o bicicletas para escenas",
-  "Grúas para filmación", "Camiones de arte para rodajes", "Casas rodantes para producción",
-  "Estudio fotográfico", "Transporte de producción", "Vans de producción",
-  "Coffee break / snacks", "Otros / No especificado"
-];
-const filteredCategories = categoriesList.filter(cat =>
-  cat.toLowerCase().includes(searchCategory.toLowerCase())
-);
+  const [modalMessage, setModalMessage] = useState('');
+  const [category, setCategory] = useState([]);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [searchCategory, setSearchCategory] = useState('');
+  const [hasOffensiveContent, setHasOffensiveContent] = useState(false);
 
-const toggleCategory = (cat) => {
-  setCategory(prev => 
-    prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+  const categoriesList = [
+    "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
+    "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
+    "Continuista", "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
+    "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
+    "Extra", "Fotógrafo de backstage", "Iluminador", "Ilustrador / storyboarder",
+    "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Niño actor",
+    "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
+    "Promotoras", "Servicios de catering", "Sonidista", "Stage manager",
+    "Técnico de efectos especiales", "Técnico de grúa", "Vestuarista",
+    "Ambientador", "Asistente de cámara", "Asistente de dirección",
+    "Asistente de producción", "Asistente de vestuario",
+    "Transporte de talentos", "Autos personales", "Motos o bicicletas para escenas",
+    "Grúas para filmación", "Camiones de arte para rodajes", "Casas rodantes para producción",
+    "Estudio fotográfico", "Transporte de producción", "Vans de producción",
+    "Coffee break / snacks", "Otros / No especificado"
+  ];
+
+  const filteredCategories = categoriesList.filter(cat =>
+    cat.toLowerCase().includes(searchCategory.toLowerCase())
   );
-};
 
-
-
-useEffect(() => {
-  const loadProfile = async () => {
-    try {
-      const json = await AsyncStorage.getItem('userProfileFree');
-      if (json) {
-  const profile = JSON.parse(json);
-  setName(profile.name || '');
-  setEmail(profile.email || '');
-  setSexo(profile.sexo || '');
-  setEdad(profile.edad || '');
-  setProfilePhoto(profile.profilePhoto || null);
-  setBookPhotos(profile.bookPhotos || []);
-  setCategory(Array.isArray(profile.category) ? profile.category : []); // ✅ ← AQUÍ
-}
-    } catch (error) {
-      console.log('❌ Error al cargar perfil Free:', error);
-    }
+  const toggleCategory = (cat) => {
+    setCategory(prev => {
+      if (prev.includes(cat)) {
+        return prev.filter(c => c !== cat);
+      } else if (prev.length < 3) {
+        return [...prev, cat];
+      } else {
+        Alert.alert('Límite alcanzado', 'Solo puedes seleccionar hasta 3 categorías.');
+        return prev;
+      }
+    });
   };
 
-  loadProfile();
-}, []);
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const json = await AsyncStorage.getItem('userProfileFree');
+        if (json) {
+          const profile = JSON.parse(json);
+          setName(profile.name || '');
+          setEmail(profile.email || '');
+          setSexo(profile.sexo || '');
+          setEdad(profile.edad || '');
+          setProfilePhoto(profile.profilePhoto || null);
+          setBookPhotos(profile.bookPhotos || []);
+          setCategory(Array.isArray(profile.category) ? profile.category : []);
+        }
+      } catch (error) {
+        console.log('❌ Error al cargar perfil Free:', error);
+      }
+    };
+    loadProfile();
+  }, []);
 
   const sexoItems = [
     { label: 'Hombre', value: 'Hombre' },
     { label: 'Mujer', value: 'Mujer' },
   ];
 
-const pickProfilePhoto = async () => {
-  try {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería para subir imágenes.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
-
-    if (result.canceled) return;
-
-    const asset = result.assets?.[0];
-    if (!asset?.uri) return;
-
-    console.log('🧪 Imagen seleccionada:', asset.uri);
-
-    // 🧪 Si estás en Expo, simulamos URL real para testear visualmente
-    if (__DEV__ && asset.uri.startsWith('file://')) {
-      setProfilePhoto(asset.uri);
-      Alert.alert('⚠️ Imagen cargada localmente (solo en Expo)');
-      return;
-    }
-
-    const emailKey = email.toLowerCase().trim();
-
-    const firebaseUrl = await uploadMediaToStorage(
-      asset.uri,
-      `profile_photos/${emailKey}_photo.jpg`
-    );
-
-    if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
-      setModalMessage('No se pudo subir la imagen.');
-      setModalVisible(true);
-      return;
-    }
-
-    const validation = await validateImageWithIA(firebaseUrl);
-    if (!validation.valid) {
-      setModalMessage('La imagen contiene contenido ofensivo.');
-      setModalVisible(true);
-      return;
-    }
-
-    setProfilePhoto(firebaseUrl);
-    Alert.alert('✅ Foto de perfil subida y validada');
-  } catch (error) {
-    console.log('❌ Error al seleccionar imagen de perfil:', error);
-  }
-};
-
-const pickBookPhotos = async () => {
-  if (bookPhotos.length >= 3) {
-    setModalMessage('Solo puedes subir hasta 3 fotos.');
-    setModalVisible(true);
-    return;
-  }
-
-  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
-    return;
-  }
-
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsMultipleSelection: true,
-    quality: 1,
-  });
-
-  if (!result.canceled && result.assets.length > 0) {
-    const safeUris = [];
-    const emailKey = email.toLowerCase().trim();
-
-    for (let i = 0; i < result.assets.length && bookPhotos.length + safeUris.length < 3; i++) {
-      const asset = result.assets[i];
-      if (!asset?.uri) continue;
-     
-      console.log('🧪 URI imagen seleccionada:', asset.uri);
-
-      // En modo desarrollo (Expo), simular subida para ver resultado
-      if (__DEV__ && asset.uri.startsWith('file://')) {
-        safeUris.push(asset.uri);
-        continue;
+  const pickProfilePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
+        return;
       }
 
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      const uriToUpload = asset.uri;
+
+      const fileInfo = await FileSystem.getInfoAsync(uriToUpload);
+      if (!fileInfo.exists) {
+        return;
+      }
+
+      const emailKey = (email || userData?.email || '')
+        .toLowerCase()
+        .replace(/\s/g, '')
+        .replace(/[@.]/g, '_');
+
+      setLoading(true);
+      const resizedUri = await resizeProfilePhoto(uriToUpload);
       const firebaseUrl = await uploadMediaToStorage(
-        asset.uri,
-        `book_photos/${emailKey}_book${Date.now()}_${i + 1}.jpg`
+        resizedUri,
+        `profile_photos/${emailKey}_photo.jpg`
       );
+      setLoading(false);
 
       if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
-        setModalMessage('Error al subir una imagen.');
+        setModalMessage('No se pudo subir la imagen.');
         setModalVisible(true);
         return;
       }
 
-      const validation = await validateImageWithIA(firebaseUrl);
-      if (!validation.valid) {
-        setModalMessage('Una imagen fue rechazada por contenido ofensivo.');
-        setModalVisible(true);
-        return;
-      }
+      setProfilePhoto(firebaseUrl);
 
-      safeUris.push(firebaseUrl);
+      setTimeout(async () => {
+        const validation = await validateImageWithIA(firebaseUrl);
+        if (!validation.valid) {
+          setProfilePhoto(null);
+          setHasOffensiveContent(true);
+          setModalMessage('La imagen contiene contenido ofensivo. Por favor selecciona otra.');
+          setModalVisible(true);
+        }
+      }, 500);
+    } catch (error) {
+      console.error('❌ Error al seleccionar imagen de perfil:', error);
+      setModalMessage('Ocurrió un error al subir la imagen.');
+      setModalVisible(true);
+      setLoading(false);
+    }
+  };
+
+  const pickBookPhotos = async () => {
+    if (bookPhotos.length >= 3) {
+      Alert.alert(
+        'Límite alcanzado',
+        'Solo puedes subir hasta 3 fotos en el book. Si quieres cambiar una, elimina primero una foto existente.'
+      );
+      return;
     }
 
-    const total = [...bookPhotos, ...safeUris].slice(0, 3);
-    setBookPhotos(total);
-  }
-};
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería para subir imágenes.');
+        return;
+      }
+
+      const maxSelectable = 3 - bookPhotos.length;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 1,
+      });
+
+      if (result.canceled) return;
+
+      const selectedAssets = result.assets || [];
+
+      if (selectedAssets.length > maxSelectable) {
+        Alert.alert(
+          'Demasiadas fotos seleccionadas',
+          `Solo puedes seleccionar ${maxSelectable} foto${maxSelectable === 1 ? '' : 's'} más.`
+        );
+        return;
+      }
+
+      const emailKey = (email || userData?.email || '')
+        .toLowerCase()
+        .replace(/\s/g, '')
+        .replace(/[@.]/g, '_');
+
+      setLoading(true);
+
+      const uploadPromises = selectedAssets.map(async (asset, index) => {
+        const uriToUpload = asset.uri;
+
+        const fileInfo = await FileSystem.getInfoAsync(uriToUpload);
+        if (!fileInfo.exists) {
+          throw new Error('Archivo no válido.');
+        }
+
+        const resizedUri = await resizeBookPhoto(uriToUpload);
+        const filename = `book_${Date.now()}_${index}.jpg`;
+
+        const firebaseUrl = await uploadMediaToStorage(
+          resizedUri,
+          `book_photos/${emailKey}_${filename}`
+        );
+
+        if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
+          throw new Error('No se pudo subir una de las imágenes.');
+        }
+
+        setTimeout(async () => {
+          const validation = await validateImageWithIA(firebaseUrl);
+          if (!validation.valid) {
+            setBookPhotos(prev => prev.filter(uri => uri !== firebaseUrl));
+            setHasOffensiveContent(true);
+            setModalMessage('Una de las fotos contiene contenido ofensivo. Debes cambiarla.');
+            setModalVisible(true);
+          }
+        }, 500);
+
+        return firebaseUrl;
+      });
+
+      const urls = await Promise.all(uploadPromises);
+      setBookPhotos(prev => [...prev, ...urls]);
+      setLoading(false);
+    } catch (error) {
+      console.error('❌ Error al subir fotos del book:', error);
+      setLoading(false);
+      setModalMessage(error.message || 'Ocurrió un error al subir las fotos.');
+      setModalVisible(true);
+    }
+  };
 
   const handleDeletePhoto = (index) => {
     const updated = [...bookPhotos];
@@ -223,89 +296,122 @@ const pickBookPhotos = async () => {
     setBookPhotos(updated);
   };
 
-const handleSave = async () => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!name || !email || !profilePhoto || bookPhotos.length < 1 || !sexo || !edad) {
-    setModalMessage('Completa todos los campos obligatorios.');
-    setModalVisible(true);
-    return;
-  }
-
-  if (!emailRegex.test(email)) {
-    setModalMessage('Ingresa un correo válido.');
-    setModalVisible(true);
-    return;
-  }
-
-  if (isNaN(Number(edad))) {
-    setModalMessage('Ingresa una edad válida en números.');
-    setModalVisible(true);
-    return;
-  }
-
-  if (name && edad && name.trim() === edad.trim()) {
-    setModalMessage('Nombre y edad no deben coincidir. Verifica los datos.');
-    setModalVisible(true);
-    return;
-  }
-
-  try {
-    const emailKey = email.toLowerCase().trim();
-
-    const uploadedProfilePhoto = profilePhoto;
-    const uploadedBookPhotos = bookPhotos;
-
-    const fullProfile = {
-      id: email,
-      name,
-      email,
-      accountType: 'talent',
-      membershipType: 'free',
-      profilePhoto: uploadedProfilePhoto,
-      bookPhotos: uploadedBookPhotos,
-      sexo,
-      edad,
-      category,
-      visibleInExplorer: true,
-      timestamp: Date.now(),
-    };
-
-    const fromRegister = await AsyncStorage.getItem('fromRegister');
-
-    if (fromRegister === 'true') {
-  await saveUserProfile(fullProfile, 'free', setUserData, setIsLoggedIn, true);
-  await AsyncStorage.setItem('sessionActive', 'true');
-  await AsyncStorage.removeItem('fromRegister');
-  try {
-    goToDashboardTab(navigation);
-  } catch (e) {
-    console.log('⚠️ Error al redirigir:', e);
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'DashboardScreen' }],
-      })
-    );
-  }
-} else {
-  await saveUserProfile(fullProfile, 'free', setUserData, setIsLoggedIn);
-}
-
-    const auth = getAuth();
-    if (auth.currentUser && !auth.currentUser.emailVerified) {
-      await sendEmailVerification(auth.currentUser);
-      Alert.alert(
-        'Verificación enviada',
-        'Te hemos enviado un correo para verificar tu cuenta. Revisa tu bandeja de entrada.'
-      );
+  const handleSave = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!name || !email || !profilePhoto || bookPhotos.length < 1 || !sexo || !edad || category.length === 0) {
+      setModalMessage('Completa todos los campos obligatorios, incluyendo al menos una categoría.');
+      setModalVisible(true);
+      return;
     }
 
-  } catch (e) {
-    console.log('Error al guardar perfil:', e);
-    setModalMessage('No se pudo guardar el perfil.');
-    setModalVisible(true);
+    if (!emailRegex.test(email)) {
+      setModalMessage('Ingresa un correo válido.');
+      setModalVisible(true);
+      return;
+    }
+
+    if (isNaN(Number(edad))) {
+      setModalMessage('Ingresa una edad válida en números.');
+      setModalVisible(true);
+      return;
+    }
+
+    if (name && edad && name.trim() === edad.trim()) {
+      setModalMessage('Nombre y edad no deben coincidir. Verifica los datos.');
+      setModalVisible(true);
+      return;
+    }
+
+    // Verificar que las imágenes sean URLs válidas
+    if (!profilePhoto?.startsWith('https://')) {
+      setModalMessage('La foto de perfil no es válida. Por favor, selecciona una nueva.');
+      setModalVisible(true);
+      return;
+    }
+
+    if (bookPhotos.some(uri => !uri?.startsWith('https://'))) {
+      setModalMessage('Alguna foto del book no es válida. Por favor, revisa las fotos subidas.');
+      setModalVisible(true);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('👤 Firebase user activo en este momento:', getAuth().currentUser);
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      const fullProfile = {
+        id: cleanEmail,
+        name,
+        email: cleanEmail,
+        accountType: 'talent',
+        membershipType: 'free',
+        profilePhoto,
+        bookPhotos,
+        sexo,
+        edad,
+        category,
+        visibleInExplorer: !hasOffensiveContent,
+        flagged: hasOffensiveContent,
+        timestamp: Date.now(),
+      };
+
+      const fromRegister = await AsyncStorage.getItem('fromRegister');
+
+      if (fromRegister === 'true') {
+        await saveUserProfile(fullProfile, 'free', setUserData, setIsLoggedIn, true);
+        await AsyncStorage.setItem('sessionActive', 'true');
+        await AsyncStorage.removeItem('fromRegister');
+        await AsyncStorage.setItem('hasCompletedFreeForm', 'true');
+        await AsyncStorage.setItem('userData', JSON.stringify(fullProfile));
+        console.log('🔐 Marcado hasCompletedFreeForm como true');
+        console.log('💾 userData guardado para uso global (Pro incluido)');
+
+        try {
+          const auth = getAuth();
+          if (auth.currentUser && !auth.currentUser.emailVerified) {
+            await sendEmailVerification(auth.currentUser);
+            Alert.alert(
+              'Verificación enviada',
+              'Te hemos enviado un correo para verificar tu cuenta. Puedes revisarlo cuando gustes.'
+            );
+          }
+        } catch (err) {
+          console.warn('❌ Error al enviar correo de verificación:', err);
+        }
+
+        try {
+          goToDashboardTab(navigation);
+        } catch (e) {
+          console.log('⚠️ Error al redirigir:', e);
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: 'DashboardScreen' }],
+            })
+          );
+        }
+      } else {
+        await saveUserProfile(fullProfile, 'free', setUserData, setIsLoggedIn);
+      }
+      setLoading(false);
+    } catch (e) {
+      console.log('Error al guardar perfil:', e);
+      setLoading(false);
+      setModalMessage('No se pudo guardar el perfil.');
+      setModalVisible(true);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#D8A353" />
+        <Text style={{ color: '#D8A353', marginTop: 10 }}>Subiendo imagen...</Text>
+      </View>
+    );
   }
-};
 
   return (
     <>
@@ -313,101 +419,139 @@ const handleSave = async () => {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.inner}>
-          <Text style={styles.title}>Formulario Free ✅</Text>
-  
-          <TouchableOpacity onPress={pickProfilePhoto}>
-            {profilePhoto ? (
-              <Image source={{ uri: profilePhoto }} style={styles.profileImage} />
-            ) : (
-              <View style={styles.placeholder}>
-                <Text style={styles.placeholderText}>Subir foto de perfil</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-  
-          <TextInput
-            placeholder="Nombre completo"
-            value={name}
-            onChangeText={setName}
-            style={styles.input}
-            placeholderTextColor="#999"
-          />
-          <TextInput
-            placeholder="Correo electrónico"
-            value={email}
-            onChangeText={setEmail}
-            style={styles.input}
-            placeholderTextColor="#999"
-          />
-          <TextInput
-  placeholder="Edad"
-  value={edad}
-  onChangeText={setEdad}
-  style={styles.input}
-  placeholderTextColor="#999"
-  keyboardType="numeric"
-  autoComplete="off"
-  textContentType="none"
-/>
-  <TouchableOpacity
-  style={[styles.input, { justifyContent: 'center' }]}
-  onPress={() => setShowCategoryModal(true)}
->
-  <Text style={{ color: category.length ? '#fff' : '#888' }}>
-    {category.length > 0 ? category.join(', ') : 'Seleccionar Categorías*'}
-  </Text>
-</TouchableOpacity>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <Text style={styles.title}>Formulario Free ✅</Text>
+            <TouchableOpacity onPress={pickProfilePhoto}>
+              {profilePhoto ? (
+                <Image source={{ uri: profilePhoto }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.placeholder}>
+                  <Text style={styles.placeholderText}>Subir foto de perfil</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
-          <View style={[styles.dropdownWrapper, { zIndex: zIndexSexo }]}>
-            <DropDownPicker
-              open={openSexo}
-              value={sexo}
-              items={[
-                { label: 'Hombre', value: 'Hombre' },
-                { label: 'Mujer', value: 'Mujer' },
-              ]}
-              setOpen={(val) => {
-                setOpenSexo(val);
-                setZIndexSexo(val ? 2000 : 500);
-              }}
-              setValue={setSexo}
-              placeholder="Selecciona tu sexo"
-              style={styles.dropdown}
-              dropDownContainerStyle={styles.dropdownContainer}
-              textStyle={{ color: '#D8A353' }}
-              placeholderStyle={{ color: '#888' }}
+            <TextInput
+              placeholder="Nombre completo"
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+              placeholderTextColor="#999"
             />
-          </View>
-  
-          <Text style={styles.label}>Fotos del Book (máx 3):</Text>
-          <View style={styles.gallery}>
-            {bookPhotos.map((uri, index) => (
-              <View key={index} style={styles.photoItem}>
-                <Image source={{ uri }} style={styles.bookImage} />
+            <TextInput
+              placeholder="Correo electrónico"
+              value={email}
+              onChangeText={setEmail}
+              style={styles.input}
+              placeholderTextColor="#999"
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.input,
+                {
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                },
+              ]}
+              onPress={() => {
+                if (category.length >= 3) {
+                  Alert.alert('Límite alcanzado', 'Solo puedes seleccionar hasta 3 categorías.');
+                  return;
+                }
+                setShowCategoryModal(true);
+              }}
+            >
+              <Text
+                style={{ color: category.length ? '#fff' : '#888', flex: 1 }}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {category.length === 0
+                  ? 'Seleccionar Categorías*'
+                  : `${category.length} categoría${category.length > 1 ? 's' : ''} seleccionada${category.length > 1 ? 's' : ''}`}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#D8A353" />
+            </TouchableOpacity>
+
+            <TextInput
+              placeholder="Edad"
+              value={edad}
+              onChangeText={setEdad}
+              style={styles.input}
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+              autoComplete="off"
+              textContentType="none"
+            />
+
+            <View style={{ width: '100%', marginBottom: 15 }}>
+              <Text style={styles.label}>Sexo:</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
                 <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDeletePhoto(index)}
+                  style={[
+                    styles.optionButton,
+                    sexo === 'Hombre' && styles.optionSelected,
+                  ]}
+                  onPress={() => setSexo('Hombre')}
                 >
-                  <Text style={styles.deleteButtonText}>🗑️</Text>
+                  <Text style={styles.optionText}>Hombre</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.optionButton,
+                    sexo === 'Mujer' && styles.optionSelected,
+                  ]}
+                  onPress={() => setSexo('Mujer')}
+                >
+                  <Text style={styles.optionText}>Mujer</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+            </View>
+
+            <Text style={styles.label}>Fotos del Book (máx 3):</Text>
+            <View style={styles.gallery}>
+              {bookPhotos.map((uri, index) => (
+                <View key={index} style={styles.photoItem}>
+                  <Image source={{ uri }} style={styles.bookImage} />
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeletePhoto(index)}
+                  >
+                    <Text style={styles.deleteButtonText}>🗑️</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.photoCount}>
+              Has subido {bookPhotos.length} de 3 fotos permitidas
+            </Text>
+
+            <TouchableOpacity style={styles.button} onPress={pickBookPhotos}>
+              <Text style={styles.buttonText}>Agregar fotos</Text>
+            </TouchableOpacity>
+            <Text style={styles.notice}>
+              * Todos los campos deben estar completos para guardar el perfil
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                loading && { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+              ]}
+              onPress={handleSave}
+              disabled={loading}
+            >
+              {loading && <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />}
+              <Text style={styles.saveButtonText}>
+                {loading ? 'Guardando perfil...' : 'Guardar perfil'}
+              </Text>
+            </TouchableOpacity>
           </View>
-  
-          <TouchableOpacity style={styles.button} onPress={pickBookPhotos}>
-            <Text style={styles.buttonText}>Agregar fotos</Text>
-          </TouchableOpacity>
-          <Text style={styles.notice}>
-            * Todos los campos deben estar completos para guardar el perfil
-          </Text>
-  
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Guardar perfil</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
-  
+
       {modalVisible && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -419,57 +563,60 @@ const handleSave = async () => {
               <Text style={styles.modalButtonText}>Aceptar</Text>
             </TouchableOpacity>
           </View>
-          </View>        
+        </View>
       )}
-{showCategoryModal && (
-  <View style={styles.modalOverlay}>
-    <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Buscar categoría..."
-        placeholderTextColor="#aaa"
-        value={searchCategory}
-        onChangeText={setSearchCategory}
-      />
 
-      <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator>
-        {filteredCategories.map((cat, index) => (
-          <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
-            <Text
-              style={[
-                styles.modalItem,
-                category.includes(cat) && styles.selectedCategory,
-              ]}
+      {showCategoryModal && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar categoría..."
+              placeholderTextColor="#aaa"
+              value={searchCategory}
+              onChangeText={setSearchCategory}
+            />
+            <FlatList
+              style={{ maxHeight: 300 }}
+              data={filteredCategories}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity onPress={() => toggleCategory(item)}>
+                  <Text
+                    style={[
+                      styles.modalItem,
+                      category.includes(item) && styles.selectedCategory,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              showsVerticalScrollIndicator
+            />
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setShowCategoryModal(false)}
             >
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <TouchableOpacity
-        style={styles.modalButton}
-        onPress={() => setShowCategoryModal(false)}
-      >
-        <Text style={styles.modalButtonText}>Cerrar</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-)}
+              <Text style={styles.modalButtonText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </>
   );
 }
-  
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    marginTop:30,
+    marginTop: 30,
   },
   inner: {
     padding: 20,
     alignItems: 'center',
-    paddingBottom: 100,
+    paddingBottom: 50,
   },
   title: {
     color: '#D8A353',
@@ -482,7 +629,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
     color: '#fff',
     borderRadius: 10,
-    padding: 15,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     fontSize: 16,
     borderColor: '#D8A353',
     borderWidth: 0.5,
@@ -519,10 +667,13 @@ const styles = StyleSheet.create({
   dropdown: {
     backgroundColor: '#1B1B1B',
     borderColor: '#D8A353',
+    borderWidth: 0.5,
+    borderRadius: 10,
   },
   dropdownContainer: {
     backgroundColor: '#000',
     borderColor: '#D8A353',
+    borderWidth: 0.5,
     maxHeight: 700,
   },
   label: {
@@ -606,7 +757,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1B1B1B',
     padding: 20,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderColor: '#D8A353',
     width: '80%',
     alignItems: 'center',
@@ -627,26 +778,51 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 14,
-  }, 
+  },
   searchInput: {
-  backgroundColor: '#1B1B1B',
-  borderColor: '#D8A353',
-  borderWidth: 1,
-  borderRadius: 10,
-  padding: 8,
-  marginBottom: 10,
-  color: '#fff',
-},
-modalItem: {
-  color: '#D8A353',
-  fontSize: 16,
-  paddingVertical: 8,
-  textAlign: 'center',
-},
-selectedCategory: {
-  fontWeight: 'bold',
-  color: '#D8A353',
-  textDecorationLine: 'underline',
-},
-
+    backgroundColor: '#1B1B1B',
+    borderColor: '#D8A353',
+    borderWidth: 0.5,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    color: '#fff',
+    width: '80%',
+    alignSelf: 'center',
+  },
+  modalItem: {
+    color: '#D8A353',
+    fontSize: 16,
+    paddingVertical: 8,
+    textAlign: 'center',
+  },
+  selectedCategory: {
+    fontWeight: 'bold',
+    color: '#D8A353',
+    textDecorationLine: 'underline',
+  },
+  scrollContent: {
+    paddingBottom: 50,
+  },
+  optionButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    backgroundColor: '#1A1A1A',
+  },
+  optionSelected: {
+    backgroundColor: '#D8A353',
+  },
+  optionText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  photoCount: {
+    color: '#aaa',
+    fontSize: 13,
+    marginBottom: 10,
+    alignSelf: 'center',
+  },
 });

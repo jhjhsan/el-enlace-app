@@ -1,60 +1,105 @@
-// 📁 src/firebase/helpers/rebuildAllProfiles.js
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
+import { guardarAllProfiles } from './profileHelpers';
 
-/**
- * 🔄 Reconstruye el array allProfiles mezclando los perfiles Free, Pro y Elite si existen,
- * evitando duplicados y manteniendo el array existente si falta alguno.
- */
 export const rebuildAllProfiles = async () => {
   try {
-    console.log('🔁 Iniciando reconstrucción de allProfiles...');
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
 
-    const proRaw = await AsyncStorage.getItem('userProfilePro');
-    const eliteRaw = await AsyncStorage.getItem('userProfileElite');
-    const freeRaw = await AsyncStorage.getItem('userProfileFree');
-    const existingAllRaw = await AsyncStorage.getItem('allProfiles');
+  const cleaned = email.trim().toLowerCase();
 
-    const pro = proRaw ? JSON.parse(proRaw) : null;
-    const elite = eliteRaw ? JSON.parse(eliteRaw) : null;
-    const free = freeRaw ? JSON.parse(freeRaw) : null;
-    const existingAll = existingAllRaw ? JSON.parse(existingAllRaw) : [];
+  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned);
 
-    const seen = new Set();
-    const result = [];
+  if (
+    !isValid &&
+    cleaned.includes('@') &&
+    cleaned.length > 5 &&
+    cleaned.includes('@cl')  // ⚠️ Caso típico del error
+  ) {
+    console.warn('📛 Correo malformado detectado y descartado (Elite):', cleaned);
+  }
 
-    if (pro?.email && !seen.has(pro.email.toLowerCase())) {
-      result.push(pro);
-      seen.add(pro.email.toLowerCase());
+  return isValid;
+};
+
+    console.log('🔁 Iniciando reconstrucción de allProfiles desde Firestore...');
+    const db = getFirestore(getApp());
+    const collectionsToRead = ['profiles', 'profilesPro', 'profilesElite'];
+    const tempMap = new Map();
+    const rank = { free: 1, pro: 2, elite: 3 };
+
+    // Obtener userData para preservarlo
+    const userDataRaw = await AsyncStorage.getItem('userData');
+    const userData = userDataRaw ? JSON.parse(userDataRaw) : null;
+    console.log('📦 userData cargado:', userData?.email);
+
+    const currentUserEmail = (await AsyncStorage.getItem('userEmail'))?.toLowerCase();
+
+    for (const col of collectionsToRead) {
+      const snapshot = await getDocs(collection(db, col));
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        let cleanEmail = data.email?.trim().toLowerCase();
+        if (!isValidEmail(cleanEmail)) return;
+        data.email = cleanEmail;
+        const email = cleanEmail;
+        if (!email || data.visibleInExplorer === false) return;
+
+        const existing = tempMap.get(email);
+        const newRank = rank[data.membershipType] || 0;
+        const existingRank = rank[existing?.membershipType] || 0;
+
+        if (!existing || newRank > existingRank) {
+          tempMap.set(email, data);
+          console.log(`🆕 Guardado: ${email} (${data.membershipType})`);
+        } else {
+          console.log(`🚫 Ignorado (ya hay superior): ${email} (${data.membershipType})`);
+        }
+      });
     }
 
-    if (elite?.email && elite.visibleInExplorer !== false && !seen.has(elite.email.toLowerCase())) {
-      result.push(elite);
-      seen.add(elite.email.toLowerCase());
-    }
+    let profiles = Array.from(tempMap.values());
+    const elites = profiles.filter(p => p.membershipType === 'elite');
 
-    if (free?.email && free.visibleInExplorer !== false && !seen.has(free.email.toLowerCase())) {
-      result.push(free);
-      seen.add(free.email.toLowerCase());
-    }
-
-    // 🔄 Añadir perfiles anteriores si no están duplicados
-    for (const p of existingAll) {
-      if (p?.email && !seen.has(p.email.toLowerCase())) {
-        result.push(p);
-        seen.add(p.email.toLowerCase());
+    // Asegurar que el perfil de userData se incluya
+    if (userData?.email && isValidEmail(userData.email)) {
+      const normalizedEmail = userData.email.trim().toLowerCase();
+      if (!profiles.some(p => p.email === normalizedEmail)) {
+        profiles.push({ ...userData, email: normalizedEmail });
+        console.log(`➕ Añadido userData a allProfiles: ${normalizedEmail}`);
+      }
+      if (userData.membershipType === 'elite' && !elites.some(p => p.email === normalizedEmail)) {
+        elites.push({ ...userData, email: normalizedEmail });
+        console.log(`➕ Añadido userData a allProfilesElite: ${normalizedEmail}`);
       }
     }
 
-    await AsyncStorage.setItem('allProfiles', JSON.stringify(result));
-    console.log(`✅ allProfiles reconstruido con ${result.length} perfiles`);
+    await guardarAllProfiles(profiles);
+    console.log(`✅ allProfiles reconstruido con ${profiles.length} perfiles`);
 
-    // 🧠 Además guardar allProfilesElite si hay perfil elite
-    if (elite?.email) {
-      await AsyncStorage.setItem('allProfilesElite', JSON.stringify([elite]));
-      console.log('✅ allProfilesElite actualizado con 1 perfil elite');
+    await AsyncStorage.setItem('allProfilesElite', JSON.stringify(elites));
+    console.log(`💎 allProfilesElite actualizado con ${elites.length} perfiles elite`);
+
+    if (currentUserEmail && isValidEmail(currentUserEmail)) {
+      const ownProfile = profiles.find(
+        (p) => p.email?.toLowerCase() === currentUserEmail
+      );
+      if (ownProfile) {
+        const key = {
+          free: 'userProfileFree',
+          pro: 'userProfilePro',
+          elite: 'userProfileElite',
+        }[ownProfile.membershipType || 'free'];
+        await AsyncStorage.setItem(key, JSON.stringify(ownProfile));
+        console.log(`🧠 Perfil propio restaurado localmente como ${key}`);
+      } else {
+        console.warn('⚠️ No se encontró un perfil con ese email en Firestore.');
+      }
+    } else {
+      console.warn('⚠️ No se encontró userEmail en AsyncStorage o es inválido.');
     }
-
   } catch (error) {
     console.error('❌ Error en rebuildAllProfiles:', error);
   }

@@ -8,10 +8,11 @@ import { doc, setDoc } from 'firebase/firestore';
  */
 export const saveServicePost = async (post) => {
   try {
-    const enrichedPost = {
-      ...post,
-      createdAt: new Date().toISOString(),
-    };
+const enrichedPost = {
+  ...post,
+  creatorEmail: (post.creatorEmail || '').trim().toLowerCase(), // 🧼 limpio y normalizado
+  createdAt: new Date().toISOString(),
+};
 
     // 🔒 Guardar localmente
     const localData = await AsyncStorage.getItem('posts');

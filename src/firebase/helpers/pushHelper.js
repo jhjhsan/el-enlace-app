@@ -23,7 +23,10 @@ export const getPushToken = async () => {
       return null;
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+  projectId: 'fe8be4be-c9bd-403b-bb2a-20e32af9dc84' // 🧠 Este es tu `projectId` de app.json
+});
+
     const pushToken = tokenData.data;
 
     console.log('✅ Push token obtenido:', pushToken);

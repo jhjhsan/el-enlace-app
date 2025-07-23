@@ -13,7 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import { Ionicons, AntDesign, Feather } from '@expo/vector-icons';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getApp } from "firebase/app";
 import { Alert } from 'react-native';
@@ -25,13 +25,29 @@ import { collection, query, where, orderBy, limit, getDocs } from 'firebase/fire
 import { useFocusEffect } from '@react-navigation/native';
 import { getProfileSuggestions } from '../src/firebase/helpers/getProfileSuggestions';
 import { saveSubscriptionHistory } from '../src/firebase/helpers/saveSubscriptionHistory';
+import { Image as CachedImage } from 'react-native-expo-image-cache';
 
-export default function ProfileEliteScreen({ navigation }) {
+export default function ProfileEliteScreen({ navigation, route }) {
   const { userData, setUserData } = useUser();
-  const [profile, setProfile] = useState(null);
+  const { viewedProfile } = route.params || {};
+  const [profile, setProfile] = useState(viewedProfile || null);
   const [showModal, setShowModal] = useState(false);
   const [hasPaid, setHasPaid] = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
+  const isExternal = !!route?.params?.viewedProfile;
+  const profileData = isExternal ? route.params.viewedProfile : userData;
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [expandedImage, setExpandedImage] = useState(null);
+  const [isImageExpanded, setIsImageExpanded] = useState(false);
+
+  const isOwnProfile = !viewedProfile;
+const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
+
+useEffect(() => {
+  if (profile?.profilePhoto?.startsWith('http')) {
+    setProfilePhotoUrl(profile.profilePhoto);
+  }
+}, [profile]);
 
   useEffect(() => {
     const checkIfShouldShowModal = async () => {
@@ -47,42 +63,36 @@ export default function ProfileEliteScreen({ navigation }) {
     checkIfShouldShowModal();
   }, []);  
 
-  useEffect(() => {
-    const loadProfile = async () => {
-        const json = await AsyncStorage.getItem('userProfileElite');
-      if (json) {
-        const loadedProfile = JSON.parse(json);
-        setProfile(loadedProfile);
-       console.log("🧾 Enviando historial de suscripción Elite a Firestore...");
-await saveSubscriptionHistory({
-  email: loadedProfile.email,
-  planType: 'elite',
-  paymentMethod: 'simulado',
-  durationMonths: loadedProfile.subscriptionType === 'anual' ? 12 : 1,
-  status: 'active',
-});
-        const userJson = await AsyncStorage.getItem('userData');
-        const user = userJson ? JSON.parse(userJson) : null;
-        const paid = user?.hasPaid === true;
+useEffect(() => {
+  const loadProfile = async () => {
+    if (!viewedProfile) {
+      const localJson = await AsyncStorage.getItem('userProfileElite');
+      const localProfile = localJson ? JSON.parse(localJson) : null;
 
-        setHasPaid(paid);
+      if (localProfile) {
+        setProfile(localProfile);
+      } else if (userData?.membershipType === 'elite') {
+        setProfile(userData); // ← fallback si no hay perfil local pero sí userData
       } else {
         setProfile({});
       }
-    };
-    loadProfile();
-  }, []);
-useFocusEffect(
-  React.useCallback(() => {
-    const reloadProfile = async () => {
-      const json = await AsyncStorage.getItem('userProfileElite');
-      if (json) {
-        setProfile(JSON.parse(json));
-      }
-    };
-    reloadProfile();
-  }, [])
-);
+
+      const userJson = await AsyncStorage.getItem('userData');
+      const user = userJson ? JSON.parse(userJson) : null;
+      const paid = user?.hasPaid === true;
+      setHasPaid(paid);
+    }
+  };
+  loadProfile();
+}, [userData]);
+useEffect(() => {
+  const checkProfilePhoto = async () => {
+    const elite = await AsyncStorage.getItem('userProfileElite');
+    const parsed = JSON.parse(elite);
+    console.log('🖼️ Foto de perfil actual:', parsed?.profilePhoto);
+  };
+  checkProfilePhoto();
+}, []);
 
   if (!profile) {
     return (
@@ -92,10 +102,17 @@ useFocusEffect(
     );
   }
   const isBlocked = userData?.membershipType === 'elite' && userData?.hasPaid === false;
-console.log('VIDEO EN PERFIL:', profile.profileVideo);
+console.log("VIDEO EN PERFIL:", profile?.profileVideo ?? 'sin video');
 
   return (
     <View style={styles.container}>
+      {isExternal && (
+  <View style={{ position: 'absolute', top: 45, left: 20, zIndex: 999 }}>
+    <TouchableOpacity onPress={() => navigation.goBack()}>
+      <Ionicons name="arrow-back" size={30} color="#fff" />
+    </TouchableOpacity>
+  </View>
+)}
       <ScrollView
   style={{ backgroundColor: '#000' }}
   contentContainerStyle={{
@@ -108,127 +125,289 @@ console.log('VIDEO EN PERFIL:', profile.profileVideo);
   showsVerticalScrollIndicator={false}
 >
   <View style={styles.inner}>
-
-          <View style={styles.headerContainer}>
-            <Text style={styles.title}>Perfil de Agencia</Text>
-            <Text style={styles.subtitle}>👑 Cuenta Elite</Text>
-            <TouchableOpacity
-              style={styles.editPill}
-              onPress={() => navigation.navigate('EditProfileElite')}
-            >
-              <AntDesign name="edit" size={14} color="#000" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.profileSection}>
-            <View style={styles.logoContainer}>
-            {profile.profilePhoto ? (
-  <Image
-    source={{ uri: profile.profilePhoto }}
-    style={styles.logo}
-    onError={(e) => {
-      console.log('❌ Error al cargar la imagen:', e.nativeEvent.error);
-    }}
-  />
+<View style={styles.headerTopElite}>
+<View style={styles.leftHeader}>
+  {profilePhotoUrl ? (
+    <TouchableOpacity
+      onPress={() => {
+        setExpandedImage(profilePhotoUrl);
+        setIsImageExpanded(true);
+      }}
+    >
+  {profilePhotoUrl && profilePhotoUrl.startsWith('http') ? (
+<CachedImage
+  uri={profilePhotoUrl}
+  style={styles.logo}
+  onError={(e) => console.log('❌ Error al cargar la imagen:', e.nativeEvent?.error)}
+/>
 ) : (
   <View style={[styles.logo, styles.iconFallback]}>
     <Ionicons name="image-outline" size={40} color="#D8A353" />
   </View>
 )}
 
-            </View>
+    </TouchableOpacity>
+  ) : (
+    <View style={[styles.logo, styles.iconFallback]}>
+      <Ionicons name="image-outline" size={40} color="#D8A353" />
+    </View>
+  )}
+</View>
 
-            {profile.companyType && (
-              <View style={styles.categoryBadge}>
-                <Feather name="briefcase" size={14} color="#D8A353" style={{ marginRight: 6 }} />
-                <Text style={styles.categoryText}>{profile.companyType}</Text>
-              </View>
-            )}
+{isOwnProfile && (
+  <TouchableOpacity
+    style={styles.editPillRight}
+    onPress={() => navigation.navigate('EditProfileElite')}
+  >
+    <AntDesign name="edit" size={14} color="#000" />
+  </TouchableOpacity>
+)}
 
-            {profile.agencyName ? (
-              <Text style={styles.agencyName}>{profile.agencyName}</Text>
-            ) : null}
+</View>
 
-            {profile.representative ? (
-              <Text style={styles.representative}>{profile.representative}</Text>
-            ) : null}
+<Text style={styles.subtitleCentered}>👑 Cuenta Elite</Text>
 
-            {(profile.city || profile.region || profile.comuna) && (
-              <Text style={styles.location}>
-                {profile.city || 'Ciudad'}, {profile.region || 'Región'}
-                {profile.comuna ? `, ${profile.comuna}` : ''}
-              </Text>
-            )}
-          </View>
+{profile.companyType && (
+  <View style={styles.categoryBadge}>
+    <Feather name="briefcase" size={14} color="#D8A353" style={{ marginRight: 6 }} />
+    <Text style={styles.categoryText}>{profile.companyType}</Text>
+  </View>
+)}
+
+{profile.agencyName && <Text style={styles.agencyName}>{profile.agencyName}</Text>}
+
+{profile.representative && profile.representative !== profile.agencyName && (
+  <Text style={styles.representative}>{profile.representative}</Text>
+)}
+
+{(profile.city || profile.region || profile.comuna) && (
+  <Text style={styles.location}>
+    📍 {profile.city || ''}{profile.city && profile.region ? ', ' : ''}{profile.region || ''}
+    {profile.comuna ? `, ${profile.comuna}` : ''}
+  </Text>
+)}
 
          <Text style={[styles.sectionTitle, { marginTop: 0, marginBottom: 10, textAlign: 'left', alignSelf: 'flex-start' }]}>
   Contacto
 </Text>
 
           <View style={styles.contactBoxCentered}>
-            {profile.email && (
-              <View style={styles.contactCard}>
-                <Ionicons name="mail" size={18} color="#D8A353" style={styles.cardIcon} />
-                <Text style={styles.cardText}>{profile.email}</Text>
-              </View>
-            )}
-            {profile.phone && (
-              <View style={styles.contactCard}>
-                <Ionicons name="call" size={18} color="#D8A353" style={styles.cardIcon} />
-                <Text style={styles.cardText}>{profile.phone}</Text>
-              </View>
-            )}
+         {profile.email && (
+  isOwnProfile ? (
+    <View style={styles.contactCard}>
+      <Ionicons name="mail" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.email}</Text>
+    </View>
+  ) : (
+    <TouchableOpacity
+      style={styles.contactCard}
+      onPress={() => Linking.openURL(`mailto:${profile.email}`)}
+    >
+      <Ionicons name="mail" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={[styles.cardText, { textDecorationLine: 'underline' }]}>
+        {profile.email}
+      </Text>
+    </TouchableOpacity>
+  )
+)}
+       {profile.phone && (
+  isOwnProfile ? (
+    <View style={styles.contactCard}>
+      <Ionicons name="call" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.phone}</Text>
+    </View>
+  ) : (
+    <TouchableOpacity
+      style={styles.contactCard}
+      onPress={() => Linking.openURL(`tel:${profile.phone.replace(/\D/g, '')}`)}
+    >
+      <Ionicons name="call" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={[styles.cardText, { textDecorationLine: 'underline' }]}>
+        {profile.phone}
+      </Text>
+    </TouchableOpacity>
+  )
+)}
             {profile.address && (
               <View style={styles.contactCard}>
                 <Ionicons name="location" size={18} color="#D8A353" style={styles.cardIcon} />
                 <Text style={styles.cardText}>{profile.address}</Text>
               </View>
             )}
-            {profile.instagram && (
-              <View style={styles.contactCard}>
-                <Ionicons name="logo-instagram" size={18} color="#D8A353" style={styles.cardIcon} />
-                <Text style={styles.cardText}>{profile.instagram}</Text>
-              </View>
-            )}
-            {profile.whatsapp && (
-  <View style={styles.contactCard}>
-    <Ionicons name="logo-whatsapp" size={18} color="#D8A353" style={styles.cardIcon} />
-    <Text style={styles.cardText}>{profile.whatsapp}</Text>
-  </View>
+         {profile.instagram && (
+  isOwnProfile ? (
+    <View style={styles.contactCard}>
+      <Ionicons name="logo-instagram" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.instagram}</Text>
+    </View>
+  ) : (
+   <TouchableOpacity
+  style={styles.contactCard}
+  onPress={() => {
+    const instaUsername = profile.instagram.replace(/^@/, ''); // quita el @ si existe
+    const url = `https://instagram.com/${instaUsername}`;
+    Linking.openURL(url);
+  }}
+>
+  <Ionicons name="logo-instagram" size={18} color="#D8A353" style={styles.cardIcon} />
+  <Text style={[styles.cardText, { textDecorationLine: 'underline' }]}>
+    {profile.instagram}
+  </Text>
+</TouchableOpacity>
+  )
+)}
+
+{profile.whatsapp && (
+  isOwnProfile ? (
+    <View style={styles.contactCard}>
+      <Ionicons name="logo-whatsapp" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.whatsapp}</Text>
+    </View>
+  ) : (
+    <TouchableOpacity
+      style={styles.contactCard}
+      onPress={() => {
+        let cleanedNumber = profile.whatsapp.replace(/\D/g, ''); // limpia todo menos números
+
+        // Si es un número local (8 dígitos y empieza con 9), agregamos el código país
+        if (cleanedNumber.length === 8 && cleanedNumber.startsWith('9')) {
+          cleanedNumber = '56' + cleanedNumber;
+        }
+
+        const whatsappURL = `https://wa.me/${cleanedNumber}`;
+        Linking.openURL(whatsappURL);
+      }}
+    >
+      <Ionicons name="logo-whatsapp" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={[styles.cardText, { textDecorationLine: 'underline' }]}>
+        {profile.whatsapp}
+      </Text>
+    </TouchableOpacity>
+  )
 )}
 
 {profile.webLink && (
-  <TouchableOpacity
-    style={styles.contactCard}
-    onPress={() => Linking.openURL(profile.webLink)}
-  >
-    <Ionicons name="link-outline" size={18} color="#D8A353" style={styles.cardIcon} />
-    <Text style={[styles.cardText, { textDecorationLine: 'underline' }]}>
-      {profile.webLink}
-    </Text>
-  </TouchableOpacity>
+  isOwnProfile ? (
+    <View style={styles.contactCard}>
+      <Ionicons name="link-outline" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={styles.cardText}>{profile.webLink}</Text>
+    </View>
+  ) : (
+    <TouchableOpacity
+      style={styles.contactCard}
+      onPress={() => {
+        let url = profile.webLink.trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        Linking.openURL(url);
+      }}
+    >
+      <Ionicons name="link-outline" size={18} color="#D8A353" style={styles.cardIcon} />
+      <Text style={[styles.cardText, { textDecorationLine: 'underline' }]}>
+        {profile.webLink}
+      </Text>
+    </TouchableOpacity>
+  )
 )}
 
-          </View>
+{isExternal && profile.email && (
+  <TouchableOpacity
+    style={styles.contactCard}
+    onPress={async () => {
+      const json = await AsyncStorage.getItem('professionalMessages');
+      const all = json ? JSON.parse(json) : [];
 
-          <Text style={[styles.sectionTitle, { textAlign: 'left', alignSelf: 'flex-start' }]}>
+      const existing = all.find(
+        (msg) =>
+          (msg.from === userData.email && msg.to === profile.email) ||
+          (msg.from === profile.email && msg.to === userData.email)
+      );
+
+    if (existing) {
+  // Ya existe conversación → navegar directamente al detalle
+  navigation.navigate('MessageDetail', {
+    recipientEmail: profile.email,
+    profileAttachment: profile,
+  });
+}else {
+        // Crear nueva conversación con perfil adjunto
+const newConversation = {
+  id: Date.now().toString(),
+  from: userData.email,
+  to: profileData.email,
+  messages: [], // <-- sin mensaje automático
+  archived: false,
+  profileAttachment: {
+    name: profileData.name || profileData.agencyName || '',
+    email: profileData.email || '',
+    category: Array.isArray(profileData.category)
+      ? profileData.category.join(', ')
+      : profileData.category || '',
+    membershipType: profileData.membershipType || '',
+    profilePhoto: profileData.profilePhoto || null,
+  },
+};
+
+        all.push(newConversation);
+        const safe = (all || []).map((conv) => ({
+  ...conv,
+  messages: (conv.messages || []).slice(-50),
+}));
+await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
+
+    navigation.navigate('MessageDetail', {
+ contactEmail: profileData.email,
+  profileAttachment: profileData,
+});
+      }
+    }}
+  >
+    <Text style={{ fontSize: 16, marginRight: 8 }}>💬</Text>
+    <Text style={[styles.cardText, { color: '#CCCCCC' }]}>Mensaje interno</Text>
+  </TouchableOpacity>
+)}
+          </View>
+         <Text style={[styles.sectionTitle, { textAlign: 'left', alignSelf: 'flex-start', marginTop: 10 }]}>
   Descripción
 </Text>
 
-          <View style={styles.descriptionBox}>
-            <Text style={styles.descriptionText}>{profile.description}</Text>
-          </View>
+{profile.description ? (
+  <View style={styles.contactCard}>
+    <Text style={[styles.cardText, { flex: 1, flexWrap: 'wrap' }]}>
+      {profile.description}
+    </Text>
+  </View>
+) : null}
 
           <Text style={[styles.sectionTitle, { textAlign: 'left', alignSelf: 'flex-start' }]}>
   Galería de trabajos
 </Text>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollHorizontal}>
-            {profile.logos?.map((uri, index) => (
-              <TouchableOpacity key={index} style={styles.portfolioCard}>
-                <Image source={{ uri }} style={styles.portfolioImage} />
-              </TouchableOpacity>
-            ))}
+{profile.logos?.map((uri, index) => (
+<TouchableOpacity
+  key={index}
+  style={styles.portfolioCard}
+  onPress={() => {
+    if (expandedImage === uri && isImageExpanded) {
+      setExpandedImage(null);
+      setIsImageExpanded(false);
+    } else {
+      setExpandedImage(uri);
+      setIsImageExpanded(true);
+    }
+  }}
+>
+  {uri && uri.startsWith('http') ? (
+    <CachedImage
+      uri={uri}
+      style={styles.portfolioImage}
+    />
+  ) : null}
+</TouchableOpacity>
+))}
+
           </ScrollView>
 {profile.profileVideo && (
   <View style={styles.videoSection}>
@@ -246,23 +425,6 @@ console.log('VIDEO EN PERFIL:', profile.profileVideo);
         }}
       />
     </View>
-    {showAutoModal && (
-  <Modal transparent animationType="fade" visible={showAutoModal}>
-    <View style={styles.modalBackdrop}>
-      <View style={styles.modalBox}>
-        <Text style={styles.modalTitle}>🧠 Sugerencia IA para tu perfil</Text>
-        <Text style={styles.modalText}>{autoSuggestion}</Text>
-        <TouchableOpacity
-          style={styles.modalButton}
-          onPress={() => setShowAutoModal(false)}
-        >
-          <Text style={styles.modalButtonText}>Entendido</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-)}
-
   </View>
 )}
         </View>
@@ -299,6 +461,38 @@ console.log('VIDEO EN PERFIL:', profile.profileVideo);
           </View>
         </Modal>
       )}
+      {isImageExpanded && expandedImage && (
+  <TouchableOpacity
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.95)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 9999,
+    }}
+    activeOpacity={1}
+    onPress={() => {
+      setIsImageExpanded(false);
+      setExpandedImage(null);
+    }}
+  >
+{expandedImage && expandedImage.startsWith('http') ? (
+  <CachedImage
+    uri={expandedImage}
+    style={{
+      width: '90%',
+      height: '80%',
+    }}
+    resizeMode="contain"
+  />
+) : null}
+  </TouchableOpacity>
+)}
+
     </View>
   );
 }
@@ -332,20 +526,7 @@ const styles = StyleSheet.create({
     marginBottom: -15,
     fontWeight: '600',
   },
-  editPill: {
-  position: 'absolute',
-  top: 5,
-  left: 230,
-  paddingVertical: 5,
-  paddingHorizontal: 12,
-  borderRadius: 30,
-  backgroundColor: '#D8A353',
-},
 
-  profileSection: {
-    alignItems: 'center',
-    marginVertical: 0,
-  },
   logoContainer: {
     backgroundColor: '#1B1B1B',
     borderRadius: 75,
@@ -354,22 +535,25 @@ const styles = StyleSheet.create({
     borderColor: '#D8A353',
   },
   logo: {
-    width: 110,
-    height: 110,
+    width: 95,
+    height: 95,
     borderRadius: 60,
     borderWidth: 0.5,
-    borderColor: '#D8A353',
+    borderColor: '#D8A353', 
+    top: 30, 
   },
   agencyName: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     marginTop: 0,
+     marginLeft: 30,
   },
   representative: {
     color: '#CCCCCC',
     fontSize: 14,
     marginTop: 0,
+    marginLeft:30, 
   },
   location: {
     color: '#888888',
@@ -377,6 +561,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 10,
     fontStyle: 'italic',
+     marginLeft: 30, 
   },
   contactBoxCentered: {
     alignItems: 'center',
@@ -405,11 +590,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginVertical: 14,
   },
-  descriptionBox: {
-    backgroundColor: '#1B1B1B',
-    borderRadius: 10,
-    padding: 16,
-  },
+descriptionBox: {
+  backgroundColor: '#1B1B1B',
+  borderRadius: 10,
+  paddingVertical: 16,
+  paddingHorizontal: 20,
+  width: '100%', // <-- esto hace que se expanda
+  marginTop: 0,  // <-- reduce espacio hacia arriba
+  marginBottom: 10,
+},
+
   descriptionText: {
     color: '#CCCCCC',
     fontSize: 14,
@@ -454,21 +644,21 @@ videoPreview: {
   borderRadius: 10,
   backgroundColor: '#000',
 },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: '#1B1B1B',
-    borderWidth: 0.5,
-    borderColor: '#D8A353',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginTop: 10,
-  },
+categoryBadge: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#1B1B1B',
+  borderWidth: 0.5,
+  borderColor: '#D8A353',
+  borderRadius: 20,
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+  marginTop: 10,
+  marginLeft: 30, // 👈 Aquí ajustas tú la posición exacta
+},
   categoryText: {
     color: '#D8A353',
-    fontSize: 14,
+    fontSize: 12,
   },
   iconFallback: {
     justifyContent: 'center',
@@ -519,6 +709,76 @@ modalButtonText: {
   color: '#000',
   fontWeight: 'bold',
   fontSize: 14,
+},
+profileSectionRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  justifyContent: 'flex-start',
+  width: '100%',
+  marginBottom: 10,
+},
+logoContainerLeft: {
+  marginLeft: 5,
+  marginTop: 20,
+  backgroundColor: '#1B1B1B',
+  borderRadius: 75,
+  padding: 1,
+  borderWidth: 0.5,
+  borderColor: '#D8A353',
+},
+profileInfoRight: {
+  marginLeft: 15,
+  justifyContent: 'center',
+  flexShrink: 1,
+},
+headerRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  width: '100%',
+  marginTop: 10,
+  marginBottom: 5,
+},
+headerTop: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  width: '100%',
+  marginBottom: 5,
+  paddingHorizontal: 5,
+},
+leftHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+rightHeader: {
+  alignItems: 'flex-end',
+},
+headerTopElite: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  width: '100%',
+  marginBottom: 5,
+  marginTop: -5,
+  paddingHorizontal: 5,
+},
+editPillRight: {
+  backgroundColor: '#D8A353',
+  paddingHorizontal: 10,
+  paddingVertical: 5,
+  borderRadius: 20,
+  marginTop: 15,
+  marginRight: 0,
+},
+subtitleCentered: {
+  color: '#D8A353',
+  fontSize: 16,
+  fontWeight: '600',
+  textAlign: 'left',       // 👈 cambia de 'center' a 'left' para que funcione con marginLeft
+  marginTop: -80,
+  marginBottom: -5,
+  marginLeft: 20,          // 👈 mueve el texto hacia la derecha manualmente
 },
 
 });

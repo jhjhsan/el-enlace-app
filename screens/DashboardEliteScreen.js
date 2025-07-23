@@ -39,8 +39,8 @@ export default function DashboardEliteScreen({ navigation }) {
     const [highlightedProfiles, setHighlightedProfiles] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const { userData } = useUser();
-   const userName = userData?.agencyName || 'Agencia';
-
+    const userName = userData?.agencyName || 'Agencia';
+    const [showText, setShowText] = useState(true);
   
     const [localUserData, setLocalUserData] = useState(null);
     const [loadingUserData, setLoadingUserData] = useState(true);
@@ -107,6 +107,12 @@ const loadHighlightedProfiles = async () => {
     await loadHighlightedProfiles();
     setRefreshing(false);
   };
+useEffect(() => {
+  const interval = setInterval(() => {
+    setShowText(prev => !prev);
+  }, 1500);
+  return () => clearInterval(interval);
+}, []);
 
   useEffect(() => {
     loadAds();
@@ -127,7 +133,7 @@ const loadHighlightedProfiles = async () => {
   
     fetchUserData();
   }, []);
-  
+
   useEffect(() => {
     if (!isPlaying || carouselImages.length === 0) return;
     const interval = setInterval(() => {
@@ -139,33 +145,6 @@ const loadHighlightedProfiles = async () => {
     return () => clearInterval(interval);
   }, [isPlaying, carouselImages]);
 
-const crearPerfilDePrueba = async () => {
-  const fake = {
-    name: 'Talento Destacado',
-    category: ['Actor'],
-    city: 'Santiago',
-    region: 'Región Metropolitana',
-    profilePhoto: 'https://via.placeholder.com/100',
-    membershipType: 'pro',
-    isHighlighted: true,
-    email: `fake_${Date.now()}@mail.com`,
-    description: 'Este es un talento de prueba con descripción válida para testeo.',
-    video: 'https://www.w3schools.com/html/mov_bbb.mp4',
-    instagram: 'https://instagram.com/test',
-    phone: '+56912345678',
-    whatsapp: '+56912345678',
-    webLink: 'https://ejemplo.com',
-  };
-
-  await AsyncStorage.setItem(`userProfile_${fake.email}`, JSON.stringify(fake));
-  await AsyncStorage.setItem('userData', JSON.stringify({
-    email: fake.email,
-    id: fake.email,
-    membershipType: 'pro',
-  }));
-  await loadHighlightedProfiles();
-};
-
   if (loadingUserData) {
     return (
       <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
@@ -175,13 +154,15 @@ const crearPerfilDePrueba = async () => {
   }
   
   return (
+    
     <SafeAreaView style={styles.screen}>
+
             {/* 🔍 Lupa en esquina superior derecha */}
       <TouchableOpacity
         onPress={() => navigation.navigate('ExploreProfiles')}
         style={{
           position: 'absolute',
-          top: 50,
+          top: 45,
           right: 20,
           backgroundColor: '#1a1a1a',
           padding: 10,
@@ -192,16 +173,7 @@ const crearPerfilDePrueba = async () => {
       >
         <Ionicons name="search" size={24} color="#D8A353" />
       </TouchableOpacity>
-
-      <View style={styles.fixedHeader}>
-        <View style={styles.logoRow}>
-          <Image source={require('../assets/logo.png')} style={styles.logo} />
-          <View style={styles.greetingBox}>
-           <Text style={[styles.greeting, { marginLeft: -15 }]}> Hola, {userName} 👑</Text>
-            <Text style={[styles.subtitle, { marginLeft:-10 }]}>
-  ¿Listo para tu próxima oportunidad?
-</Text>
-{localUserData?.trialEndsAt && !localUserData?.hasPaid && (
+            {localUserData?.trialEndsAt && !localUserData?.hasPaid && (
   <View style={styles.trialBanner}>
    <Text style={styles.trialText}>
   🎁 ¡Estás usando la prueba gratuita! Termina el {formatDate(localUserData.trialEndsAt)}
@@ -213,6 +185,23 @@ const crearPerfilDePrueba = async () => {
     </TouchableOpacity>
   </View>
 )}
+{localUserData?.flagged && (
+  <View style={styles.flaggedCard}>
+    <Text style={styles.flaggedText}>
+      ⚠️ Tu perfil fue marcado por IA debido a contenido ofensivo y no está siendo mostrado públicamente. Puedes editarlo para corregir las imágenes o el video.
+    </Text>
+  </View>
+)}
+      <View style={styles.fixedHeader}>
+        <View style={styles.logoRow}>
+          <Image source={require('../assets/logo.png')} style={styles.logo} />
+          <View style={styles.greetingBox}>
+           <Text style={[styles.greeting, { marginLeft: -15 }]}> Hola, {userName} 👑</Text>
+           
+            <Text style={[styles.subtitle, { marginLeft:-10 }]}>
+  ¿Listo para tu próxima oportunidad?
+</Text>
+
           </View>
         </View>
 
@@ -288,25 +277,38 @@ const crearPerfilDePrueba = async () => {
         <View style={{ height: 120 }} />
       </ScrollView>
 {userData?.membershipType !== 'free' && (
-  <TouchableOpacity
-  style={{
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: '#D8A353',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 10,
-    elevation: 6,
-  }}
-  onPress={() => navigation.navigate('AssistantIAProfile')}
->
-  <Ionicons name="sparkles-outline" size={18} color="#000" style={{ marginRight: 6 }} />
-  <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>Analiza mi perfil</Text>
-</TouchableOpacity>
+ <TouchableOpacity
+    style={{
+      position: 'absolute',
+      bottom: 18,
+      right: 18,
+      backgroundColor: showText ? '#4CAF50' : '#000', // verde o negro
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      zIndex: 10,
+      elevation: 6,
+    }}
+    onPress={() => navigation.navigate('AssistantIAProfile')}
+  >
+    <Ionicons
+      name="sparkles-outline"
+      size={14}
+      color={showText ? '#fff' : '#00FF7F'}
+      style={{ marginRight: 4 }}
+    />
+    <Text
+      style={{
+        color: showText ? '#fff' : '#00FF7F',
+        fontWeight: 'bold',
+        fontSize: 10,
+      }}
+    >
+      {showText ? 'Analiza mi perfil' : 'IA'}
+    </Text>
+  </TouchableOpacity>
 )}
 
       {showUpgradeModal && (
@@ -343,7 +345,7 @@ const crearPerfilDePrueba = async () => {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
-  fixedHeader: { paddingHorizontal: 0, paddingTop: 20 },
+  fixedHeader: { paddingHorizontal: 0, paddingTop: 10 },
   logoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   logo: { width: 50, height: 50, marginRight: 10,  marginLeft: 20  },
   greetingBox: {
@@ -527,16 +529,17 @@ floatingButtonSingle: {
 trialBanner: {
   backgroundColor: '#222',
   borderColor: '#D8A353',
-  borderWidth: 1,
+  borderWidth: 0.5,
   borderRadius: 8,
-  padding: 8,
-  marginTop: 8,
-  marginRight: 20,
-  marginLeft: -10,
+  padding: 5,
+  marginTop: 5,
+  marginBottom: -5,
+  marginRight: 70,
+  marginLeft: 10,
 },
 trialText: {
   color: '#D8A353',
-  fontSize: 12,
+  fontSize: 10,
   fontWeight: 'bold',
   textAlign: 'left',
 },
@@ -559,5 +562,25 @@ adWatermark: {
   textAlign: 'center',
   backgroundColor: 'transparent',
   padding: 6,
+},
+flaggedCard: {
+  backgroundColor: '#C62828',
+  padding: 10,
+  borderRadius: 8,
+  marginHorizontal: 16,
+  marginBottom: 6,
+  borderColor: '#fff',
+  borderWidth: 0.4,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.3,
+  shadowRadius: 2,
+  elevation: 3,
+},
+flaggedText: {
+  color: '#fff',
+  fontSize: 12,
+  fontWeight: 'bold',
+  textAlign: 'center',
 },
 });

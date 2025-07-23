@@ -34,6 +34,7 @@ import CastingDetailScreen from '../screens/CastingDetailScreen';
 import PublishCastingScreen from '../screens/PublishCastingScreen';
 import PublishProfileScreen from '../screens/PublishProfileScreen';
 import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 import PublishFocusScreen from '../screens/PublishFocusScreen';
 import FocusListScreen from '../screens/FocusListScreen';
 import MyCastingsScreen from '../screens/MyCastingsScreen';
@@ -47,7 +48,6 @@ import EditPostScreen from '../screens/EditPostScreen';
 import FormularioFree from '../screens/FormularioFree';
 import CompleteEliteScreen from '../screens/CompleteEliteScreen';
 import EditProfileEliteScreen from '../screens/EditProfileEliteScreen';
-import MessagesScreen from '../screens/MessagesScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import MessageDetailScreen from '../screens/MessageDetailScreen';
 import InboxScreen from '../screens/InboxScreen';
@@ -111,6 +111,7 @@ export default function AppNavigator() {
       <Stack.Screen name="EditProfileFree" component={EditProfileFree} />
       <Stack.Screen name="FilteredProfiles" component={FilteredProfilesScreen} />
       <Stack.Screen name="ProfileDetail" component={ProfileDetailScreen} />
+      <Stack.Screen name="ProfilePro" component={ProfileProScreen} />
       <Stack.Screen name="ViewPosts" component={ViewPostsScreen} />
       <Stack.Screen name="Support" component={SupportScreen} />
       <Stack.Screen name="ExplorePosts" component={ExplorePostsScreen} />
@@ -122,6 +123,7 @@ export default function AppNavigator() {
       <Stack.Screen name="PublishCastingScreen" component={PublishCastingScreen} />
       <Stack.Screen name="PublishProfile" component={PublishProfileScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="PublishFocusScreen" component={PublishFocusScreen} />
       <Stack.Screen name="FocusListScreen" component={FocusListScreen} />
       <Stack.Screen name="MyCastings" component={MyCastingsScreen} />
@@ -135,7 +137,6 @@ export default function AppNavigator() {
       <Stack.Screen name="FormularioFree" component={FormularioFree} />
       <Stack.Screen name="CompleteElite" component={CompleteEliteScreen} />
       <Stack.Screen name="EditProfileElite" component={EditProfileEliteScreen} />
-      <Stack.Screen name="Messages" component={MessagesScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="MessageDetail" component={MessageDetailScreen} />
       <Stack.Screen name="Inbox" component={InboxScreen} />

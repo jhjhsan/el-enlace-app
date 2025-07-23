@@ -18,9 +18,10 @@ import { useUser } from '../contexts/UserContext';
 import { useSimulatedNotification } from '../utils/useSimulatedNotification';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 import { syncAdToFirestore } from '../src/firebase/helpers/syncAdToFirestore';
 import { Image as RNImage } from 'react-native'; // asegúrate de tener este import
+import * as Notifications from 'expo-notifications';
 
 const { width } = Dimensions.get('window');
 import img1 from '../assets/placeholders_ads1.png';
@@ -31,7 +32,6 @@ import img5 from '../assets/placeholders_ads5.png';
 import img6 from '../assets/placeholders_ads6.png';
 import img7 from '../assets/placeholders_ads7.png';
 
-
 export default function DashboardScreen({ navigation }) {
   const scrollRef = useRef(null);
   const currentIndexRef = useRef(0);
@@ -41,7 +41,8 @@ export default function DashboardScreen({ navigation }) {
   const [allCastings, setAllCastings] = useState([]);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
+  const [showText, setShowText] = useState(true);
+  
   const { userData } = useUser();
   const userName = userData?.name || 'Usuario';
   const membershipType = userData?.membershipType || 'free';
@@ -74,7 +75,12 @@ export default function DashboardScreen({ navigation }) {
   useEffect(() => {
     loadRecentCastings();
   }, []);
-
+useEffect(() => {
+  const interval = setInterval(() => {
+    setShowText(prev => !prev);
+  }, 1500); // cambia cada 1.5 segundos
+  return () => clearInterval(interval);
+}, []);
 useEffect(() => {
   const fetchAds = async () => {
     try {
@@ -187,7 +193,7 @@ const formatDate = (isoDate) => {
             </Text>
             <Text style={styles.subtitle}>
               {membershipType === 'free'
-                ? 'Explora oportunidades y sube a Pro para postular.'
+                ? 'Explora oportunidades.'
                 : '¿Listo para tu próxima oportunidad?'}
             </Text>
           </View>
@@ -204,6 +210,14 @@ const formatDate = (isoDate) => {
     </TouchableOpacity>
   </View>
 )}
+{userData?.flagged && (
+  <View style={styles.flaggedCard}>
+    <Text style={styles.flaggedText}>
+      ⚠️ Tu perfil fue marcado por contenido ofensivo y no está siendo mostrado públicamente. Reemplaza las imágenes o el video para corregirlo.
+    </Text>
+  </View>
+)}
+
         <View style={styles.carouselWrapper}>
           <FlatList
             ref={scrollRef}
@@ -321,28 +335,41 @@ const formatDate = (isoDate) => {
           </View>
         </View>
       </Modal>
-      {userData?.membershipType !== 'free' && (
- <TouchableOpacity
-  style={{
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: '#D8A353',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 10,
-    elevation: 6,
-  }}
-  onPress={() => navigation.navigate('AssistantIAProfile')}
->
-  <Ionicons name="sparkles-outline" size={18} color="#000" style={{ marginRight: 6 }} />
-  <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>Analiza mi perfil</Text>
-</TouchableOpacity>
+{userData?.membershipType !== 'free' && (
+  <TouchableOpacity
+    style={{
+      position: 'absolute',
+      bottom: 18,
+      right: 18,
+      backgroundColor: showText ? '#4CAF50' : '#000', // verde o negro
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      zIndex: 10,
+      elevation: 6,
+    }}
+    onPress={() => navigation.navigate('AssistantIAProfile')}
+  >
+    <Ionicons
+      name="sparkles-outline"
+      size={14}
+      color={showText ? '#fff' : '#00FF7F'}
+      style={{ marginRight: 4 }}
+    />
+    <Text
+      style={{
+        color: showText ? '#fff' : '#00FF7F',
+        fontWeight: 'bold',
+        fontSize: 10,
+      }}
+    >
+      {showText ? 'Analiza mi perfil' : 'IA'}
+    </Text>
+  </TouchableOpacity>
 )}
-    </SafeAreaView>
+</SafeAreaView>
   );
 }
 
@@ -370,7 +397,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     textAlign: 'center',
     marginTop: 0,
-    marginLeft: -35,
+    marginLeft: -20,
     marginRight: 10,
     alignSelf: 'flex-start',
   },
@@ -495,5 +522,25 @@ adWatermark: {
   textAlign: 'center',
   zIndex: 5,
 },
-
+flaggedCard: {
+  backgroundColor: '#ff4444',
+  padding: 12,
+  borderRadius: 8,
+  marginHorizontal: 20,
+  marginTop: 12,
+  marginBottom: -2,
+  borderColor: '#fff',
+  borderWidth: 0.5,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+  elevation: 4,
+},
+flaggedText: {
+  color: '#fff',
+  fontSize: 13,
+  fontWeight: 'bold',
+  textAlign: 'center',
+},
 });

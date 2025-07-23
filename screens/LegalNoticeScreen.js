@@ -29,10 +29,18 @@ export default function LegalNoticeScreen({ navigation }) {
         </Text>
 
         <Text style={styles.paragraph}>
+          "El Enlace" no es un sindicato, colegio profesional ni gremio. No representa a ninguna organización gremial ni regula la actividad laboral de los usuarios.
+        </Text>
+
+        <Text style={styles.paragraph}>
+          Para proteger la comunidad, esta app utiliza herramientas de inteligencia artificial que ayudan a detectar contenido ofensivo o inapropiado. Nos reservamos el derecho de bloquear perfiles o publicaciones que infrinjan las normas de uso.
+        </Text>
+
+        <Text style={styles.paragraph}>
           Para contacto legal, reportes o reclamaciones, puedes escribirnos a: soporte@elenlace.cl
         </Text>
 
-        <Text style={styles.updateText}>Última actualización: mayo 2025</Text>
+        <Text style={styles.updateText}>Última actualización: julio 2025</Text>
       </ScrollView>
     </View>
   );

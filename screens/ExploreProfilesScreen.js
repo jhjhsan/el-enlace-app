@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
   RefreshControl,
   Modal,
   Alert
@@ -19,7 +20,6 @@ import { interpretSearchPhrase } from '../src/firebase/helpers/interpretSearchPh
 import { SafeAreaView } from 'react-native';
 import { saveSearchIA } from '../src/firebase/helpers/saveSearchIA'; // asegúrate que la ruta sea correcta
 import BackButton from '../components/BackButton';
-
 
 const categories = [
   "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
@@ -91,32 +91,30 @@ export default function ExploreProfilesScreen({ navigation }) {
 
   
   const fetchAllProfiles = async () => {
-    try {
-      const json = await AsyncStorage.getItem('allProfiles');
-      const eliteJson = await AsyncStorage.getItem('allProfilesElite');
+  try {
+    const freeJson = await AsyncStorage.getItem('allProfilesFree');
+    const proJson = await AsyncStorage.getItem('allProfiles');
+    const eliteJson = await AsyncStorage.getItem('allProfilesElite');
 
-      const freeAndPro = json ? JSON.parse(json) : [];
-      const elite = eliteJson ? JSON.parse(eliteJson) : [];
+    const free = freeJson ? JSON.parse(freeJson) : [];
+    const pro = proJson ? JSON.parse(proJson) : [];
+    const elite = eliteJson ? JSON.parse(eliteJson) : [];
 
-      const freeAndProFiltrados = freeAndPro.filter(
-        (p) => p.visibleInExplorer !== false && ['free', 'pro'].includes(p.membershipType)
-      );
+    const filtradosFree = free.filter((p) => p.visibleInExplorer !== false && p.membershipType === 'free');
+    const filtradosPro = pro.filter((p) => p.visibleInExplorer !== false && p.membershipType === 'pro');
+    const filtradosElite = elite.filter((p) => p.visibleInExplorer !== false && p.membershipType === 'elite');
 
-      const eliteFiltrados = elite.filter(
-        (p) => p.visibleInExplorer !== false && p.membershipType === 'elite'
-      );
+    const combinados = [...filtradosFree, ...filtradosPro, ...filtradosElite];
+    const unicos = combinados.filter(
+      (profile, index, self) =>
+        index === self.findIndex((p) => p.email === profile.email)
+    );
 
-      const combinados = [...freeAndProFiltrados, ...eliteFiltrados];
-      const unicos = combinados.filter(
-        (profile, index, self) =>
-          index === self.findIndex((p) => p.email === profile.email)
-      );
-
-      setAllProfiles(unicos);
-    } catch (error) {
-      console.error('Error cargando perfiles universales:', error);
-    }
-  };
+    setAllProfiles(unicos);
+  } catch (error) {
+    console.error('❌ Error cargando perfiles universales:', error);
+  }
+};
 
  useEffect(() => {
   fetchAllProfiles();
@@ -242,47 +240,50 @@ const filtrarPorTipo = (tipo) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await fetchAllProfiles();
-              setRefreshing(false);
-            }}
-            colors={['#D8A353']}
-            tintColor="#D8A353"
-          />
-        }
-      >
-        {aiSearchLoading && (
-  <Text style={{ color: '#D8A353', textAlign: 'center', marginVertical: 10 }}>
-    🧠 Analizando tu búsqueda...
-  </Text>
-)}
+<FlatList
+  data={filteredCategories}
+  keyExtractor={(item, index) => index.toString()}
+  contentContainerStyle={styles.scrollContent}
+  refreshControl={
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={async () => {
+        setRefreshing(true);
+        await fetchAllProfiles();
+        setRefreshing(false);
+      }}
+      colors={['#D8A353']}
+      tintColor="#D8A353"
+    />
+  }
+  ListEmptyComponent={
+    <Text style={styles.noResultsText}>No se encontraron resultados.</Text>
+  }
+  renderItem={({ item }) => (
+    <TouchableOpacity
+      style={styles.categoryButton}
+      onPress={() => {
+  const emailValido = (email) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-        <View style={styles.categoryList}>
-          {filteredCategories.map((cat, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.categoryButton}
-              onPress={() =>
-                navigation.navigate('FilteredProfiles', {
-                  category: cat,
-                  profiles: allProfiles,
-                })
-              }
-            >
-              <Text style={styles.categoryText}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-          {filteredCategories.length === 0 && (
-            <Text style={styles.noResultsText}>No se encontraron resultados.</Text>
-          )}
-        </View>
-      </ScrollView>
+  const perfilesFiltrados = allProfiles.filter(
+    (p) =>
+      p.category?.includes(item) &&
+      p.email &&
+      emailValido(p.email)
+  );
+
+  navigation.navigate('FilteredProfiles', {
+    category: item,
+    profiles: perfilesFiltrados,
+  });
+}}
+
+    >
+      <Text style={styles.categoryText}>{item}</Text>
+    </TouchableOpacity>
+  )}
+/>
     </View>
   </SafeAreaView>
 );

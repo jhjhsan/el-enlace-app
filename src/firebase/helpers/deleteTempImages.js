@@ -1,9 +1,9 @@
 // src/firebase/helpers/deleteTempImages.js
-import { getStorage, ref, deleteObject } from 'firebase/storage';
+import { ref, deleteObject } from 'firebase/storage';
+import { storage } from '../firebaseConfig';
 
 export const deleteTempImages = async (email, max = 5) => {
   try {
-    const storage = getStorage();
     const emailKey = email.toLowerCase().trim();
 
     for (let i = 1; i <= max; i++) {

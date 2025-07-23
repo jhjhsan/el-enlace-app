@@ -17,14 +17,15 @@ import { Animated, Easing } from 'react-native';
 import { saveSuggestionToFirestore } from '../src/firebase/helpers/saveSuggestionToFirestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { validateProfileData } from '../src/firebase/helpers/validateProfileData';
+import { validateEliteProfile } from '../src/firebase/helpers/validateEliteProfile';
 
 const db = getFirestore();
 const isValidVideoURL = (url) => {
   if (typeof url !== 'string') return false;
   const lower = url.toLowerCase();
   return (
-    (lower.startsWith('http') || lower.startsWith('www')) &&
-    (lower.endsWith('.mp4') || lower.includes('youtube.com') || lower.includes('vimeo.com'))
+    lower.startsWith('http') &&
+    (lower.includes('.mp4') || lower.includes('.mov') || lower.includes('youtube.com') || lower.includes('vimeo.com'))
   );
 };
 
@@ -52,6 +53,7 @@ const [iaVerdict, setIaVerdict] = useState('');
 const progressAnim = useRef(new Animated.Value(0)).current;
 
 useEffect(() => {
+  console.log('🧠 LLEGÓ A AssistantIAProfileScreen CON:', userData);
   if (!userData || !userData.email || !userData.membershipType) {
     console.log("❌ userData incompleto o no cargado:", userData);
     return;
@@ -64,23 +66,46 @@ useEffect(() => {
     try {
       const email = userData.email.toLowerCase();
       const emailKey = email.replace(/[^a-z0-9]/g, '_');
-      const collectionName = userData.membershipType === 'pro' ? 'profilesPro' : 'profiles';
+      let collectionName = 'profiles';
+if (userData.membershipType === 'pro') {
+  collectionName = 'profilesPro';
+} else if (userData.membershipType === 'elite') {
+  collectionName = 'profilesElite';
+}
+
 const docRef = doc(db, collectionName, emailKey);
       const snap = await getDoc(docRef);
 
       if (snap.exists()) {
         const data = snap.data();
+        console.log('🌆 Ciudad recibida del perfil:', data.city);
          console.log('✅ Perfil cargado:', data); // 👈 Agrega esto
 setProfile(data);
+
 await autoGenerateSuggestions();
 
 if (userData.membershipType === 'pro') {
-const { suggestions: localSuggestions, verdict: localVerdict } = validateProfileData(data);
-setIaSuggestions(localSuggestions);
-setIaVerdict(localVerdict);
+  console.log('📸 Validando perfil Pro');
+  console.log('🧪 Foto de perfil:', data.profilePhoto);
+  console.log('🎥 Video de presentación:', data.profileVideo);
+  console.log('🏷️ Categoría:', data.category);
+
+  const { suggestions: localSuggestions, verdict: localVerdict } = validateProfileData(data);
+  setIaSuggestions(localSuggestions);
+  setIaVerdict(localVerdict);
   validateProProfile(data);
+
 } else if (userData.membershipType === 'elite') {
-  validateEliteProfile(data);
+  console.log('🏛️ Validando perfil Elite');
+  console.log('🧪 Logo de agencia:', data.profilePhoto);
+  console.log('🎥 Video de agencia:', data.profileVideo);
+  console.log('🏙️ Ciudad:', data.city);
+
+  const eliteObservations = validateEliteProfile(data);
+  setIaSuggestions(eliteObservations);
+  setIaVerdict('');
+  validateEliteCompletion(data);
+
 } else {
   console.warn('❌ membershipType desconocido:', userData.membershipType);
   Alert.alert('Error', 'El tipo de cuenta no es válido para el análisis IA.');
@@ -102,97 +127,12 @@ const isValidURL = (url) => {
   return regex.test(url);
 };
 
- const validateEliteProfile = (data) => {
-  const result = [];
-  let score = 0;
-  let total = 13;
-
-  const push = (okText, failText, condition) => {
-    if (condition) {
-      result.push(`✅ ${okText}`);
-      score++;
-    } else {
-      result.push(`❌ ${failText}`);
-    }
-  };
-
-push(
-  'Descripción válida',
-  'Descripción muy breve, incoherente o con lenguaje ofensivo',
-  typeof data.description === 'string' &&
-    data.description.trim().length >= 30 &&
-    !/^\d+$/.test(data.description) &&
-    !hasOffensiveWords(data.description)
-);
-  push(
-  'Instagram enlazado',
-  'Enlace de Instagram inválido',
-  typeof data.instagram === 'string' &&
-    data.instagram.includes('instagram.com') &&
-    isValidURL(data.instagram)
-);
-push(
-  'Video institucional válido',
-  'Video ausente o enlace dañado',
-  isValidVideoURL(data.profileVideo)
-);
-push(
-  'Logo válido',
-  'Logo ausente o inválido',
-  typeof data.logo === 'string' && isValidImageURL(data.logo)
-);
-push(
-  'Foto de book cargada',
-  'No se ha cargado ninguna imagen del book',
-  Array.isArray(data.photos) && data.photos.some((p) => isValidImageURL(p))
-);
-
-push(
-  'Web enlazada correctamente',
-  'Enlace web inválido o ausente',
-  typeof data.webLink === 'string' && isValidURL(data.webLink)
-);
-
-  push('Dirección registrada', 'Dirección ausente', !!data.address);
-  push('Representante identificado', 'Representante no especificado', !!data.representative);
-  push('Agencia nombrada', 'Nombre de la agencia faltante', !!data.agency);
-  push('Categoría definida', 'Categoría no seleccionada', !!data.category);
-  push('Región establecida', 'Región no especificada', !!data.region);
-  push('Ciudad ingresada', 'Ciudad no ingresada', !!data.city);
-  push('Teléfono válido', 'Teléfono no válido o ausente', data.phone?.length >= 6);
-  push('Email correcto', 'Correo electrónico inválido', data.email?.includes('@'));
-
-  animatedValues.length = result.length; // reinicia
-for (let i = 0; i < result.length; i++) {
-  animatedValues[i] = new Animated.Value(0);
-}
-const sorted = [...result].sort((a, b) => a.startsWith('✅') ? 1 : -1);
-setValidations(sorted);
-
-// Inicia animación
-Animated.stagger(100, result.map((_, i) =>
-  Animated.timing(animatedValues[i], {
-    toValue: 1,
-    duration: 400,
-    useNativeDriver: true,
-  })
-)).start();
-
-  const percentage = Math.round((score / total) * 100);
- setVerdict('');
-  setCompletion(percentage);
-Animated.timing(progressAnim, {
-  toValue: percentage,
-  duration: 500,
-  useNativeDriver: false,
-}).start();
-};
 const validateProProfile = (data) => {
   const result = [];
   console.log('📦 Datos recibidos para validación:', data);
 
   let score = 0;
-  let total = 9;
+  let total = 8;
 
   const push = (okText, failText, condition) => {
     if (condition) {
@@ -204,35 +144,56 @@ const validateProProfile = (data) => {
   };
 
   push(
-    'Descripción válida',
-    'Descripción muy breve, incoherente o con lenguaje ofensivo',
-    typeof data.description === 'string' &&
-      data.description.trim().length >= 30 &&
-      !/^\d+$/.test(data.description) &&
-      !hasOffensiveWords(data.description)
-  );
-  push(
     'Instagram enlazado',
     'Instagram inválido o ausente',
     typeof data.instagram === 'string' &&
-      data.instagram.includes('instagram.com') &&
-      isValidURL(data.instagram)
+      (data.instagram.startsWith('@') || isValidURL(data.instagram))
   );
+
   push(
     'Video de presentación válido',
     'Video ausente o enlace dañado',
-    isValidVideoURL(data.profileVideo)
+    typeof data.profileVideo === 'string' && isValidVideoURL(data.profileVideo)
   );
+
+push(
+  'Foto de perfil válida',
+  'No se ha cargado foto de perfil',
+  typeof data.profilePhoto === 'string' &&
+    data.profilePhoto.startsWith('http') &&
+    data.profilePhoto.includes('firebasestorage') &&
+    /\.(jpg|jpeg|png|webp)(\?|$)/i.test(data.profilePhoto)
+);
+
   push(
-    'Foto de perfil válida',
-    'No se ha cargado foto de perfil',
-    typeof data.profilePhoto === 'string' && isValidImageURL(data.profilePhoto)
+    'Categoría definida',
+    'Categoría no seleccionada',
+    Array.isArray(data.category) && data.category.length > 0
   );
-  push('Categoría definida', 'Categoría no seleccionada', !!data.category);
-  push('Región establecida', 'Región no especificada', !!data.region);
-  push('Ciudad ingresada', 'Ciudad no ingresada', !!data.city);
-  push('Teléfono válido', 'Teléfono no válido o ausente', data.phone?.length >= 6);
-  push('Email correcto', 'Correo electrónico inválido', data.email?.includes('@'));
+
+  push(
+    'Región establecida',
+    'Región no especificada',
+    typeof data.region === 'string' && data.region.trim().length > 0
+  );
+
+push(
+  'Ciudad ingresada',
+  'Ciudad no ingresada',
+  typeof data.ciudad === 'string' && data.ciudad.trim().length > 0
+);
+
+  push(
+    'Teléfono válido',
+    'Teléfono no válido o ausente',
+    typeof data.phone === 'string' && data.phone.trim().length >= 6
+  );
+
+  push(
+    'Email correcto',
+    'Correo electrónico inválido',
+    typeof data.email === 'string' && data.email.includes('@')
+  );
 
   animatedValues.length = result.length;
   for (let i = 0; i < result.length; i++) {
@@ -259,50 +220,120 @@ const validateProProfile = (data) => {
     useNativeDriver: false,
   }).start();
 };
+const validateEliteCompletion = (data) => {
+  const result = [];
+  let score = 0;
+  const total = 8;
 
-  const runIAAnalysis = async () => {
-    if (!profile) {
-      Alert.alert('Error', 'Perfil no cargado');
-      return;
+  const push = (okText, failText, condition) => {
+    if (condition) {
+      result.push(`✅ ${okText}`);
+      score++;
+    } else {
+      result.push(`❌ ${failText}`);
     }
-
-    setLoading(true);
-    try {
-      const { suggestions, error } = await getProfileSuggestions(profile, userData);
-
-      if (error) {
-        Alert.alert('Error IA', error);
-      } else {
-       setSuggestions(suggestions);
-await saveSuggestionToFirestore(
-  userData.email,
-  suggestions,
-  userData.membershipType,
-  verdict,
-  completion,
-  'manual'
-);
-
-// Inicializar animaciones para sugerencias IA
-const start = validations.length;
-for (let i = 0; i < suggestions.length; i++) {
-  animatedValues[start + i] = new Animated.Value(0);
-}
-
-Animated.stagger(100, suggestions.map((_, i) =>
-  Animated.timing(animatedValues[start + i], {
-    toValue: 1,
-    duration: 400,
-    useNativeDriver: true,
-  })
-)).start();
-      }
-    } catch (e) {
-      console.error('❌ Error IA:', e);
-      Alert.alert('Error', 'No se pudo generar el análisis.');
-    }
-    setLoading(false);
   };
+
+  push('Nombre de agencia válido', 'Nombre de agencia ausente o corto', data.agencyName && data.agencyName.trim().length >= 3);
+  push('Representante definido', 'Representante ausente', data.representative && data.representative.trim().length >= 3);
+  push('Logo cargado', 'Logo no válido', data.profilePhoto && data.profilePhoto.startsWith('http'));
+  push('Email válido', 'Email no válido', data.email && data.email.includes('@'));
+  push('Teléfono válido', 'Teléfono no válido', data.phone && data.phone.trim().length >= 6);
+  push('Región especificada', 'Región no especificada', data.region && data.region.trim() !== '');
+  push('Ciudad definida', 'Ciudad no ingresada', data.city && data.city.trim() !== '');
+  push('Descripción suficiente', 'Descripción muy breve', data.description && data.description.trim().length >= 30);
+
+  // Preparar animaciones
+  animatedValues.length = result.length;
+  for (let i = 0; i < result.length; i++) {
+    animatedValues[i] = new Animated.Value(0);
+  }
+
+  const sorted = [...result].sort((a, b) => a.startsWith('✅') ? 1 : -1);
+  setValidations(sorted);
+
+  Animated.stagger(100, result.map((_, i) =>
+    Animated.timing(animatedValues[i], {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    })
+  )).start();
+
+  const percentage = Math.round((score / total) * 100);
+  setVerdict('');
+  setCompletion(percentage);
+  Animated.timing(progressAnim, {
+    toValue: percentage,
+    duration: 500,
+    useNativeDriver: false,
+  }).start();
+};
+
+const runIAAnalysis = async () => {
+  if (!profile) return;
+
+  setLoading(true);
+  try {
+    console.log('📦 Enviando perfil a IA desde DASHBOARD ELITE:', profile);
+console.log('👤 Enviando userData:', userData);
+    const { suggestions, error } = await getProfileSuggestions(profile, userData);
+
+    if (suggestions && Array.isArray(suggestions)) {
+      setSuggestions(suggestions);
+      await saveSuggestionToFirestore(
+        userData.email,
+        suggestions,
+        userData.membershipType,
+        verdict,
+        completion,
+        'manual'
+      );
+
+      const start = validations.length;
+      for (let i = 0; i < suggestions.length; i++) {
+        animatedValues[start + i] = new Animated.Value(0);
+      }
+
+      Animated.stagger(100, suggestions.map((_, i) =>
+        Animated.timing(animatedValues[start + i], {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        })
+      )).start();
+
+    } else if (error && error.includes('Ya has generado sugerencias')) {
+      // Ya generó esta semana: intenta cargar las últimas desde Firestore
+      const ref = doc(db, "ia_suggestions", userData.email.toLowerCase());
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        const stored = data?.suggestions || [];
+        if (stored.length > 0) {
+          setSuggestions(stored);
+
+          const start = validations.length;
+          for (let i = 0; i < stored.length; i++) {
+            animatedValues[start + i] = new Animated.Value(0);
+          }
+
+          Animated.stagger(100, stored.map((_, i) =>
+            Animated.timing(animatedValues[start + i], {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            })
+          )).start();
+        }
+      }
+    }
+  } catch (e) {
+    console.error('❌ Error IA:', e);
+  }
+  setLoading(false);
+};
+
 const rotateAnim = useRef(new Animated.Value(0)).current;
 useEffect(() => {
   rotateBrain.setValue(0); // reinicia desde 0 siempre que se monte

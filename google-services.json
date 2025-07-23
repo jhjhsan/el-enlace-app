@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "446527663342",
+    "project_id": "elenlaceapp",
+    "storage_bucket": "elenlaceapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:446527663342:android:cafa0da70185e2948b17ff",
+        "android_client_info": {
+          "package_name": "com.elenlace.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5KqpmkT2rWGp7AN7kFDMdaWypqV5RYwQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

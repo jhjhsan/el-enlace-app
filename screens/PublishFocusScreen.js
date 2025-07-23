@@ -11,6 +11,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import uuid from 'react-native-uuid';
 import { Ionicons } from '@expo/vector-icons';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../src/firebase/firebaseConfig';
 
 export default function PublishFocusScreen({ navigation }) {
   const [title, setTitle] = useState('');
@@ -21,43 +23,45 @@ export default function PublishFocusScreen({ navigation }) {
   const [paymentMethod, setPaymentMethod] = useState('');
   const [description, setDescription] = useState('');
 
-  const handleSubmit = async () => {
-    if (!title || !requirements || !dateTime || !payment) {
-      Alert.alert('Campos requeridos', 'Por favor completa todos los campos obligatorios.');
-      return;
-    }
+const handleSubmit = async () => {
+  if (!title || !requirements || !dateTime || !payment) {
+    Alert.alert('Campos requeridos', 'Por favor completa todos los campos obligatorios.');
+    return;
+  }
 
-const userRaw = await AsyncStorage.getItem('userProfile');
-const user = userRaw ? JSON.parse(userRaw) : {};
+  const userRaw = await AsyncStorage.getItem('userProfile');
+  const user = userRaw ? JSON.parse(userRaw) : {};
 
-const newFocus = {
-  id: uuid.v4(),
-  title,
-  requirements,
-  dateTime,
-  duration,
-  payment,
-  paymentMethod,
-  description,
-  authorEmail: user?.email || '',
-  authorName: user?.name || '',
-};
-
-    try {
-      const existingData = await AsyncStorage.getItem('focusList');
-      const focusList = existingData ? JSON.parse(existingData) : [];
-
-      focusList.push(newFocus);
-
-      await AsyncStorage.setItem('focusList', JSON.stringify(focusList));
-
-      Alert.alert('Éxito', 'La publicación de Focus fue guardada correctamente.');
-      navigation.navigate('FocusListScreen');
-    } catch (error) {
-      console.error('Error guardando el focus:', error);
-      Alert.alert('Error', 'No se pudo guardar la publicación.');
-    }
+  const newFocus = {
+    id: uuid.v4(),
+    title,
+    requirements,
+    dateTime,
+    duration,
+    payment,
+    paymentMethod,
+    description,
+    authorEmail: user?.email || '',
+    authorName: user?.name || '',
   };
+
+  try {
+    const existingData = await AsyncStorage.getItem('focusList');
+    const focusList = existingData ? JSON.parse(existingData) : [];
+    focusList.push(newFocus);
+    await AsyncStorage.setItem('focusList', JSON.stringify(focusList));
+
+    // Llama al endpoint para sincronizar con Firestore
+    const syncFocus = httpsCallable(functions, 'syncFocusToFirestore');
+    await syncFocus(); // Esto enviará focusList a Firestore
+
+    Alert.alert('Éxito', 'La publicación de Focus fue guardada y sincronizada.');
+    navigation.navigate('FocusListScreen');
+  } catch (error) {
+    console.error('Error guardando o sincronizando el focus:', error);
+    Alert.alert('Error', 'No se pudo guardar o sincronizar la publicación.');
+  }
+};
 
   return (
     <View style={styles.screen}>

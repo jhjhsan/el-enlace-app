@@ -1,17 +1,9 @@
-// navigation/TabNavigator.js
-import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import DashboardScreen from '../screens/DashboardScreen';
-import ExploreProfilesScreen from '../screens/ExploreProfilesScreen';
-import PublishMenuScreen from '../screens/PublishMenuScreen';
-import MenuScreen from '../screens/MenuScreen';
-import { Ionicons } from '@expo/vector-icons';
-
-const Tab = createBottomTabNavigator();
-
 export default function TabNavigator() {
+  const { unreadCount } = useNotification(); // Obtiene el contador de notificaciones no leídas desde el contexto
+
   return (
     <Tab.Navigator
+      key={`noti-${unreadCount}`} // 👈 Esto fuerza a redibujar el TabNavigator cuando `unreadCount` cambia
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
@@ -30,6 +22,7 @@ export default function TabNavigator() {
           if (route.name === 'Dashboard') iconName = 'home';
           else if (route.name === 'ExploreProfiles') iconName = 'search';
           else if (route.name === 'PublishMenu') iconName = 'add-circle';
+          else if (route.name === 'Notifications') iconName = 'notifications';
           else if (route.name === 'Menu') iconName = 'menu';
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -38,6 +31,19 @@ export default function TabNavigator() {
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="ExploreProfiles" component={ExploreProfilesScreen} />
       <Tab.Screen name="PublishMenu" component={PublishMenuScreen} />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationScreen}
+        options={{
+          tabBarBadge: unreadCount > 0 ? unreadCount : null, // Muestra el contador si hay notificaciones no leídas
+          tabBarBadgeStyle: {
+            backgroundColor: '#FF4444', // Estilo del contador (rojo)
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 'bold',
+          },
+        }}
+      />
       <Tab.Screen name="Menu" component={MenuScreen} />
     </Tab.Navigator>
   );

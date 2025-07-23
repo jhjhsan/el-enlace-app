@@ -21,6 +21,9 @@ import { getMembershipType } from '../src/firebase/helpers/getMembershipType';
 import { getPushToken } from '../src/firebase/helpers/pushHelper';
 import { saveUserProfile } from '../utils/profileStorage';
 import { ActivityIndicator } from 'react-native';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../src/firebase/firebaseConfig'; // usa el path que uses tú
+import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 
 import {
   goToProfileTab,
@@ -60,55 +63,81 @@ const handleLogin = async () => {
       } else {
         Alert.alert('Error', result.error?.code || result.error?.message || 'No se pudo iniciar sesión.');
       }
+
+      setIsLoading(false);
       return;
     }
 
     const user = result.user;
     console.log('✅ Login exitoso con UID:', user.uid);
 
-    await user.reload();
-    const verified = user.emailVerified;
-    if (!verified) {
-      navigation.replace('EmailNotVerified');
-      return;
-    }
+  if (!user.emailVerified) {
+  Alert.alert(
+    'Verifica tu correo',
+    'Debes confirmar tu correo electrónico antes de ingresar. Revisa tu bandeja de entrada. Si no lo encuentras, revisa el correo no deseado.'
+  );
+  setIsLoading(false);
+  return;
+}
 
     await AsyncStorage.setItem('sessionActive', 'true');
 
-    const detectedMembershipType = await getMembershipType(cleanedEmail);
-    if (!detectedMembershipType) {
-      Alert.alert('Error', 'No se pudo detectar el tipo de cuenta del usuario.');
-      return;
-    }
+ const detectedMembershipType = await getMembershipType(cleanedEmail);
+if (!detectedMembershipType) {
+  Alert.alert('Error', 'No se pudo detectar el tipo de cuenta del usuario.');
+  setIsLoading(false);
+  return;
+}
+
+// ✅ Si es Pro o Elite, eliminamos perfil Free de Firestore
+if (detectedMembershipType === 'pro' || detectedMembershipType === 'elite') {
+  await deleteFreeProfile(cleanedEmail);
+}
 
     const firestoreProfile = await getProfileFromFirestore(cleanedEmail, detectedMembershipType);
     if (!firestoreProfile) {
       Alert.alert('Error', 'No se pudo cargar el perfil desde Firestore.');
+      setIsLoading(false);
       return;
     }
 
     const { membershipType } = firestoreProfile;
 
-    await AsyncStorage.setItem('userData', JSON.stringify(firestoreProfile));
-
-    if (membershipType === 'pro') {
-      await AsyncStorage.setItem('userProfilePro', JSON.stringify(firestoreProfile));
-    } else if (membershipType === 'elite') {
-      await AsyncStorage.setItem('userProfileElite', JSON.stringify(firestoreProfile));
-    } else if (membershipType === 'free') {
-      await AsyncStorage.setItem('userProfileFree', JSON.stringify(firestoreProfile));
-    }
-
-    setUserData(firestoreProfile);
-    setIsLoggedIn(true);
-
-    const pushToken = await getPushToken();
-    if (pushToken) {
-      firestoreProfile.pushToken = pushToken;
-    }
-    await saveUserProfile(firestoreProfile, membershipType, setUserData, setIsLoggedIn, true);
     try {
+      await saveUserProfile(firestoreProfile, membershipType, setUserData, setIsLoggedIn, true);
+      await AsyncStorage.setItem('userData', JSON.stringify({
+  ...firestoreProfile,
+  membershipType,
+  email: cleanedEmail,
+}));
+// 🔁 Limpieza automática de conversaciones archivadas
+try {
+  const json = await AsyncStorage.getItem('professionalMessages');
+  const allMessages = json ? JSON.parse(json) : [];
+
+  const filtered = allMessages.filter((conv) => conv.archived !== true);
+
+  if (filtered.length !== allMessages.length) {
+    const safe = (allMessages || []).map((conv) => ({
+  ...conv,
+  messages: (conv.messages || []).slice(-50), // Limita a últimos 50
+}));
+await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
+
+    console.log(`🧹 Conversaciones archivadas eliminadas automáticamente (${allMessages.length - filtered.length})`);
+  }
+} catch (e) {
+  console.warn('⚠️ Error al limpiar conversaciones archivadas:', e.message);
+}
+
+console.log('💾 userData guardado en AsyncStorage:', {
+  ...firestoreProfile,
+  membershipType,
+  email: cleanedEmail,
+});
+
       const list = [firestoreProfile];
+
       if (membershipType === 'pro') {
         const eliteProfile = await getProfileFromFirestore(cleanedEmail, 'elite');
         if (eliteProfile && eliteProfile.membershipType === 'elite') {
@@ -133,17 +162,21 @@ const handleLogin = async () => {
       });
 
       await combinarPerfilesLocales(deduplicated);
-
       console.log('✅ allProfiles reconstruido con', deduplicated.length, 'perfiles');
     } catch (error) {
-      console.warn('⚠️ No se pudo reconstruir allProfiles:', error.message);
+      console.error('❌ Error en login o reconstrucción:', error);
+      Alert.alert('Error', error.message || 'Ocurrió un error inesperado.');
+      setIsLoading(false);
+      return;
     }
 
     console.log('🟢 Login completo. Redirección a cargo de InitialRedirectScreen.');
-
+    setIsLoading(false);
+    
   } catch (error) {
-    console.error('Error al iniciar sesión:', error);
+    console.error('❌ Error al iniciar sesión:', error);
     Alert.alert('Error', error.message || 'Ocurrió un error inesperado.');
+    setIsLoading(false);
   }
 };
 
@@ -180,10 +213,19 @@ const combinarPerfilesLocales = async (nuevos) => {
       index === self.findIndex((q) => q.email === p.email)
     );
 
-    await AsyncStorage.setItem('allProfiles', JSON.stringify(combinados));
+    await guardarAllProfiles(combinados);
     console.log('🧪 allProfiles actualizado con', combinados.length, 'perfiles totales');
   } catch (err) {
     console.error('❌ Error al combinar perfiles locales:', err);
+  }
+};
+const deleteFreeProfile = async (email) => {
+  const docId = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  try {
+    await deleteDoc(doc(db, 'profiles', docId));
+    console.log('🧹 Perfil Free eliminado de Firestore');
+  } catch (e) {
+    console.warn('⚠️ No se pudo eliminar perfil Free:', e.message);
   }
 };
 
@@ -217,9 +259,16 @@ const combinarPerfilesLocales = async (nuevos) => {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>INGRESAR</Text>
-      </TouchableOpacity>
+<TouchableOpacity style={styles.button} onPress={handleLogin} disabled={isLoading}>
+  {isLoading ? (
+    <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator color="#000" style={{ marginRight: 8 }} />
+      <Text style={styles.buttonText}>Cargando...</Text>
+    </View>
+  ) : (
+    <Text style={styles.buttonText}>INGRESAR</Text>
+  )}
+</TouchableOpacity>
 
       <TouchableOpacity onPress={() => setShowModal(true)}>
         <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>

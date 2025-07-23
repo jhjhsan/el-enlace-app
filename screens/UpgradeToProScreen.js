@@ -57,6 +57,9 @@ export default function UpgradeToProScreen({ navigation }) {
         <TouchableOpacity style={styles.button} onPress={handleUpgrade}>
           <Text style={styles.buttonText}>📈 Activar plan Pro por $2.990 CLP</Text>
         </TouchableOpacity>
+        <Text style={[styles.text, { fontSize: 12, color: '#777', marginTop: 20 }]}>
+  Este centro de soporte es exclusivo para temas técnicos, de cuenta o uso de la app "El Enlace". No reemplaza asesorías laborales, sindicales ni legales externas.
+</Text>
       </ScrollView>
     </View>
   );

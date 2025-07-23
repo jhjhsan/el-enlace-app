@@ -2,23 +2,34 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebaseConfig';
 
 /**
- * Valida una imagen mediante IA para detectar contenido ofensivo
- * @param {string} imageUrl - URL pública de la imagen
+ * Valida una imagen mediante IA para detectar contenido ofensivo.
+ * Acepta URL pública o base64.
+ * @param {string} input - URL pública o base64 string
  * @returns {Promise<{ valid: boolean, categories: object }>}
  */
-export const validateImageWithIA = async (imageUrl) => {
+export const validateImageWithIA = async (input) => {
+  
+  if (!input || typeof input !== 'string' || input.trim() === '') {
+  console.warn('🚫 Entrada vacía o inválida en validateImageWithIA:', input);
+  return { valid: true, categories: {} };
+}
+
   try {
-    if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('https://')) {
-      console.warn('⚠️ URL de imagen inválida al validar IA:', imageUrl);
-      return { valid: true }; // No bloquea si falla
+    if (!input || typeof input !== 'string') {
+      console.warn('🚫 Entrada inválida en validateImageWithIA:', input);
+      return { valid: true, categories: {} }; // ✅ No bloquear si viene vacío
     }
 
     const validateMedia = httpsCallable(functions, 'validateMediaContent');
-    const result = await validateMedia({ imageUrl });
 
-    // Solo en modo desarrollo muestra alerta
+    const payload = input.startsWith('https://')
+      ? { imageUrl: input }
+      : { base64Image: input };
+
+    const result = await validateMedia(payload);
+
     if (__DEV__) {
-      alert('✅ Validación IA completada.\n' + JSON.stringify(result.data?.categories || {}, null, 2));
+      console.log('🧪 Resultado validación IA:', result.data);
     }
 
     return {
@@ -26,7 +37,7 @@ export const validateImageWithIA = async (imageUrl) => {
       categories: result.data?.categories || {},
     };
   } catch (error) {
-    console.error('❌ Error al validar imagen con IA:', error);
-    return { valid: true }; // No bloquea si falla
+    console.error('❌ Error al validar imagen con IA:', error?.message || error);
+    return { valid: true, categories: {} }; // ✅ No bloquear si falla
   }
 };

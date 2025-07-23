@@ -16,47 +16,106 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 import { ActivityIndicator } from 'react-native';
+import { goToFormularioFree } from '../utils/navigationHelpers';
+import { Image as CachedImage } from 'react-native-expo-image-cache';
 
 const { width } = Dimensions.get('window');
 
-export default function ProfileScreen({ navigation }) {
-  const { userData, setUserData } = useUser();
+export default function ProfileScreen({ navigation, route }) {
+  const { userData, setUserData } = useUser(); // ✅ mover esto al principio
+
+  const isExternal = !!route?.params?.viewedProfile;
+  const profileData = isExternal ? route.params.viewedProfile : userData;
+
+  if (!profileData) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#D8A353" />
+      </View>
+    );
+  }
+
   const [selectedImage, setSelectedImage] = useState(null);
   const profileScaleAnim = useRef(new Animated.Value(1)).current;
   const [profileEnlarged, setProfileEnlarged] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [hasShownModal, setHasShownModal] = useState(false);
+useEffect(() => {
+  if (!userData || isExternal) return;
 
-  useEffect(() => {
-    if (!userData) return;
-  
-    if (userData.membershipType === 'elite') {
-      if (userData.hasPaid === true) {
-        navigation.replace('ProfileElite');
-      } else {
-        navigation.replace('DashboardElite');
+  const verificarPerfil = async () => {
+    try {
+      if (userData.membershipType === 'elite') {
+        if (userData.hasPaid === true) {
+          navigation.replace('ProfileElite');
+          return;
+        } else {
+          navigation.replace('DashboardElite');
+          return;
+        }
       }
-    } else if (userData.membershipType === 'pro') {
-      navigation.replace('ProfilePro');
-    } else {
-      // Usuario Free: simplemente marca como listo para mostrar
+
+      if (userData.membershipType === 'pro') {
+        navigation.replace('ProfilePro');
+        return;
+      }
+
+      // 🔍 Validar perfil Free
+      const profileFreeRaw = await AsyncStorage.getItem('userProfileFree');
+      const hasCompletedForm = await AsyncStorage.getItem('hasCompletedFreeForm');
+console.log('🧾 hasCompletedFreeForm en AsyncStorage:', hasCompletedForm);
+
+      let profileFree = null;
+      try {
+        profileFree = JSON.parse(profileFreeRaw);
+      } catch (e) {
+        console.warn('⚠️ Error al parsear userProfileFree:', e);
+      }
+
+      const isValid =
+  profileFree &&
+  typeof profileFree.name === 'string' &&
+  profileFree.name.trim() !== '' &&
+  Array.isArray(profileFree.bookPhotos) &&
+  profileFree.bookPhotos.length >= 1 &&
+  profileFree.profilePhoto &&
+  profileFree.edad &&
+  profileFree.sexo &&
+  Array.isArray(profileFree.category) &&
+  profileFree.category.length > 0;
+
+
+      if (!isValid && hasCompletedForm !== 'true') {
+        console.log('🔔 Perfil Free incompleto. Mostrar modal.');
+        setShowIncompleteModal(true);
+      
+      } else {
+        console.log('✅ Perfil Free válido');
+      }
+    } catch (error) {
+      console.log('❌ Error al verificar perfil Free:', error);
+    } finally {
       setIsReady(true);
     }
-  }, [userData]);
-  
+  };
 
-if (
+  verificarPerfil();
+}, [userData]);
+
+if (!isExternal && (
   !isReady ||
   !userData ||
   userData.membershipType === 'pro' ||
   (userData.membershipType === 'elite' && userData.hasPaid)
-) {
+)) {
   return (
     <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
       <ActivityIndicator size="large" color="#D8A353" />
     </View>
   );
 }
-  
+
   const {
     name = 'Usuario',
     email = 'Correo no definido',
@@ -64,7 +123,7 @@ if (
     sexo = 'No definido',
     profilePhoto,
     bookPhotos = [],
-  } = userData;
+  } = profileData;
 
   const handleProfileImagePress = () => {
     Animated.timing(profileScaleAnim, {
@@ -75,21 +134,29 @@ if (
       setProfileEnlarged(!profileEnlarged);
     });
   };
-  
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity style={styles.editButton} onPress={() => navigation.navigate('EditProfileFree')}>
-          <AntDesign name="edit" size={24} color="#D8A353" />
-        </TouchableOpacity>
+{isExternal && (
+  <View style={{ position: 'absolute', top: 30, left: 20, zIndex: 999 }}>
+    <TouchableOpacity onPress={() => navigation.goBack()}>
+      <AntDesign name="arrowleft" size={28} color="#fff" />
+    </TouchableOpacity>
+  </View>
+)}
+
         <Text style={styles.freeBadge}>Miembro Free 🎬</Text>
         {profilePhoto ? (
-          <TouchableOpacity onPress={handleProfileImagePress}>
-            <Animated.Image
-              source={{ uri: profilePhoto }}
-              style={[styles.profileImage, { transform: [{ scale: profileScaleAnim }] }]}
-            />
-          </TouchableOpacity>
+        <TouchableOpacity onPress={handleProfileImagePress}>
+  <Animated.View style={{ transform: [{ scale: profileScaleAnim }] }}>
+    <CachedImage
+      uri={(profilePhoto || '').trim()}
+      style={styles.profileImage}
+      resizeMode="cover"
+    />
+  </Animated.View>
+</TouchableOpacity>
         ) : (
           <View style={styles.noPhoto}>
             <Text style={styles.noPhotoText}>Sin foto de perfil</Text>
@@ -98,7 +165,7 @@ if (
         
         <Text style={styles.name}>{name}</Text>
 <Text style={styles.categoryLabel}>
-  Categorías: {Array.isArray(userData.category) ? userData.category.join(', ') : userData.category}
+  Categorías: {Array.isArray(profileData.category) ? profileData.category.join(', ') : profileData.category}
 </Text>
 
         <View style={styles.infoBox}>
@@ -115,18 +182,51 @@ if (
           <Text style={styles.label}>Sexo:</Text>
           <Text style={styles.text}>{sexo}</Text>
         </View>
+        {isExternal && (
+<TouchableOpacity
+  style={styles.contactItem}
+  onPress={() =>
+navigation.navigate('MessageDetail', {
+  contactEmail: profileData.email,
+  recipient: profileData.name || profileData.agencyName,
+  profileAttachment: {
+    name: profileData.name || profileData.agencyName,
+    email: profileData.email,
+    profilePhoto: profileData.profilePhoto || null,
+    membershipType: profileData.membershipType || 'free',
+    category: profileData.category || [],
+  },
+})
+  }
+>
+  <Text style={{ fontSize: 16, marginRight: 5 }}>💬</Text>
+  <Text style={[styles.contactText, { color: '#CCCCCC' }]}>
+    Mensaje interno
+  </Text>
+</TouchableOpacity>
+)}
+
         {bookPhotos.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Book de Fotos:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bookScroll}>
-              {bookPhotos.slice(0, 3).map((uri, index) => (
-                <View key={index} style={styles.bookImageWrapper}>
-                  <TouchableOpacity onPress={() => setSelectedImage(uri)}>
-                    <Image source={{ uri }} style={styles.bookImage} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
+            <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  style={styles.bookScroll}
+  contentContainerStyle={{
+    paddingHorizontal: 20,
+    justifyContent: bookPhotos.length === 1 ? 'center' : 'flex-start',
+  }}
+>
+  {bookPhotos.slice(0, 3).map((uri, index) => (
+    <View key={index} style={styles.bookImageWrapper}>
+      <TouchableOpacity onPress={() => setSelectedImage(uri)}>
+        <CachedImage uri={(uri || '').trim()} style={styles.bookImage} resizeMode="cover" />
+      </TouchableOpacity>
+    </View>
+  ))}
+</ScrollView>
+
           </>
         )}
 
@@ -138,13 +238,36 @@ if (
         >
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={styles.fullscreenContainer} onPress={() => setSelectedImage(null)}>
-              <Image source={{ uri: selectedImage }} style={styles.fullscreenImage} />
+             <CachedImage uri={(selectedImage || '').trim()} style={styles.fullscreenImage} resizeMode="contain" />
             </TouchableOpacity>
           </View>
         </Modal>
       </ScrollView>
+<Modal
+  visible={showIncompleteModal}
 
-
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowIncompleteModal(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>Perfil incompleto</Text>
+      <Text style={styles.modalText}>
+        Para comenzar a usar todas las funciones, completa tu perfil ahora.
+      </Text>
+      <TouchableOpacity
+        style={styles.modalButton}
+        onPress={() => {
+          setShowIncompleteModal(false);
+          goToFormularioFree(navigation);
+        }}
+      >
+        <Text style={styles.modalButtonText}>Completar ahora</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
     </View>
   );
 }
@@ -221,20 +344,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   bookScroll: {
-    width: '90%',
-    marginBottom: 10,
-    marginTop: 10,
-  },
-  bookImageWrapper: {
-    marginRight: 10,
-  },
-  bookImage: {
-    width: 100,
-    height: 140,
-    borderRadius: 8,
-    borderColor: '#D8A353',
-    borderWidth: 0.5,
-  },
+  width: '100%',
+  marginTop: 10,
+  marginBottom: 10,
+},
+bookImageWrapper: {
+  marginRight: 10,
+},
+bookImage: {
+  width: 110,
+  height: 150,
+  borderRadius: 8,
+  borderColor: '#D8A353',
+  borderWidth: 0.5,
+},
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',
@@ -261,6 +384,50 @@ const styles = StyleSheet.create({
   color: '#D8A353',
   fontSize: 14,
   marginTop: 10,
+},
+modalContent: {
+  backgroundColor: '#1B1B1B',
+  padding: 20,
+  borderRadius: 12,
+  alignItems: 'center',
+  marginHorizontal: 30,
+},
+modalTitle: {
+  color: '#D8A353',
+  fontSize: 18,
+  fontWeight: 'bold',
+  marginBottom: 10,
+},
+modalText: {
+  color: '#FFF',
+  fontSize: 14,
+  textAlign: 'center',
+  marginBottom: 20,
+},
+modalButton: {
+  backgroundColor: '#D8A353',
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  borderRadius: 8,
+},
+modalButtonText: {
+  color: '#000',
+  fontWeight: 'bold',
+  fontSize: 14,
+},
+contactItem: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 12,
+  paddingVertical: 10,
+  paddingHorizontal: 15,
+  backgroundColor: '#1A1A1A',
+  borderRadius: 10,
+  width: '85%',
+},
+contactText: {
+  fontSize: 14,
+  color: '#FFF',
 },
 
 });

@@ -2,26 +2,33 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 export const getMembershipType = async (email) => {
-  const docId = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const docId = email.trim().toLowerCase(); // ✅ Usa el email real como ID
   console.log('🧪 Buscando membershipType para:', docId);
 
-  // 🥇 PRIMERO buscar en 'profilesPro'
+  // 🥇 PRIMERO buscar en 'profilesElite'
+  const refElite = doc(db, 'profilesElite', docId);
+  const snapshotElite = await getDoc(refElite);
+  if (snapshotElite.exists()) {
+    const data = snapshotElite.data();
+    console.log('📂 Encontrado en "profilesElite":', data.membershipType);
+    return data.membershipType || 'elite';
+  }
+
+  // 🥈 LUEGO buscar en 'profilesPro'
   const refPro = doc(db, 'profilesPro', docId);
   const snapshotPro = await getDoc(refPro);
-
   if (snapshotPro.exists()) {
     const data = snapshotPro.data();
     console.log('📂 Encontrado en "profilesPro":', data.membershipType);
     return data.membershipType || 'pro';
   }
 
-  // 🥈 LUEGO buscar en 'profiles'
-  const ref = doc(db, 'profiles', docId);
-  const snapshot = await getDoc(ref);
-
-  if (snapshot.exists()) {
-    const data = snapshot.data();
-    console.log('📂 Encontrado en "profiles":', data.membershipType);
+  // 🔚 Buscar en 'profilesFree'
+  const refFree = doc(db, 'profilesFree', docId);
+  const snapshotFree = await getDoc(refFree);
+  if (snapshotFree.exists()) {
+    const data = snapshotFree.data();
+    console.log('📂 Encontrado en "profilesFree":', data.membershipType);
     return data.membershipType || 'free';
   }
 

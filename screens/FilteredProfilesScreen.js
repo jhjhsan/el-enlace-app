@@ -14,10 +14,35 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { saveUserProfile } from '../utils/profileStorage';
 import { rebuildAllProfiles } from '../src/firebase/helpers/rebuildAllProfiles';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 
+
+
+const limpiarPerfilCorrupto = async () => {
+  const all = await AsyncStorage.getItem('allProfiles');
+  if (all) {
+    const parsed = JSON.parse(all);
+    const filtrado = parsed.filter(p => p.email !== 'jhjhsan@gmail@com');
+    if (filtrado.length !== parsed.length) {
+      console.log('🧹 Eliminando perfil con email mal escrito...');
+      await guardarAllProfiles(filtrado);
+
+    }
+  }
+};
+
+limpiarPerfilCorrupto(); // 👈 Ejecuta la limpieza automáticamente
 
 export default function FilteredProfilesScreen({ route, navigation }) {
   const { userData } = useUser();
+
+  const perfilesValidos = route.params?.profiles?.filter(
+  (p) => p.email && !p.email.includes('@com')
+);
+
   const { category } = route.params;
   const normalizedCategory = Array.isArray(category) ? category[0] : category;
 
@@ -28,6 +53,9 @@ console.log('🧪 category recibido:', category);
   const [search, setSearch] = useState('');
 
  const sanitizeProfileData = (profile) => {
+  console.log('🔍 VER PERFIL desde FILTRADO → Email original:', profile.email);
+console.log('🧩 Objeto profile completo:', profile);
+
   const cleaned = { ...profile };
 
   if (!cleaned.profilePhoto?.startsWith('http') && !cleaned.profilePhoto?.startsWith('file')) {
@@ -49,52 +77,62 @@ const normalize = (str) => str?.toLowerCase().replace(/[^a-záéíóúüñ\s]/gi
 
 const fetchProfiles = async () => {
   try {
-    const storedFreePro = await AsyncStorage.getItem('allProfiles');
+    const storedFree = await AsyncStorage.getItem('allProfilesFree');
+    const storedPro = await AsyncStorage.getItem('allProfiles');
     const storedElite = await AsyncStorage.getItem('allProfilesElite');
 
-    const parsedFreePro = storedFreePro ? JSON.parse(storedFreePro) : [];
+    const parsedFree = storedFree ? JSON.parse(storedFree) : [];
+    const parsedPro = storedPro ? JSON.parse(storedPro) : [];
     const parsedElite = storedElite ? JSON.parse(storedElite) : [];
 
-    const membershipType = userData?.membershipType || 'free';
+    // 🧩 Combinar todos los perfiles
+    const combined = [...parsedFree, ...parsedPro, ...parsedElite];
 
-    let allCombined = [];
+    // 🧼 Eliminar versiones antiguas duplicadas (Free/Pro) si ya existe Pro o Elite
+    const profileMap = new Map();
+    const rank = { free: 1, pro: 2, elite: 3 };
 
-    if (membershipType === 'elite') {
-      allCombined = [...parsedElite, ...parsedFreePro.filter(p => p.membershipType !== 'pro')];
-    } else if (membershipType === 'pro') {
-      allCombined = [...parsedFreePro.filter(p => p.membershipType !== 'elite')];
-    } else {
-      // free user: ve todo
-      allCombined = [...parsedFreePro, ...parsedElite];
-    }
+    combined.forEach((profile) => {
+      const email = profile.email?.toLowerCase();
+      if (!email) return;
 
-    const seen = new Set();
-    const uniqueProfiles = allCombined.filter((p) => {
-      const email = p?.email?.toLowerCase();
-      if (!email || seen.has(email)) return false;
-      seen.add(email);
-      return p.visibleInExplorer !== false;
+      const existing = profileMap.get(email);
+      if (!existing || rank[profile.membershipType] > rank[existing.membershipType]) {
+        profileMap.set(email, profile);
+      }
     });
 
+    const uniqueProfiles = [...profileMap.values()].filter(
+      (p) => p.visibleInExplorer !== false
+    );
+
     // 🔍 Filtro por categoría
-// 🔍 Filtro por categoría (maneja strings, arrays, nulos y diferencias de mayúsculas)
-const filtered = uniqueProfiles.filter((profile) => {
-  const cat = profile.category;
+    const filtered = uniqueProfiles.filter((profile) => {
+      const cat = profile.category;
+      const categories = Array.isArray(cat)
+        ? cat.map((c) => normalize(c))
+        : typeof cat === 'string'
+        ? [normalize(cat)]
+        : [];
 
-  const categories = Array.isArray(cat)
-    ? cat.map(c => normalize(c))
-    : typeof cat === 'string'
-    ? [normalize(cat)]
-    : [];
+      return categories.includes(normalize(normalizedCategory));
+    });
 
-  return categories.includes(normalize(normalizedCategory));
-});
-const activeEmail = userData?.email?.toLowerCase();
-const filteredWithoutSelf = filtered.filter(p => p.email?.toLowerCase() !== activeEmail);
+    // 🔕 Excluir el perfil propio
+    const activeEmail = userData?.email?.toLowerCase();
+    const filteredWithoutSelf = filtered.filter(
+      (p) => p.email?.toLowerCase() !== activeEmail
+    );
 
-console.log(`✅ Mostrando ${filteredWithoutSelf.length} perfiles (sin el propio) para: ${normalize(normalizedCategory)}`);
-setProfiles(filteredWithoutSelf);
+    console.log(
+      `✅ Mostrando ${filteredWithoutSelf.length} perfiles para: ${normalize(normalizedCategory)}`
+    );
 
+    const validProfiles = filteredWithoutSelf.filter(
+      (p) => p.name || p.agencyName
+    );
+
+    setProfiles(validProfiles);
   } catch (error) {
     console.error('❌ Error al cargar perfiles:', error);
   }
@@ -137,7 +175,12 @@ useEffect(() => {
 
   init();
 }, [category]);
-
+useFocusEffect(
+  useCallback(() => {
+    console.log('🔄 Volviendo a cargar perfiles desde useFocusEffect...');
+    fetchProfiles();
+  }, [])
+);
 
  const filtered = profiles.filter(p => {
   const name = p.name || p.agencyName || '';
@@ -206,23 +249,49 @@ useEffect(() => {
 </Text>
 
             </View>
-            <TouchableOpacity
+<TouchableOpacity
   style={styles.button}
   onPress={async () => {
-  try {
-    const cleaned = sanitizeProfileData(profile);
-    console.log('🧠 PERFIL FINAL PASADO A PROFILE DETAIL:', cleaned);
-    console.log('🧭 Navegando a ProfileDetail con:', cleaned);
-  navigation.navigate('ProfileDetail', {
-  profileData: cleaned,
-});
-  } catch (e) {
-    console.log('❌ Error al navegar al perfil:', e);
-    navigation.navigate('ProfileDetail', {
-  profileData: profile,
-});
-  }
-}}
+    try {
+      const cleaned = sanitizeProfileData(profile);
+
+let emailOriginal = (profile.email || '').trim().toLowerCase();
+
+// Si contiene más de un @, elimina todos los que están antes del último
+if ((emailOriginal.match(/@/g) || []).length > 1) {
+  const matches = emailOriginal.match(/@[^@]+$/); // busca la última parte como @gmail.com
+  const domain = matches ? matches[0].slice(1) : 'gmail.com'; // elimina el @
+  const beforeAt = emailOriginal.split('@').slice(0, -1).join('.'); // une antes del último @
+  emailOriginal = `${beforeAt}@${domain}`;
+  console.warn(`🧽 Email corregido dinámicamente: ${profile.email} → ${emailOriginal}`);
+}
+
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+if (!emailRegex.test(emailOriginal)) {
+  console.warn('⛔ Email malformado detectado antes de navegación:', emailOriginal);
+  return;
+}
+
+cleaned.email = emailOriginal;
+
+      console.log('🧠 PERFIL FINAL PASADO A PROFILE DETAIL:', cleaned);
+
+      const tipo = cleaned?.membershipType || 'free';
+
+      if (tipo === 'elite') {
+        navigation.navigate('ProfileElite', { viewedProfile: cleaned });
+      } else if (tipo === 'pro') {
+        navigation.navigate('ProfilePro', { viewedProfile: cleaned });
+      } else {
+        navigation.navigate('Profile', { viewedProfile: cleaned });
+      }
+
+    } catch (e) {
+      console.log('❌ Error al navegar al perfil:', e);
+      navigation.navigate('Profile', { viewedProfile: profile });
+    }
+  }}
 >
   <Text style={styles.buttonText}>Ver perfil</Text>
 </TouchableOpacity>

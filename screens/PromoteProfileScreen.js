@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
 import BackButton from '../components/BackButton';
+import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 
 export default function PromoteProfileScreen() {
   const navigation = useNavigation();
@@ -86,7 +87,7 @@ export default function PromoteProfileScreen() {
       const parsedAll = existing ? JSON.parse(existing) : [];
       const filtered = parsedAll.filter(p => p.email?.toLowerCase() !== userData.email.toLowerCase());
       const updatedList = [updatedProfile, ...filtered];
-      await AsyncStorage.setItem('allProfiles', JSON.stringify(updatedList));
+      await guardarAllProfiles(updatedList);
 
       setShowModal(true);
     } catch (error) {

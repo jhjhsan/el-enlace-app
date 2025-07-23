@@ -11,6 +11,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,7 +21,7 @@ import { saveUserProfile } from '../utils/profileStorage';
 import { goToProfileTab } from '../utils/navigationHelpers';
 import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
 import * as FileSystem from 'expo-file-system';
-import { validateImageWithIA } from '../src/firebase/helpers/validateMediaContent'; // ✅ Ruta correcta
+import { validateImageWithIA } from '../src/firebase/helpers/validateMediaContent';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -41,8 +42,13 @@ const talentCategories = [
   "Estudio fotográfico", "Transporte de producción", "Vans de producción",
   "Coffee break / snacks", "Otros / No especificado"
 ];
+
 export default function EditProfileFree({ navigation }) {
   const { setUserData } = useUser();
+  const [loading, setLoading] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [hasOffensiveContent, setHasOffensiveContent] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -50,9 +56,8 @@ export default function EditProfileFree({ navigation }) {
   const [sexo, setSexo] = useState('');
   const [bookPhotos, setBookPhotos] = useState([]);
   const [category, setCategory] = useState([]);
-const [showCategoryModal, setShowCategoryModal] = useState(false);
-const [searchCategory, setSearchCategory] = useState('');
-
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [searchCategory, setSearchCategory] = useState('');
   const [openSexo, setOpenSexo] = useState(false);
   const [zIndexSexo, setZIndexSexo] = useState(1000);
 
@@ -60,15 +65,16 @@ const [searchCategory, setSearchCategory] = useState('');
     { label: 'Hombre', value: 'Hombre' },
     { label: 'Mujer', value: 'Mujer' },
   ];
-const filteredCategories = talentCategories.filter(cat =>
-  cat.toLowerCase().includes(searchCategory.toLowerCase())
-);
 
-const toggleCategory = (cat) => {
-  setCategory(prev =>
-    prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+  const filteredCategories = talentCategories.filter(cat =>
+    cat.toLowerCase().includes(searchCategory.toLowerCase())
   );
-};
+
+  const toggleCategory = (cat) => {
+    setCategory(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    );
+  };
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -92,93 +98,124 @@ const toggleCategory = (cat) => {
     loadUserData();
   }, []);
 
-const pickProfilePhoto = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
-      return;
-    }
+  const pickProfilePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      });
 
-    if (!result.canceled && result.assets?.length > 0) {
-      const asset = result.assets[0];
-      if (__DEV__ && asset.uri.startsWith('file://')) {
-        setProfilePhoto(asset.uri);
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      const uriToUpload = asset.uri;
+
+      const fileInfo = await FileSystem.getInfoAsync(uriToUpload);
+      if (!fileInfo.exists) {
+        Alert.alert('Error', 'El archivo seleccionado no es válido.');
         return;
       }
 
       const emailKey = email.toLowerCase().trim();
-      if (!asset.uri.startsWith('file://')) {
-  Alert.alert('Ruta inválida de imagen');
-  return;
-}
-const firebaseUrl = await uploadMediaToStorage(asset.uri, `profile_photos/${emailKey}_photo.jpg`);
 
+      setLoading(true);
+
+      const firebaseUrl = await uploadMediaToStorage(
+        uriToUpload,
+        `profile_photos/${emailKey}_photo.jpg`
+      );
+
+      setLoading(false);
+
+      if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
+        Alert.alert('Error', 'No se pudo subir la imagen.');
+        return;
+      }
+
+      // Validar con IA
       const validation = await validateImageWithIA(firebaseUrl);
-
       if (!validation.valid) {
-        Alert.alert('Imagen rechazada', 'La foto contiene contenido inapropiado.');
+        setHasOffensiveContent(true);
+        Alert.alert('Imagen rechazada', 'La imagen contiene contenido ofensivo. Selecciona otra.');
         return;
       }
 
       setProfilePhoto(firebaseUrl);
+    } catch (error) {
+      console.error('❌ Error al seleccionar imagen de perfil:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Ocurrió un error al subir la imagen.');
     }
   };
 
-const pickBookPhotos = async () => {
-  if (bookPhotos.length >= 3) {
-    Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 3 fotos.');
-    return;
-  }
-
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsMultipleSelection: true,
-    quality: 1,
-  });
-
-  if (!result.canceled && result.assets.length > 0) {
-    const emailKey = email.toLowerCase().trim();
-    const newPhotos = [];
-
-    for (let i = 0; i < result.assets.length && bookPhotos.length + newPhotos.length < 3; i++) {
-      const uri = result.assets[i].uri;
-
-      // ✅ Si estamos en Expo, usamos el archivo local directamente
-      if (__DEV__ && uri.startsWith('file://')) {
-        newPhotos.push(uri);
-        continue;
+  const pickBookPhotos = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería para subir imágenes.');
+        return;
       }
 
-      // ✅ Si la URI no comienza con "file://", es inválida en la APK
-      if (!uri.startsWith('file://')) {
-        Alert.alert('Ruta inválida', 'No se pudo procesar esta imagen.');
-        continue;
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: 3 - bookPhotos.length,
+        quality: 1,
+      });
+
+      if (result.canceled) return;
+
+      const selectedAssets = result.assets || [];
+      if (bookPhotos.length + selectedAssets.length > 3) {
+        Alert.alert('Límite de fotos', 'Solo puedes subir hasta 3 fotos en el book.');
+        return;
       }
 
-      const firebaseUrl = await uploadMediaToStorage(uri, `book_photos/${emailKey}_book${Date.now()}_${i}.jpg`);
-      if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
-        Alert.alert('Error', 'No se pudo subir una imagen del book.');
-        continue;
+      const emailKey = email.toLowerCase().trim();
+      setLoading(true);
+
+      const validUrls = [];
+
+      for (let index = 0; index < selectedAssets.length; index++) {
+        const asset = selectedAssets[index];
+        const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+        if (!fileInfo.exists) continue;
+
+        const filename = `book_${Date.now()}_${index}.jpg`;
+        const firebaseUrl = await uploadMediaToStorage(
+          asset.uri,
+          `book_photos/${emailKey}_${filename}`
+        );
+
+        if (!firebaseUrl || !firebaseUrl.startsWith('https://')) continue;
+
+        const validation = await validateImageWithIA(firebaseUrl);
+        if (!validation.valid) {
+          setHasOffensiveContent(true);
+          Alert.alert('Imagen rechazada', 'Una de las fotos contiene contenido ofensivo.');
+          continue;
+        }
+
+        validUrls.push(firebaseUrl);
       }
 
-      const validation = await validateImageWithIA(firebaseUrl);
-      if (!validation.valid) {
-        Alert.alert('Imagen rechazada', 'Una imagen contiene contenido inapropiado.');
-        continue;
-      }
-
-      newPhotos.push(firebaseUrl);
+      setBookPhotos(prev => [...prev, ...validUrls]);
+      setLoading(false);
+    } catch (error) {
+      console.error('❌ Error al subir fotos del book:', error);
+      setLoading(false);
+      Alert.alert('Error', error.message || 'Ocurrió un error al subir las fotos.');
     }
-e
-    setBookPhotos([...bookPhotos, ...newPhotos]);
-  }
-};
+  };
 
   const handleDeletePhoto = (index) => {
     const updated = [...bookPhotos];
@@ -187,31 +224,87 @@ e
   };
 
   const handleSave = async () => {
-    if (!name || !email || !profilePhoto || bookPhotos.length < 1) {
-      Alert.alert('Campos requeridos', 'Completa todos los campos antes de guardar.');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!name || !email || !profilePhoto || bookPhotos.length < 1 || !sexo || !edad || category.length === 0) {
+      Alert.alert('Campos requeridos', 'Completa todos los campos obligatorios, incluyendo al menos una categoría.');
       return;
     }
 
-    const profile = {
-      profilePhoto,
-      name,
-      email,
-      edad,
-      sexo,
-      bookPhotos,
-      category,
-      membershipType: 'free',
-    };
+    if (!emailRegex.test(email)) {
+      Alert.alert('Correo inválido', 'Ingresa un correo electrónico válido.');
+      return;
+    }
 
-    await saveUserProfile(profile, 'free');
-    await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
-    await AsyncStorage.setItem('userData', JSON.stringify({ email, membershipType: 'free', name, profilePhoto, sexo, edad }));
-setUserData(profile);
+    if (isNaN(Number(edad))) {
+      Alert.alert('Edad inválida', 'Ingresa una edad válida en números.');
+      return;
+    }
 
-  Alert.alert('Perfil guardado', 'Tu perfil ha sido actualizado con éxito.');
+    if (name && edad && name.trim() === edad.trim()) {
+      Alert.alert('Datos inválidos', 'Nombre y edad no deben coincidir. Verifica los datos.');
+      return;
+    }
 
-goToProfileTab(navigation);
-}; 
+    if (!profilePhoto?.startsWith('https://')) {
+      Alert.alert('Foto de perfil inválida', 'La foto de perfil no es válida. Por favor, selecciona una nueva.');
+      return;
+    }
+
+    if (bookPhotos.some(uri => !uri?.startsWith('https://'))) {
+      Alert.alert('Fotos del book inválidas', 'Alguna foto del book no es válida. Por favor, revisa las fotos subidas.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+
+      const profile = {
+        id: cleanEmail,
+        profilePhoto,
+        name,
+        email: cleanEmail,
+        edad,
+        sexo,
+        bookPhotos,
+        category,
+        membershipType: 'free',
+        flagged: hasOffensiveContent,
+        timestamp: Date.now(),
+      };
+
+      await saveUserProfile(profile, 'free', setUserData);
+      await AsyncStorage.setItem('userProfileFree', JSON.stringify(profile));
+      await AsyncStorage.setItem('userData', JSON.stringify({
+        email: cleanEmail,
+        membershipType: 'free',
+        name,
+        profilePhoto,
+        sexo,
+        edad,
+        category,
+      }));
+
+      setUserData(profile);
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error('Error al guardar perfil:', error);
+      Alert.alert('Error', 'No se pudo guardar el perfil. Intenta nuevamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#D8A353" />
+        <Text style={{ color: '#D8A353', marginTop: 10 }}>Subiendo imagen...</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -229,11 +322,12 @@ goToProfileTab(navigation);
             </View>
           )}
         </TouchableOpacity>
-<TouchableOpacity onPress={() => setShowCategoryModal(true)} style={styles.button}>
-  <Text style={styles.buttonText}>
-    {category.length > 0 ? `${category.length} categorías seleccionadas` : 'Seleccionar categorías'}
-  </Text>
-</TouchableOpacity>
+
+        <TouchableOpacity onPress={() => setShowCategoryModal(true)} style={styles.button}>
+          <Text style={styles.buttonText}>
+            {category.length > 0 ? `${category.length} categorías seleccionadas` : 'Seleccionar categorías'}
+          </Text>
+        </TouchableOpacity>
 
         <TextInput
           style={styles.input}
@@ -252,18 +346,18 @@ goToProfileTab(navigation);
           keyboardType="email-address"
         />
 
-<TextInput
-  style={styles.input}
-  placeholder="Edad"
-  value={edad}
-  onChangeText={setEdad}
-  placeholderTextColor="#aaa"
-  keyboardType="numeric"
-  autoComplete="off"
-  textContentType="none"
-/>
+        <TextInput
+          style={styles.input}
+          placeholder="Edad"
+          value={edad}
+          onChangeText={setEdad}
+          placeholderTextColor="#aaa"
+          keyboardType="numeric"
+          autoComplete="off"
+          textContentType="none"
+        />
 
-        <View style={{ zIndex: zIndexSexo, width: '80%', marginBottom: 10 }}>
+        <View style={{ zIndex: zIndexSexo, width: '90%', marginBottom: 10 }}>
           <DropDownPicker
             open={openSexo}
             value={sexo}
@@ -299,35 +393,62 @@ goToProfileTab(navigation);
           <Text style={styles.buttonText}>Agregar fotos</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Guardar Perfil</Text>
+        <TouchableOpacity
+          style={[
+            styles.saveButton,
+            saving && { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+          ]}
+          onPress={handleSave}
+          disabled={saving}
+        >
+          {saving && <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />}
+          <Text style={styles.saveButtonText}>
+            {saving ? 'Guardando perfil...' : 'Guardar Perfil'}
+          </Text>
         </TouchableOpacity>
-        {showCategoryModal && (
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Buscar categoría..."
-        placeholderTextColor="#aaa"
-        value={searchCategory}
-        onChangeText={setSearchCategory}
-      />
-      <ScrollView style={{ maxHeight: 300 }}>
-        {filteredCategories.map((cat, index) => (
-          <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
-            <Text style={[styles.modalItem, category.includes(cat) && styles.selectedCategory]}>
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <TouchableOpacity style={styles.modalButton} onPress={() => setShowCategoryModal(false)}>
-        <Text style={styles.modalButtonText}>Cerrar</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-)}
 
+        {showCategoryModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar categoría..."
+                placeholderTextColor="#aaa"
+                value={searchCategory}
+                onChangeText={setSearchCategory}
+              />
+              <ScrollView style={{ maxHeight: 300 }}>
+                {filteredCategories.map((cat, index) => (
+                  <TouchableOpacity key={index} onPress={() => toggleCategory(cat)}>
+                    <Text style={[styles.modalItem, category.includes(cat) && styles.selectedCategory]}>
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={styles.modalButton} onPress={() => setShowCategoryModal(false)}>
+                <Text style={styles.modalButtonText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {showSuccessModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalText}>✅ Tu perfil ha sido actualizado con éxito.</Text>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => {
+                  setShowSuccessModal(false);
+                  goToProfileTab(navigation);
+                }}
+              >
+                <Text style={styles.modalButtonText}>Aceptar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -348,7 +469,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 60,
-    borderWidth: 2,
+    borderWidth: 0.5,
     borderColor: '#D8A353',
     marginBottom: 15,
   },
@@ -360,7 +481,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderColor: '#D8A353',
-    borderWidth: 2,
+    borderWidth: 0.5,
     marginBottom: 15,
   },
   placeholderText: {
@@ -369,13 +490,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   input: {
-    width: '80%',
+    width: '90%',
     backgroundColor: '#1B1B1B',
     color: '#fff',
     borderRadius: 10,
     padding: 10,
     marginBottom: 10,
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderColor: '#D8A353',
   },
   label: {
@@ -419,7 +540,7 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: '#000',
     borderColor: '#D8A353',
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderRadius: 12,
     padding: 2,
     zIndex: 2,
@@ -444,6 +565,8 @@ const styles = StyleSheet.create({
   dropdown: {
     backgroundColor: '#1B1B1B',
     borderColor: '#D8A353',
+    borderWidth: 0.5,
+    borderRadius: 10,
   },
   dropdownContainer: {
     backgroundColor: '#000',
@@ -451,48 +574,53 @@ const styles = StyleSheet.create({
     maxHeight: 300,
   },
   modalOverlay: {
-  position: 'absolute',
-  top: 0, left: 0, right: 0, bottom: 0,
-  backgroundColor: 'rgba(0,0,0,0.8)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 9999,
-},
-modalContent: {
-  backgroundColor: '#111',
-  padding: 20,
-  borderRadius: 12,
-  width: '90%',
-},
-searchInput: {
-  backgroundColor: '#222',
-  color: '#fff',
-  padding: 8,
-  borderRadius: 8,
-  marginBottom: 10,
-  borderColor: '#D8A353',
-  borderWidth: 1,
-},
-modalItem: {
-  color: '#ccc',
-  paddingVertical: 10,
-  borderBottomColor: '#333',
-  borderBottomWidth: 1,
-},
-selectedCategory: {
-  color: '#D8A353',
-  fontWeight: 'bold',
-},
-modalButton: {
-  marginTop: 10,
-  backgroundColor: '#D8A353',
-  padding: 10,
-  borderRadius: 8,
-},
-modalButtonText: {
-  color: '#000',
-  textAlign: 'center',
-  fontWeight: 'bold',
-},
-
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  modalContent: {
+    backgroundColor: '#111',
+    padding: 20,
+    borderRadius: 12,
+    width: '90%',
+  },
+  searchInput: {
+    backgroundColor: '#222',
+    color: '#fff',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderColor: '#D8A353',
+    borderWidth: 0.5,
+  },
+  modalItem: {
+    color: '#ccc',
+    paddingVertical: 10,
+    borderBottomColor: '#333',
+    borderBottomWidth: 1,
+  },
+  selectedCategory: {
+    color: '#D8A353',
+    fontWeight: 'bold',
+  },
+  modalButton: {
+    marginTop: 10,
+    backgroundColor: '#D8A353',
+    padding: 10,
+    borderRadius: 8,
+  },
+  modalButtonText: {
+    color: '#000',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  modalText: {
+    color: '#D8A353',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
 });

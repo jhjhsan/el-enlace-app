@@ -11,18 +11,30 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApp } from 'firebase/app';
 
 export default function ChatScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const { recipient, email } = route.params || {};
+const chatId = [email, recipient].sort().join('_');
 
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+const [input, setInput] = useState('');
+const [senderName, setSenderName] = useState('Usuario');
 
-  useEffect(() => {
+useEffect(() => {
+  const init = async () => {
+    const storedUser = await AsyncStorage.getItem('userData');
+    const user = storedUser ? JSON.parse(storedUser) : null;
+    if (user?.name) {
+      setSenderName(user.name);
+    }
     loadMessages();
-  }, []);
+  };
+  init();
+}, []);
 
   const loadMessages = async () => {
     const stored = await AsyncStorage.getItem('inboxMessages');
@@ -33,8 +45,24 @@ export default function ChatScreen() {
     setMessages(chatMessages.reverse()); // mostrar recientes abajo
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+const handleSend = async () => {
+  if (!input.trim()) return;
+
+  const chatId = [email, recipient].sort().join('_'); // ✅ Genera el ID único
+
+  try {
+    const functions = getFunctions(getApp());
+    const sendPush = httpsCallable(functions, 'sendMessagePushNotifications');
+    await sendPush({
+      recipientEmail: email,
+      senderName,
+      messageText: input.trim(),
+      chatId, // ✅ Enviamos el chatId a la función
+    });
+    console.log('✅ Notificación push enviada');
+  } catch (err) {
+    console.error('❌ Error enviando push:', err);
+  }
 
     const newMessage = {
       to: recipient,

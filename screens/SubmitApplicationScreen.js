@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { checkAndIncrementPostulation } from '../utils/postulationLimiter';
 import { Ionicons } from '@expo/vector-icons';

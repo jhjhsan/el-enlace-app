@@ -9,7 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons, AntDesign, Feather } from '@expo/vector-icons';
-import { Video } from 'expo-av';
+import { Video } from 'expo-av'; // ✅
 
 export default function ProfileViewElite({ profile, navigation }) {
   return (

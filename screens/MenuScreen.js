@@ -12,17 +12,18 @@ import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { goToDashboardTab } from '../utils/navigationHelpers';
+import { useCallback } from 'react';
+import { getFirestore, collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 
 export default function MenuScreen({ navigation }) {
   const { setUserData, setIsLoggedIn, userData } = useUser();
 
-  const [newMessagesCount, setNewMessagesCount] = useState(0);
-  const [newNotificationsCount, setNewNotificationsCount] = useState(0);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   const hasPaid = String(userData?.hasPaid) === 'true';
 const [loadingUserData, setLoadingUserData] = useState(true);
-
 
 // ✅ AHORA sí puedes definir esto correctamente
 const membership = userData?.membershipType || 'free';
@@ -30,47 +31,20 @@ const membership = userData?.membershipType || 'free';
   // Define isEliteBlocked and isFreeBlocked constants
   const isEliteBlocked = membership === 'elite' && !hasPaid;
   const isFreeBlocked = membership === 'free';
-  const isProBlocked = membership === 'pro';
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const checkNewMessages = async () => {
-        const json = await AsyncStorage.getItem('professionalMessages');
-        if (!json) return;
-        const all = JSON.parse(json);
-        const myNew = all.filter(
-          (msg) =>
-            msg.to === userData.email &&
-            !msg.response &&
-            !msg.archived
-        );
-        setNewMessagesCount(myNew.length);
-      };
-
-      const checkNewNotifications = async () => {
-        const profile = await AsyncStorage.getItem('userProfile');
-        if (!profile) return;
-        const user = JSON.parse(profile);
-        const raw = await AsyncStorage.getItem(`notifications_${user.id}`);
-        const all = raw ? JSON.parse(raw) : [];
-        setNewNotificationsCount(all.length);
-      };
-
-      checkNewMessages();
-      checkNewNotifications();
-    }, [])
-  );
+ const isProBlocked = membership === 'pro';
 
 console.log('🔎 membership:', membership);
 console.log('🔎 hasPaid:', hasPaid);
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        onPress={() => navigation.goBack()}
-        style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
-      >
-        <Ionicons name="arrow-back" size={28} color="#fff" />
-      </TouchableOpacity>
+<TouchableOpacity
+  onPress={() => {
+    goToDashboardTab(navigation);
+  }}
+  style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
+>
+  <Ionicons name="arrow-back" size={28} color="#fff" />
+</TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Menú de usuario</Text>
@@ -193,15 +167,14 @@ console.log('🔎 hasPaid:', hasPaid);
 )}
 
         {/* 📥 Ver mensajes */}
-      <TouchableOpacity
+<TouchableOpacity
+ key="inbox"
   style={styles.menuButton}
   onPress={() => navigation.navigate('Inbox')}
 >
-  <Text style={styles.menuButtonText}>
-    📥 Ver mensajes{newMessagesCount > 0 ? ` (${newMessagesCount} nuevo${newMessagesCount > 1 ? 's' : ''})` : ''}
-  </Text>
-</TouchableOpacity>
+<Text style={styles.menuButtonText}>📥 Ver mensajes</Text>
 
+</TouchableOpacity>
 
         {/* 📊 Ver mis anuncios */}
         <TouchableOpacity

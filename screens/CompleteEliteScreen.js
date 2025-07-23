@@ -10,7 +10,8 @@ import {
   Dimensions,
   Modal,
   Platform,
-  Alert, // ✅ AÑADIDO AQUÍ
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,9 +23,13 @@ import { saveUserProfile } from '../utils/profileStorage';
 import { Video } from 'expo-av';
 import { CommonActions } from '@react-navigation/native';
 import { uploadMediaToStorage } from '../src/firebase/helpers/uploadMediaToStorage';
+import * as FileSystem from 'expo-file-system';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { goToDashboardTab } from '../utils/navigationHelpers';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../src/firebase/firebaseConfig'; // Ajusta la ruta si cambia
+import { functions } from '../src/firebase/firebaseConfig';
+import { rebuildAllProfiles } from '../src/firebase/helpers/rebuildAllProfiles';
+import { getAuth, sendEmailVerification } from 'firebase/auth';
 
 const regionCityMap = {
   'arica_parinacota': [
@@ -91,9 +96,9 @@ const regionCityMap = {
 };
 
 export default function CompleteEliteScreen() {
-const { userData, setUserData, setIsLoggedIn } = useUser();
+  const { userData, setUserData, setIsLoggedIn } = useUser();
+  const [isSaving, setIsSaving] = useState(false);
   const navigation = useNavigation();
-
   const [isEditing, setIsEditing] = useState(false);
   const [agencyName, setAgencyName] = useState('');
   const [representative, setRepresentative] = useState('');
@@ -103,7 +108,20 @@ const { userData, setUserData, setIsLoggedIn } = useUser();
   const [whatsapp, setWhatsapp] = useState('');
   const [descripcionError, setDescripcionError] = useState('');
   const [region, setRegion] = useState(null);
-  const [descripcion, setDescripcion] = useState('');
+
+  const [city, setCity] = useState(null);
+  const [cityItems, setCityItems] = useState([]);
+  const [address, setAddress] = useState('');
+  const [companyType, setCompanyType] = useState('');
+  const [description, setDescription] = useState('');
+  const [logos, setLogos] = useState([]);
+  const [webLink, setWebLink] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [profileVideos, setProfileVideos] = useState([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [hasOffensiveContent, setHasOffensiveContent] = useState(false);
 
   const regionNameMap = {
     arica_parinacota: 'Arica y Parinacota',
@@ -123,27 +141,14 @@ const { userData, setUserData, setIsLoggedIn } = useUser();
     aysen: 'Aysén',
     magallanes: 'Magallanes',
   };
-  
-  const [regionItems] = useState(
+ 
+    const [regionItems] = useState(
     Object.keys(regionCityMap).map(key => ({
       label: regionNameMap[key],
       value: key,
     }))
-  );  
-  const [city, setCity] = useState(null);
-  const [cityItems, setCityItems] = useState([]);
-  const [address, setAddress] = useState('');
-  const [companyType, setCompanyType] = useState('');
-  const [description, setDescription] = useState('');
-  const [logos, setLogos] = useState([]);
-  const [webLink, setWebLink] = useState('');
-  const [profilePhoto, setProfilePhoto] = useState(null); // Nuevo estado para foto de perfil
-  const [profileVideo, setProfileVideo] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [errorModalVisible, setErrorModalVisible] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  );
 
-  
   useEffect(() => {
     const loadProfile = async () => {
       if (userData?.membershipType !== 'elite') {
@@ -152,15 +157,12 @@ const { userData, setUserData, setIsLoggedIn } = useUser();
         navigation.goBack();
         return;
       }
-  
-      // Si es un nuevo Elite (hasPaid: false), no cargamos datos antiguos
+
       if (!userData?.hasPaid) {
-        // Nuevo usuario Elite, deja el formulario limpio
-        await AsyncStorage.removeItem('userProfile');
+        await AsyncStorage.removeItem('userProfileElite');
         return;
       }
-  
-      // Si ha pagado y ya completó perfil, podemos permitir edición
+
       const savedProfile = await AsyncStorage.getItem('userProfileElite');
       if (savedProfile) {
         const profile = JSON.parse(savedProfile);
@@ -179,100 +181,193 @@ const { userData, setUserData, setIsLoggedIn } = useUser();
         setLogos(profile.logos || []);
         setWebLink(profile.webLink || '');
         setProfilePhoto(profile.profilePhoto || null);
+        setProfileVideos(profile.profileVideos || []);
         if (profile.region) setCityItems(regionCityMap[profile.region] || []);
       }
     };
     loadProfile();
-  }, [userData]);  
+  }, [userData]);
 
-{descripcionError ? (
-  <Text style={{ color: 'red', marginBottom: 10 }}>{descripcionError}</Text>
-) : null}
+  const validateImageWithIA = async (base64) => {
+    try {
+      const validateMedia = httpsCallable(functions, 'validateMediaContent');
+      const result = await validateMedia({ base64Image: base64 });
 
-const pickLogo = async () => {
-  if (logos.length >= 5) {
-    alert('Solo puedes subir hasta 5 imágenes representativas.');
+      if (result.data?.flagged) {
+        const categories = Object.keys(result.data.categories)
+          .filter((key) => result.data.categories[key])
+          .join(', ');
+        Alert.alert(
+          'Contenido no permitido',
+          `La imagen contiene contenido inapropiado (${categories}). Por favor, selecciona otra.`
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('⚠️ Error al validar imagen con IA:', error);
+      Alert.alert('Error', 'No se pudo validar la imagen con IA.');
+      return false;
+    }
+  };
+
+  const validateVideoWithIA = async (uri) => {
+    try {
+      const thumbnail = await VideoThumbnails.getThumbnailAsync(uri, { time: 1000 });
+      const base64 = await FileSystem.readAsStringAsync(thumbnail.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const validate = httpsCallable(functions, 'validateMediaContent');
+      const result = await validate({ base64Image: base64 });
+
+      if (__DEV__) {
+        console.log('📼 Resultado IA video:', result.data);
+      }
+
+      if (result.data?.flagged) {
+        const categories = Object.keys(result.data.categories)
+          .filter((key) => result.data.categories[key])
+          .join(', ');
+        Alert.alert(
+          'Contenido no permitido',
+          `El video contiene contenido inapropiado (${categories}). Por favor, selecciona otro.`
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('❌ Error en validación IA video:', error);
+      Alert.alert('Error', 'No se pudo validar el video con IA.');
+      return false;
+    }
+  };
+
+  const pickProfilePhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+      base64: true,
+      aspect: [1, 1],
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      const base64 = result.assets[0].base64;
+      const isValid = await validateImageWithIA(base64);
+
+      if (isValid) {
+        setProfilePhoto(result.assets[0].uri);
+      } else {
+        setHasOffensiveContent(true);
+      }
+    }
+  };
+
+  const pickLogo = async () => {
+    if (logos.length >= 5) {
+      Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 5 imágenes representativas.');
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 1,
+      selectionLimit: 5 - logos.length,
+      base64: true,
+    });
+
+    if (!result.canceled) {
+      const validUris = [];
+      for (let asset of result.assets) {
+        const isValid = await validateImageWithIA(asset.base64);
+        if (isValid) {
+          validUris.push(asset.uri);
+        } else {
+          setHasOffensiveContent(true);
+        }
+      }
+      setLogos(prev => [...prev, ...validUris].slice(0, 5));
+    }
+  };
+
+const pickVideos = async () => {
+  if (profileVideos.length >= 3) {
+    Alert.alert('Límite alcanzado', 'Solo puedes subir hasta 3 videos institucionales.');
+    return;
+  }
+
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert('Permiso requerido', 'Debes permitir acceso a la galería para subir videos.');
     return;
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
     allowsMultipleSelection: true,
     quality: 1,
-    selectionLimit: 5 - logos.length,
-    base64: true, // ✅ Necesario para IA
+    selectionLimit: 3 - profileVideos.length,
   });
 
-  if (!result.canceled) {
-    const validatedUris = [];
-
+  if (!result.canceled && result.assets.length > 0) {
+    const validUris = [];
     for (let asset of result.assets) {
-      const isValid = await validateImageWithIA(asset.base64);
-      if (isValid) {
-        validatedUris.push(asset.uri);
+      const uri = asset.uri;
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        const maxFileSizeBytes = 100 * 1024 * 1024; // 100 MB
+        if (fileInfo.size > maxFileSizeBytes) {
+          Alert.alert('Archivo demasiado grande', 'El video supera los 100 MB. Intenta seleccionar uno más liviano.');
+          continue;
+        }
+
+        const { duration } = await VideoThumbnails.getThumbnailAsync(uri, { time: 1000 });
+        if (duration / 1000 > 120) {
+          Alert.alert('Duración excedida', 'El video no debe superar los 2 minutos de duración.');
+          continue;
+        }
+
+        const isValid = await validateVideoWithIA(uri);
+        if (isValid) {
+          const path = `videos/${email.toLowerCase().trim()}_video_${Date.now()}.mp4`;
+          const downloadUrl = await uploadMediaToStorage(uri, path);
+          if (downloadUrl?.startsWith('https://')) {
+            validUris.push(downloadUrl);
+          } else {
+            Alert.alert('Error', 'No se pudo subir el video. Intenta con otro archivo.');
+          }
+        } else {
+          setHasOffensiveContent(true);
+        }
+      } catch (error) {
+        console.error('❌ Error procesando el video:', error);
+        Alert.alert('Error', 'No se pudo procesar el video. Intenta con otro archivo.');
       }
     }
-
-    const combined = [...logos, ...validatedUris].slice(0, 5);
-    setLogos(combined);
-  }
-};
-const validateImageWithIA = async (base64) => {
-  try {
-    const validateMedia = httpsCallable(functions, 'validateMediaContent');
-    const result = await validateMedia({ base64Image: base64 });
-
-    if (result.data?.flagged) {
-      const categories = Object.keys(result.data.categories)
-        .filter((key) => result.data.categories[key])
-        .join(', ');
-      Alert.alert(
-        'Contenido no permitido',
-        `La imagen contiene contenido inapropiado (${categories}). Por favor, selecciona otra.`
-      );
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('⚠️ Error al validar imagen con IA:', error);
-    Alert.alert('Error', 'No se pudo validar la imagen con IA.');
-    return false;
-  }
-};
-const pickProfilePhoto = async () => {
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsEditing: true,
-    quality: 1,
-    base64: true, // ✅ Necesario para IA
-    aspect: [1, 1],
-  });
-
-  if (!result.canceled) {
-    const base64 = result.assets[0].base64;
-    const isValid = await validateImageWithIA(base64);
-
-    if (isValid) {
-      setProfilePhoto(result.assets[0].uri);
-    }
+    setProfileVideos(prev => [...prev, ...validUris].slice(0, 3));
   }
 };
 
-  const pickVideo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: false,
-      quality: 1,
-    });
-  
-    if (!result.canceled) {
-      setProfileVideo(result.assets[0].uri);
-    }
-  };
-  
   const removeLogo = (uri) => {
-    setLogos((prev) => prev.filter((logo) => logo !== uri));
+    setLogos(prev => prev.filter(logo => logo !== uri));
+  };
+
+  const removeVideo = (uri) => {
+    setProfileVideos(prev => prev.filter(video => video !== uri));
   };
 
   const isFormValid = () => {
@@ -281,104 +376,185 @@ const pickProfilePhoto = async () => {
     const instagramValid = instagram.startsWith('@') && instagram.length > 1;
 
     return (
-        agencyName.trim() &&
-        representative.trim() &&
-        emailRegex.test(email) &&
-        phoneRegex.test(phone) &&
-        region &&
-        city &&
-        address.trim() &&
-        companyType.trim() &&
-        description.trim() &&
-        logos.length > 0 &&
-        instagramValid
-      );      
+      agencyName.trim() &&
+      representative.trim() &&
+      emailRegex.test(email) &&
+      phoneRegex.test(phone) &&
+      region &&
+      city &&
+      address.trim() &&
+      companyType.trim() &&
+      description.trim() &&
+      logos.length > 0 &&
+      instagramValid
+    );
   };
 
-const saveProfile = async () => {
-if (!isFormValid()) {
+  const saveProfile = async () => {
+    if (!isFormValid()) {
+  // Validación específica para Instagram
+  const instagramValid = instagram.startsWith('@') && instagram.length > 1;
+  if (!instagramValid) {
+    Alert.alert(
+      'Instagram inválido',
+      'El usuario de Instagram debe comenzar con "@" y tener al menos 2 caracteres. Ej: @nombreusuario'
+    );
+    return;
+  }
+
   setErrorMessage('Por favor, completa todos los campos obligatorios correctamente.');
   setErrorModalVisible(true);
   return;
 }
 
-  try {
-    console.log('🧪 companyType:', companyType);
+    if (!isFormValid()) {
+      setErrorMessage('Por favor, completa todos los campos obligatorios correctamente.');
+      setErrorModalVisible(true);
+      return;
+    }
 
-    const webLinkFormatted =
-      webLink.trim() !== ''
-        ? webLink.startsWith('http')
-          ? webLink.trim()
-          : `https://${webLink.trim()}`
-        : '';
-// ⬇️ Subidas reales a Firebase Storage
-const uploadedProfilePhoto = profilePhoto
-  ? await uploadMediaToStorage(profilePhoto, `profile_photos/${email.toLowerCase().trim()}_photo.jpg`)
-  : null;
+    if (!profilePhoto?.startsWith('http') && !profilePhoto) {
+      setErrorMessage('La foto de perfil es obligatoria.');
+      setErrorModalVisible(true);
+      return;
+    }
 
-const uploadedLogos = [];
-for (let i = 0; i < logos.length; i++) {
-  const downloadUrl = await uploadMediaToStorage(logos[i], `logos/${email.toLowerCase().trim()}_logo${i + 1}.jpg`);
-  if (downloadUrl) uploadedLogos.push(downloadUrl);
-}
+    if (profileVideos.some(uri => !uri?.startsWith('http') && uri)) {
+      setErrorMessage('Alguno de los videos no es válido. Por favor, revisa los videos subidos.');
+      setErrorModalVisible(true);
+      return;
+    }
 
-const uploadedVideo = profileVideo
-  ? await uploadMediaToStorage(profileVideo, `videos/${email.toLowerCase().trim()}_presentation.mp4`)
-  : null;
+    if (!description || description.trim().length < 30) {
+      setDescripcionError('La descripción debe tener al menos 20 caracteres.');
+      Alert.alert('Descripción muy breve', 'Agrega una descripción más detallada (mínimo 30 caracteres).');
+      return;
+    }
 
+    setIsSaving(true);
 
-console.log('FOTO local:', uploadedProfilePhoto);
-console.log('VIDEO local:', uploadedVideo);
-console.log('LOGOS locales:', uploadedLogos);
-if (!description || description.trim().length < 30) {
-  setDescripcionError('La descripción debe tener al menos 30 caracteres.');
-  Alert.alert(
-    'Descripción muy breve',
-    'Agrega una descripción más detallada (mínimo 30 caracteres).'
-  );
-  return;
-} else {
-  setDescripcionError('');
-}
+    try {
+      const webLinkFormatted =
+        webLink.trim() !== ''
+          ? webLink.startsWith('http') ? webLink.trim() : `https://${webLink.trim()}`
+          : '';
 
-    // ⬇️ AHORA SÍ: Crea el objeto final con las URLs subidas
-   const profileData = {
-  membershipType: 'elite',
-  ...userData,
-      accountType: 'agency',
-      hasPaid: false,
-      agencyName,
-      representative,
-      email,
-      phone,
-      instagram,
-      whatsapp,
-      region,
-      city,
-      address,
-      companyType,
-      category: [companyType],
-      description,
-      logos: uploadedLogos,
-      webLink: webLinkFormatted,
-      profilePhoto: uploadedProfilePhoto,
-      profileVideo: uploadedVideo,
-      updatedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      visibleInExplorer: true,
-    };
+      let uploadedProfilePhoto = profilePhoto;
+      if (profilePhoto && !profilePhoto.startsWith('http')) {
+        const photoPath = `profile_photos/${email.toLowerCase().trim()}_photo_${Date.now()}.jpeg`;
+        uploadedProfilePhoto = await uploadMediaToStorage(profilePhoto, photoPath);
+        if (!uploadedProfilePhoto?.startsWith('https://')) {
+          throw new Error('No se pudo subir la foto de perfil.');
+        }
+      }
 
-    console.log('👀 Datos a guardar:', profileData);
-    await saveUserProfile(profileData, 'elite', setUserData, setIsLoggedIn, true);
-    await AsyncStorage.setItem('eliteProfileCompleted', 'true');
-    setModalVisible(true);
-  } catch (error) {
-    console.error('❌ Error en saveProfile:', error);
-    setErrorMessage('Fallo al guardar el perfil. Intenta de nuevo.');
-    setErrorModalVisible(true);
+      const uploadedLogos = await Promise.all(
+        logos.map((logo, index) =>
+          logo.startsWith('http')
+            ? logo
+            : uploadMediaToStorage(logo, `logos/${email.toLowerCase().trim()}_logo${index + 1}_${Date.now()}.jpg`)
+        )
+      );
+
+console.log('(NOBRIDGE) LOG ⏳ Iniciando subida de videos:', profileVideos);
+
+const uploadedVideos = [];
+
+for (let i = 0; i < profileVideos.length; i++) {
+  const video = profileVideos[i];
+
+  console.log(`(NOBRIDGE) LOG 🎞️ Procesando video [${i + 1}/${profileVideos.length}]:`, video);
+
+  if (video && typeof video === 'string') {
+    if (video.startsWith('http')) {
+      console.log(`(NOBRIDGE) LOG ⚡ Video ya subido (URL):`, video);
+      uploadedVideos.push(video);
+    } else {
+      try {
+        const path = `videos/${email.toLowerCase().trim()}_video${i + 1}_${Date.now()}.mp4`;
+        console.log(`(NOBRIDGE) LOG 🚀 Subiendo video local al path:`, path);
+
+        const downloadUrl = await uploadMediaToStorage(video, path);
+
+        console.log(`(NOBRIDGE) LOG ✅ Video subido exitosamente:`, downloadUrl);
+        uploadedVideos.push(downloadUrl);
+      } catch (e) {
+        console.log(`(NOBRIDGE) LOG ❌ Error al subir video ${i + 1}:`, e);
+        Alert.alert('Error', `No se pudo subir el video ${i + 1}. Intenta nuevamente.`);
+        setIsSaving(false);
+        return;
+      }
+    }
+  } else {
+    console.log(`(NOBRIDGE) LOG ⚠️ URI de video inválida en posición ${i + 1}:`, video);
+    Alert.alert('Error', `Hay un video con formato inválido. Por favor, revísalo.`);
+    setIsSaving(false);
+    return;
   }
-};
+}
 
+console.log('(NOBRIDGE) LOG 🎉 Todos los videos procesados:', uploadedVideos);
+
+      const cleanEmail = email.trim().toLowerCase();
+      const formattedInstagram = instagram.trim()
+        .replace(/^@/, '')
+        .replace(/^https?:\/\/(www\.)?instagram\.com\//, '');
+      const finalInstagramURL = `https://www.instagram.com/${formattedInstagram}`;
+
+      const profileData = {
+        membershipType: 'elite',
+        ...userData,
+        accountType: 'agency',
+        hasPaid: false,
+        id: cleanEmail,
+        agencyName,
+        representative,
+        email: cleanEmail,
+        phone,
+        instagram: finalInstagramURL,
+        whatsapp,
+        region,
+        city,
+        address,
+        companyType,
+        category: [companyType],
+        description,
+        logos: uploadedLogos,
+        webLink: webLinkFormatted,
+        profilePhoto: uploadedProfilePhoto,
+        profileVideos: uploadedVideos,
+        updatedAt: new Date().toISOString(),
+        timestamp: Date.now(),
+        visibleInExplorer: !hasOffensiveContent,
+        flagged: hasOffensiveContent,
+      };
+
+      await saveUserProfile(profileData, 'elite', setUserData, setIsLoggedIn, true);
+      await AsyncStorage.setItem('userData', JSON.stringify(profileData));
+      await AsyncStorage.setItem('userProfileElite', JSON.stringify(profileData));
+      await AsyncStorage.setItem('eliteProfileCompleted', 'true');
+      await rebuildAllProfiles();
+
+      const auth = getAuth();
+      if (auth.currentUser && !auth.currentUser.emailVerified) {
+        try {
+          await sendEmailVerification(auth.currentUser);
+          console.log('📧 Correo de verificación enviado al usuario Elite');
+        } catch (e) {
+          console.error('❌ Error al enviar correo de verificación:', e);
+        }
+      }
+
+      setModalVisible(true);
+    } catch (error) {
+      console.error('❌ Error en saveProfile:', error);
+      setErrorMessage('Fallo al guardar el perfil. Intenta de nuevo.');
+      setErrorModalVisible(true);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+ 
   return (
     <ScrollView
       style={styles.container}
@@ -390,19 +566,19 @@ if (!description || description.trim().length < 30) {
       <Text style={styles.subHeader}>Completa tu perfil para empezar a gestionar castings</Text>
 
       <Text style={styles.label}>Nombre de la empresa o servicio *</Text>
-<TextInput style={styles.input} value={agencyName} onChangeText={setAgencyName} />
+      <TextInput style={styles.input} value={agencyName} onChangeText={setAgencyName} />
 
       <Text style={styles.label}>Foto de perfil *</Text>
-<TouchableOpacity style={styles.photoCircle} onPress={pickProfilePhoto}>
-  {profilePhoto ? (
-    <Image source={{ uri: profilePhoto }} style={styles.profilePhotoPreview} />
-  ) : (
-    <View style={styles.cameraIconWrapper}>
-      <Ionicons name="camera" size={24} color="#D8A353" />
-    </View>
-  )}
-</TouchableOpacity>
-<Text style={styles.photoHint}>Toca el círculo para subir una imagen</Text>
+      <TouchableOpacity style={styles.photoCircle} onPress={pickProfilePhoto}>
+        {profilePhoto ? (
+          <Image source={{ uri: profilePhoto }} style={styles.profilePhotoPreview} />
+        ) : (
+          <View style={styles.cameraIconWrapper}>
+            <Ionicons name="camera" size={24} color="#D8A353" />
+          </View>
+        )}
+      </TouchableOpacity>
+      <Text style={styles.photoHint}>Toca el círculo para subir una imagen</Text>
 
       <Text style={styles.label}>Nombre del representante legal *</Text>
       <TextInput style={styles.input} value={representative} onChangeText={setRepresentative} />
@@ -412,24 +588,26 @@ if (!description || description.trim().length < 30) {
 
       <Text style={styles.label}>Teléfono (ej. +56912345678) *</Text>
       <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+
       <Text style={styles.label}>Instagram *</Text>
-<TextInput
-  style={styles.input}
-  value={instagram}
-  onChangeText={setInstagram}
-  placeholder="@ejemplo"
-  placeholderTextColor="#777"
-  autoCapitalize="none"
-/>
-<Text style={styles.label}>WhatsApp (opcional)</Text>
-<TextInput
-  style={styles.input}
-  value={whatsapp}
-  onChangeText={setWhatsapp}
-  placeholder="Ej: +56912345678"
-  keyboardType="phone-pad"
-  autoCapitalize="none"
-/>
+      <TextInput
+        style={styles.input}
+        value={instagram}
+        onChangeText={setInstagram}
+        placeholder="@ejemplo"
+        placeholderTextColor="#777"
+        autoCapitalize="none"
+      />
+
+      <Text style={styles.label}>WhatsApp (opcional)</Text>
+      <TextInput
+        style={styles.input}
+        value={whatsapp}
+        onChangeText={setWhatsapp}
+        placeholder="Ej: +56912345678"
+        keyboardType="phone-pad"
+        autoCapitalize="none"
+      />
 
       <Text style={styles.label}>Región *</Text>
       <View style={styles.pickerWrapper}>
@@ -472,46 +650,47 @@ if (!description || description.trim().length < 30) {
         value={address}
         onChangeText={setAddress}
         placeholder="Ej: Av. Siempre Viva 123, Santiago"
+        placeholderTextColor="#777"
       />
 
-<Text style={styles.label}>Tipo de empresa *</Text>
-<View style={styles.pickerWrapper}>
-  <Picker
-    selectedValue={companyType}
-    onValueChange={(value) => setCompanyType(value)}
-    style={styles.picker}
-    dropdownIconColor="#fff"
-  >
-    <Picker.Item label="Selecciona una categoría" value="" />
-    <Picker.Item label="Agencia de casting" value="Agencia de casting" />
-    <Picker.Item label="Agencia de modelos" value="Agencia de modelos" />
-    <Picker.Item label="Agencia de talentos" value="Agencia de talentos" />
-    <Picker.Item label="Agencia de publicidad" value="Agencia de publicidad" />
-    <Picker.Item label="Agencia de eventos" value="Agencia de eventos" />
-    <Picker.Item label="Productora audiovisual" value="Productora audiovisual" />
-    <Picker.Item label="Productora cinematográfica" value="Productora cinematográfica" />
-    <Picker.Item label="Productora de televisión" value="Productora de televisión" />
-    <Picker.Item label="Productora de contenido digital" value="Productora de contenido digital" />
-    <Picker.Item label="Productora de comerciales" value="Productora de comerciales" />
-    <Picker.Item label="Coordinadora de producción" value="Coordinadora de producción" />
-    <Picker.Item label="Empresa de producción técnica" value="Empresa de producción técnica" />
-    <Picker.Item label="Casa productora de videoclips" value="Casa productora de videoclips" />
-    <Picker.Item label="Estudio de producción fotográfica" value="Estudio de producción fotográfica" />
-    <Picker.Item label="Estudio de grabación" value="Estudio de grabación" />
-    <Picker.Item label="Estudio de doblaje" value="Estudio de doblaje" />
-    <Picker.Item label="Casa de postproducción" value="Casa de postproducción" />
-    <Picker.Item label="Plataforma de casting o booking" value="Plataforma de casting o booking" />
-    <Picker.Item label="Empresa de alquiler de equipos" value="Empresa de alquiler de equipos" />
-    <Picker.Item label="Empresa de transporte de producción" value="Empresa de transporte de producción" />
-    <Picker.Item label="Empresa de catering para rodajes" value="Empresa de catering para rodajes" />
-    <Picker.Item label="Proveedor de casas rodantes" value="Proveedor de casas rodantes" />
-    <Picker.Item label="Proveedor de coffee break / snacks" value="Proveedor de coffee break / snacks" />
-    <Picker.Item label="Proveedor de autos o vans para filmación" value="Proveedor de autos o vans para filmación" />
-    <Picker.Item label="Agencia de contenido digital" value="Agencia de contenido digital" />
-    <Picker.Item label="Plataforma de medios / streaming" value="Plataforma de medios / streaming" />
-    <Picker.Item label="Otros / Empresa no especificada" value="Otros / Empresa no especificada" />
-  </Picker>
-</View>
+      <Text style={styles.label}>Tipo de empresa *</Text>
+      <View style={styles.pickerWrapper}>
+        <Picker
+          selectedValue={companyType}
+          onValueChange={(value) => setCompanyType(value)}
+          style={styles.picker}
+          dropdownIconColor="#fff"
+        >
+          <Picker.Item label="Selecciona una categoría" value="" />
+          <Picker.Item label="Agencia de casting" value="Agencia de casting" />
+          <Picker.Item label="Agencia de modelos" value="Agencia de modelos" />
+          <Picker.Item label="Agencia de talentos" value="Agencia de talentos" />
+          <Picker.Item label="Agencia de publicidad" value="Agencia de publicidad" />
+          <Picker.Item label="Agencia de eventos" value="Agencia de eventos" />
+          <Picker.Item label="Productora audiovisual" value="Productora audiovisual" />
+          <Picker.Item label="Productora cinematográfica" value="Productora cinematográfica" />
+          <Picker.Item label="Productora de televisión" value="Productora de televisión" />
+          <Picker.Item label="Productora de contenido digital" value="Productora de contenido digital" />
+          <Picker.Item label="Productora de comerciales" value="Productora de comerciales" />
+          <Picker.Item label="Coordinadora de producción" value="Coordinadora de producción" />
+          <Picker.Item label="Empresa de producción técnica" value="Empresa de producción técnica" />
+          <Picker.Item label="Casa productora de videoclips" value="Casa productora de videoclips" />
+          <Picker.Item label="Estudio de producción fotográfica" value="Estudio de producción fotográfica" />
+          <Picker.Item label="Estudio de grabación" value="Estudio de grabación" />
+          <Picker.Item label="Estudio de doblaje" value="Estudio de doblaje" />
+          <Picker.Item label="Casa de postproducción" value="Casa de postproducción" />
+          <Picker.Item label="Plataforma de casting o booking" value="Plataforma de casting o booking" />
+          <Picker.Item label="Empresa de alquiler de equipos" value="Empresa de alquiler de equipos" />
+          <Picker.Item label="Empresa de transporte de producción" value="Empresa de transporte de producción" />
+          <Picker.Item label="Empresa de catering para rodajes" value="Empresa de catering para rodajes" />
+          <Picker.Item label="Proveedor de casas rodantes" value="Proveedor de casas rodantes" />
+          <Picker.Item label="Proveedor de coffee break / snacks" value="Proveedor de coffee break / snacks" />
+          <Picker.Item label="Proveedor de autos o vans para filmación" value="Proveedor de autos o vans para filmación" />
+          <Picker.Item label="Agencia de contenido digital" value="Agencia de contenido digital" />
+          <Picker.Item label="Plataforma de medios / streaming" value="Plataforma de medios / streaming" />
+          <Picker.Item label="Otros / Empresa no especificada" value="Otros / Empresa no especificada" />
+        </Picker>
+      </View>
 
       <Text style={styles.label}>Descripción corta *</Text>
       <TextInput
@@ -523,6 +702,9 @@ if (!description || description.trim().length < 30) {
         placeholder="Ej: Somos una agencia con 10 años de experiencia en casting publicitario y audiovisual"
         placeholderTextColor="#777"
       />
+      {descripcionError ? (
+        <Text style={{ color: 'red', marginBottom: 10 }}>{descripcionError}</Text>
+      ) : null}
 
       <Text style={styles.label}>Logos o imágenes representativas (máx. 5) *</Text>
       <TouchableOpacity style={styles.imagePicker} onPress={pickLogo}>
@@ -530,8 +712,8 @@ if (!description || description.trim().length < 30) {
       </TouchableOpacity>
       <View style={styles.logoScrollWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ justifyContent: 'center', flexGrow: 1 }}>
-  <View style={styles.logoRow}>
-    {logos.map((uri, index) => (
+          <View style={styles.logoRow}>
+            {logos.map((uri, index) => (
               <View key={index} style={styles.logoWrapper}>
                 <Image source={{ uri }} style={styles.logo} />
                 <TouchableOpacity onPress={() => removeLogo(uri)} style={styles.removeButton}>
@@ -541,118 +723,111 @@ if (!description || description.trim().length < 30) {
             ))}
           </View>
           {logos.length === 0 && (
-  <Text style={styles.noImagesText}>
-    Sube hasta 3 imágenes representativas de tu agencia.
-  </Text>
-)}
-
+            <Text style={styles.noImagesText}>
+              Sube hasta 5 imágenes representativas de tu agencia.
+            </Text>
+          )}
         </ScrollView>
-        {errorModalVisible && (
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalBox}>
-              <Text style={styles.modalText}>❌ {errorMessage}</Text>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={() => setErrorModalVisible(false)}
-              >
-                <Text style={styles.modalButtonText}>Entendido</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
       </View>
-      <Text style={styles.label}>Video institucional (opcional)</Text>
 
-{profileVideo ? (
-  <View style={styles.videoPreviewContainer}>
-    <Video
-      source={{ uri: profileVideo }}
-      useNativeControls
-      resizeMode="cover"
-      style={styles.videoPreview}
-      onError={(e) => {
-        console.log('❌ Error al cargar el video:', e);
-        alert('No se pudo cargar el video. Intenta seleccionar otro archivo.');
-      }}
-    />
-    <TouchableOpacity
-      style={styles.deleteVideoButton}
-      onPress={() => setProfileVideo(null)}
-    >
-      <Text style={styles.deleteVideoText}>🗑️ Eliminar Video</Text>
-    </TouchableOpacity>
-  </View>
-) : (
-  <TouchableOpacity style={styles.imagePicker} onPress={pickVideo}>
-    <Text style={styles.imagePickerText}>Subir video</Text>
-  </TouchableOpacity>
-)}
+      <Text style={styles.label}>Videos institucionales (máx. 3, opcional)</Text>
+      <TouchableOpacity style={styles.imagePicker} onPress={pickVideos}>
+        <Text style={styles.imagePickerText}>Subir videos</Text>
+      </TouchableOpacity>
+      <View style={styles.videoScrollWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ justifyContent: 'center', flexGrow: 1 }}>
+          <View style={styles.videoRow}>
+            {profileVideos.map((uri, index) => (
+              <View key={index} style={styles.videoWrapper}>
+                <Video
+                  source={{ uri }}
+                  useNativeControls
+                  resizeMode="cover"
+                  style={styles.videoPreview}
+                  onError={(e) => {
+                    console.log('❌ Error al cargar el video:', e);
+                    Alert.alert('Error', 'No se pudo cargar el video. Intenta seleccionar otro archivo.');
+                  }}
+                />
+                <TouchableOpacity onPress={() => removeVideo(uri)} style={styles.deleteVideoButton}>
+                  <Text style={styles.deleteVideoText}>🗑️ Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+          {profileVideos.length === 0 && (
+            <Text style={styles.noImagesText}>
+              Sube hasta 3 videos institucionales (máx. 100 MB y 2 min cada uno).
+            </Text>
+          )}
+        </ScrollView>
+      </View>
 
-
-      <Text style={styles.label}>Enlace web o Instagram (opcional)</Text>
+      <Text style={styles.label}>Enlace web (opcional)</Text>
       <TextInput style={styles.input} value={webLink} onChangeText={setWebLink} />
 
-     <TouchableOpacity
-  style={styles.button}
-  onPress={saveProfile}
->
-  <Text style={styles.buttonText}>Guardar perfil</Text>
-</TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          styles.button,
+          isSaving && { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+        ]}
+        onPress={saveProfile}
+        disabled={isSaving}
+      >
+        {isSaving && <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />}
+        <Text style={styles.buttonText}>
+          {isSaving ? 'Guardando perfil...' : 'Guardar perfil'}
+        </Text>
+      </TouchableOpacity>
 
-      <View style={{ flex: 1 }}>
-        {/* Modal de éxito */}
-        <Modal visible={modalVisible} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalBox}>
-              <Text style={styles.modalText}>✅ Perfil guardado correctamente</Text>
-<TouchableOpacity
-  style={styles.modalButton}
-  onPress={() => {
-    setModalVisible(false);
-setTimeout(() => {
-  navigation.dispatch(
-    CommonActions.reset({
-      index: 0,
-      routes: [
-        {
-          name: 'MainAppContainer',
-          state: {
-            routes: [
-              {
-                name: 'MainTabs',
-                state: {
-                  routes: [{ name: 'DashboardTab' }],
-                },
-              },
-            ],
-          },
-        },
-      ],
-    })
-  );
-}, 300);
-  }}
->
-
-  <Text style={styles.modalButtonText}>Ir al Dashboard Elite</Text>
-</TouchableOpacity>
-
-            </View>
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalText}>✅ Perfil guardado correctamente</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => {
+                setModalVisible(false);
+                setTimeout(() => {
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: 'MainAppContainer',
+                          state: {
+                            routes: [
+                              {
+                                name: 'MainTabs',
+                                state: {
+                                  routes: [{ name: 'DashboardTab' }],
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    })
+                  );
+                }, 300);
+              }}
+            >
+              <Text style={styles.modalButtonText}>Ir al Dashboard Elite</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
+        </View>
+      </Modal>
 
-        {/* Modal de error */}
-        <Modal visible={errorModalVisible} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalBox}>
-              <Text style={styles.modalText}>❌ {errorMessage}</Text>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setErrorModalVisible(false)}>
-                <Text style={styles.modalButtonText}>Entendido</Text>
-              </TouchableOpacity>
-            </View>
+      <Modal visible={errorModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalText}>❌ {errorMessage}</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={() => setErrorModalVisible(false)}>
+              <Text style={styles.modalButtonText}>Entendido</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
-      </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -662,7 +837,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
     padding: 20,
-    marginTop:30,
+    marginTop: 30,
   },
   header: {
     color: '#D8A353',
@@ -692,15 +867,6 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
-  dropdown: {
-    backgroundColor: '#1A1A1A',
-    borderColor: '#444',
-    marginVertical: 5,
-  },
-  dropdownContainer: {
-    backgroundColor: '#1A1A1A',
-    borderColor: '#444',
-  },
   imagePicker: {
     backgroundColor: '#1A1A1A',
     borderRadius: 10,
@@ -711,13 +877,20 @@ const styles = StyleSheet.create({
   imagePickerText: {
     color: '#CCCCCC',
   },
-  logoContainer: {
+  logoScrollWrapper: {
     marginVertical: 10,
     maxHeight: 120,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    marginHorizontal: 'auto',
   },
   logoWrapper: {
     position: 'relative',
     marginRight: 10,
+    marginBottom: 10,
   },
   logo: {
     width: 100,
@@ -739,6 +912,43 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
   },
+  videoScrollWrapper: {
+    marginVertical: 10,
+    maxHeight: 220,
+  },
+  videoRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    marginHorizontal: 'auto',
+  },
+  videoWrapper: {
+    position: 'relative',
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  videoPreview: {
+    width: 150,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D8A353',
+  },
+  deleteVideoButton: {
+    marginTop: 5,
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: '#D8A353',
+    borderRadius: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    alignSelf: 'center',
+  },
+  deleteVideoText: {
+    color: '#D8A353',
+    fontSize: 12,
+    textAlign: 'center',
+  },
   button: {
     backgroundColor: '#D8A353',
     padding: 15,
@@ -750,16 +960,6 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
   },
-  logoScrollWrapper: {
-    marginVertical: 10,
-    maxHeight: 120,
-  },
-  logoRow: {
-    justifyContent: 'center',
-flexWrap: 'wrap',
-marginHorizontal: 'auto',
-
-  },  
   pickerWrapper: {
     backgroundColor: '#1A1A1A',
     borderRadius: 10,
@@ -831,41 +1031,11 @@ marginHorizontal: 'auto',
     textAlign: 'center',
     marginBottom: 15,
   },
-  videoPreviewContainer: {
-  width: '100%',
-  alignItems: 'center',
-  marginVertical: 10,
-  backgroundColor: '#1B1B1B',
-  borderWidth: 1,
-  borderColor: '#D8A353',
-  borderRadius: 10,
-  padding: 10,
-},
-videoPreview: {
-  width: '100%',
-  height: 180,
-  borderRadius: 8,
-},
-deleteVideoButton: {
-  marginTop: 10,
-  backgroundColor: '#000',
-  borderWidth: 1,
-  borderColor: '#D8A353',
-  borderRadius: 5,
-  paddingVertical: 5,
-  paddingHorizontal: 10,
-},
-deleteVideoText: {
-  color: '#D8A353',
-  fontSize: 14,
-  textAlign: 'center',
-},
-
   noImagesText: {
-  color: '#888',
-  fontSize: 13,
-  fontStyle: 'italic',
-  textAlign: 'center',
-  marginBottom: 10,
-},
+    color: '#888',
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
 });
