@@ -72,6 +72,10 @@ import FocusDetailScreen from '../screens/FocusDetailScreen';
 import MyFocusScreen from '../screens/MyFocusScreen';
 import PromoteServiceScreen from '../screens/PromoteServiceScreen';
 import WelcomeScreen from '../screens/WelcomeScreen';
+import SendMessageTestScreen from '../screens/SendMessageTestScreen';
+import PublishSuccessScreen from '../screens/PublishSuccessScreen';
+import ServiceDetailScreen from '../screens/ServiceDetailScreen';
+import PrivacySecurityScreen from '../screens/PrivacySecurityScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -163,7 +167,14 @@ export default function AppNavigator() {
       <Stack.Screen name="FocusDetailScreen" component={FocusDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="MyFocusScreen" component={MyFocusScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PromoteServiceScreen" component={PromoteServiceScreen} options={{ headerShown: false }} />
-      
+      <Stack.Screen name="SendMessageTest" component={SendMessageTestScreen} />
+      <Stack.Screen name="ServiceDetailScreen" component={ServiceDetailScreen} />
+      <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} options={{ headerShown: false }} />
+
+      <Stack.Screen
+      name="PublishSuccess"
+      component={PublishSuccessScreen}
+      options={{ headerShown: false }}/>
     </Stack.Navigator>
   );
 }

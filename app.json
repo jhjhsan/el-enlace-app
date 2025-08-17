@@ -23,11 +23,15 @@
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "RECORD_AUDIO",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
         "NOTIFICATIONS"
       ],
+      "notification": {
+        "icon": "./assets/icon-noti.png",
+        "color": "#D8A353",
+        "channelId": "default" 
+      },
       "package": "com.elenlace.app"
     },
     "web": {

@@ -266,7 +266,6 @@ if ((emailOriginal.match(/@/g) || []).length > 1) {
   console.warn(`🧽 Email corregido dinámicamente: ${profile.email} → ${emailOriginal}`);
 }
 
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 if (!emailRegex.test(emailOriginal)) {
   console.warn('⛔ Email malformado detectado antes de navegación:', emailOriginal);

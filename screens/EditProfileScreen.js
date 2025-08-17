@@ -524,7 +524,7 @@ if (profilePhoto && profilePhoto.startsWith('file://')) {
           setValidandoActual(0);
           for (let i = 0; i < bookPhotos.length; i++) {
             const uri = bookPhotos[i];
-            if (uri.startsWith('http')) {
+            if (uri.startsWith('http')) {r
               uploadedBookPhotos.push(uri);
             } else {
               try {

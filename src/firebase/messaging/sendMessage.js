@@ -1,28 +1,29 @@
 import { db } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { v4 as uuidv4 } from 'uuid';
 
 const normalizeEmail = (email) =>
   email?.toLowerCase().trim().replace(/\s+/g, '').replace(/[^a-z0-9@._\-+]/gi, '');
 
-export const sendMessage = async ({
-  userEmail,
-  targetEmail,
-  messageText,
-  allProfiles = [],
-}) => {
+export const sendMessage = async ({ userEmail, targetEmail, messageText, allProfiles = [] }) => {
   try {
     const normalizedUser = normalizeEmail(userEmail);
     const normalizedTarget = normalizeEmail(targetEmail);
     const msgId = uuidv4();
 
-    // Obtener el ID del usuario desde AsyncStorage
     const userJson = await AsyncStorage.getItem('userProfile');
     const user = userJson ? JSON.parse(userJson) : null;
-    if (!user) {
-      throw new Error('Usuario no encontrado en AsyncStorage');
-    }
+    if (!user) throw new Error('Usuario no encontrado en AsyncStorage');
+
+    // Nombre del remitente para que la Cloud Function lo use
+    const senderDisplayName =
+      (user?.displayName ||
+        user?.name ||
+        user?.fullName ||
+        user?.agencyName ||
+        (normalizedUser?.split('@')[0] || '')
+      ).trim();
 
     const profileAttachment = (() => {
       const found = allProfiles.find(
@@ -43,15 +44,7 @@ export const sendMessage = async ({
           };
     })();
 
-    console.log('📝 Preparando mensaje para Firestore:', {
-      id: msgId,
-      from: normalizedUser,
-      to: normalizedTarget,
-      text: messageText.trim(),
-      timestamp: '[serverTimestamp]',
-      read: false,
-    });
-
+    // 👉 Guarda el mensaje (con fromDisplayName) y deja que el BACKEND cree la tarjeta de notificación
     await addDoc(collection(db, 'mensajes'), {
       id: msgId,
       from: normalizedUser,
@@ -59,60 +52,69 @@ export const sendMessage = async ({
       text: messageText.trim(),
       timestamp: serverTimestamp(),
       read: false,
+      fromDisplayName: senderDisplayName,
     });
 
-    console.log('✅ Mensaje enviado a Firestore');
+    // ⬇️⛔️ Eliminado: creación de tarjeta en `notifications/.../items` desde el cliente
+    // (Lo hace la Cloud Function con `displayName` correcto)
 
-const notifData = {
-  recipient: normalizedTarget,
-  type: 'mensaje',
-  title: '📩 Nuevo mensaje de ' + (profileAttachment.name || 'Usuario'),
-  body: messageText.trim(),
-  sender: normalizedUser,
-  read: false,
-  timestamp: serverTimestamp(),
-};
+    // Guarda el mensaje localmente en professionalMessages (sin cambios)
+    const previousRaw = await AsyncStorage.getItem('professionalMessages');
+    let previousConvs = previousRaw ? JSON.parse(previousRaw) : [];
 
-const notifCollectionRef = collection(db, 'notifications', normalizedTarget, 'items');
-const notifRef = await addDoc(notifCollectionRef, {
-  ...notifData,
-  read: false // ⚠️ Asegurar explícitamente aquí
-});
-
-const notifId = notifRef.id;
-notifData.id = notifId;
-
-// 🛡️ Refuerzo: actualiza inmediatamente para forzar `read: false` si algo lo sobrescribe
-await setDoc(notifRef, { ...notifData, read: false }, { merge: true });
-
-console.log('✅ Notificación creada con ID real y read forzado:', notifId);
-
-
-console.log('✅ Notificación creada con ID real:', notifId);
-
-    console.log('✅ Notificación creada con ID:', notifId, 'para', normalizedTarget);
-
-    // Guardar notificación local con la clave correcta
-    const localKey = `notifications_${user.id}`; // Usar user.id
-    const existingRaw = await AsyncStorage.getItem(localKey);
-    const existing = existingRaw ? JSON.parse(existingRaw) : [];
-
-  const newNotification = {
-  ...notifData,
-  id: notifId,
-  timestamp: new Date().toISOString(), // Para que sea legible en local
-};
-
-await AsyncStorage.setItem(localKey, JSON.stringify([newNotification, ...existing]));
-
-    console.log('📬 Notificación local guardada con clave:', localKey);
-
-    return {
-      success: true,
-      messageId: msgId,
+    const newMessage = {
+      id: msgId,
+      from: normalizedUser,
+      to: normalizedTarget,
+      text: messageText.trim(),
+      timestamp: { seconds: Math.floor(Date.now() / 1000) },
+      read: false,
+      profileAttachment,
     };
+
+    const keyMap = new Map();
+    for (const conv of previousConvs) {
+      const key = [normalizeEmail(conv.from), normalizeEmail(conv.to)].sort().join('_');
+      keyMap.set(key, conv);
+    }
+
+    const newKey = [normalizedUser, normalizedTarget].sort().join('_');
+    const existingConv = keyMap.get(newKey);
+
+    if (existingConv) {
+      existingConv.messages.push(newMessage);
+      existingConv.lastMessage = newMessage;
+      existingConv.timestamp = new Date().toISOString();
+    } else {
+      keyMap.set(newKey, {
+        from: normalizedUser,
+        to: normalizedTarget,
+        messages: [newMessage],
+        lastMessage: newMessage,
+        timestamp: new Date().toISOString(),
+        user: normalizedTarget, // siempre el otro contacto
+        profileAttachment,
+      });
+    }
+
+    const mergedConversations = Array.from(keyMap.values()).map((conv) => ({
+      ...conv,
+      messages: conv.messages.slice(-50),
+      profileAttachment: conv.profileAttachment || {
+        name: conv.user,
+        email: conv.user,
+        profilePhoto: null,
+        membershipType: 'free',
+        category: [],
+      },
+    }));
+
+    await AsyncStorage.setItem('professionalMessages', JSON.stringify(mergedConversations));
+    console.log('💾 Conversaciones guardadas. Total:', mergedConversations.length);
+
+    return { success: true, messageId: msgId };
   } catch (error) {
-    console.error('❌ Error en sendMessage:', error);
-    return { success: false, error };
+    console.error('❌ Error en sendMessage:', error.message);
+    return { success: false, error: error.message };
   }
 };

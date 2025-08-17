@@ -218,4 +218,4 @@ const styles = {
     fontSize: 16,
     fontWeight: 'bold',
   },
-};
+};  

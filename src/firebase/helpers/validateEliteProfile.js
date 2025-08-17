@@ -16,13 +16,22 @@ export const validateEliteProfile = (profile) => {
     observations.push("Debes subir el logo o foto institucional de la agencia.");
   }
 
-  // Validar región y ciudad
-  if (!profile.region || profile.region.trim() === '') {
-    observations.push("Selecciona una región válida.");
-  }
-  if (!profile.city || profile.city.trim() === '') {
-    observations.push("Agrega una ciudad para ubicar tu agencia.");
-  }
+// 🧹 Limpiar datos
+const regionClean = profile.region ? profile.region.trim().toLowerCase() : '';
+const cityClean = profile.city ? profile.city.trim().toLowerCase() : '';
+
+// 📋 Lista oficial (pon la misma que usas en el formulario)
+const regionesValidas = ["metropolitana", "valparaíso", "biobío", "antofagasta"]; // etc.
+const ciudadesValidas = ["santiago", "valparaíso", "concepción", "antofagasta"]; // etc.
+
+if (!regionClean || !regionesValidas.includes(regionClean)) {
+  observations.push("Selecciona una región válida de la lista.");
+}
+
+if (!cityClean || !ciudadesValidas.includes(cityClean)) {
+  observations.push("Selecciona una ciudad válida de la lista.");
+}
+
 if (!profile.companyType || profile.companyType.trim() === '') {
   observations.push("Selecciona un tipo de empresa.");
 }

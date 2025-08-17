@@ -11,43 +11,131 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import { Ionicons } from '@expo/vector-icons';
+
+// Helpers existentes
 import { fetchCastingsFromFirestore } from '../src/firebase/helpers/fetchCastingsFromFirestore';
 import { deleteCastingFromFirestore } from '../src/firebase/helpers/deleteCastingFromFirestore';
+
+// 🔹 Nuevo: servicios (para "ver todas" y para borrar servicios correctamente)
+import { fetchServicesFromFirestore } from '../src/firebase/helpers/fetchServicesFromFirestore';
+
+import {
+  getFirestore,
+  doc as fsDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+} from 'firebase/firestore';
 
 export default function ViewPostsScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
   const [showAllPosts, setShowAllPosts] = useState(false);
   const { userData } = useUser();
+  const db = getFirestore();
 
   useEffect(() => {
-const loadPosts = async () => {
-  try {
-    const localData = await AsyncStorage.getItem('posts');
-    const localParsed = localData ? JSON.parse(localData) : [];
+    const loadPosts = async () => {
+      try {
+        const localData = await AsyncStorage.getItem('posts');
+        const localParsed = localData ? JSON.parse(localData) : [];
 
-    if (showAllPosts) {
-      // 🔁 Mostrar todos desde Firestore
-      const onlinePosts = await fetchCastingsFromFirestore();
-      setPosts(onlinePosts.reverse());
-    } else {
-      // 🔒 Mostrar solo los propios desde AsyncStorage
-      const filtered = localParsed.filter(
-        post => post.creatorEmail === userData?.email
-      );
-      setPosts(filtered.reverse());
-    }
-  } catch (error) {
-    console.error('Error al cargar publicaciones:', error);
-  }
-};
+        if (showAllPosts) {
+          // 🌍 Mostrar todos (castings + servicios) desde Firestore
+          const [onlineCastings, onlineServices] = await Promise.all([
+            fetchCastingsFromFirestore().catch(() => []),
+            fetchServicesFromFirestore().catch(() => []),
+          ]);
+
+          // normaliza por si falta type
+          const norm = (arr, defType) =>
+            (Array.isArray(arr) ? arr : []).map((p) => ({
+              type: p?.type || defType,
+              ...p,
+            }));
+
+          const all = [
+            ...norm(onlineCastings, 'casting'),
+            ...norm(onlineServices, 'servicio'),
+          ].reverse();
+
+          setPosts(all);
+        } else {
+          // 🔒 Solo MIS publicaciones desde AsyncStorage
+          const filtered = (Array.isArray(localParsed) ? localParsed : []).filter(
+            (post) => post?.creatorEmail === userData?.email
+          );
+          setPosts(filtered.reverse());
+        }
+      } catch (error) {
+        console.error('Error al cargar publicaciones:', error);
+      }
+    };
+
     const unsubscribe = navigation.addListener('focus', loadPosts);
     return unsubscribe;
-  }, [navigation, showAllPosts]);
+  }, [navigation, showAllPosts, userData?.email]);
+
+  // 🔹 Borrar un servicio en Firestore con varios intentos (id; id por query; email+createdAtMs)
+  const deleteServiceFromFirestore = async (service) => {
+    const id = String(service?.id || '');
+    const myEmail = (service?.creatorEmail || '').trim().toLowerCase();
+
+    let anyDeleted = false;
+
+    // 1) por docId directo
+    try {
+      await deleteDoc(fsDoc(db, 'services', id));
+      anyDeleted = true;
+      console.log('🗑️ Service eliminado por docId:', id);
+    } catch (e) {
+      console.log('⚠️ No se pudo eliminar service por docId', id, e?.message || e);
+    }
+
+    // 2) por query id
+    try {
+      const qById = query(collection(db, 'services'), where('id', '==', id));
+      const snapById = await getDocs(qById);
+      for (const d of snapById.docs) {
+        await deleteDoc(d.ref);
+        anyDeleted = true;
+        console.log('🗑️ Service eliminado por query id==', id, ' doc:', d.id);
+      }
+    } catch (e) {
+      console.log('⚠️ Query services id== falló:', e?.message || e);
+    }
+
+    // 3) por combo email+createdAtMs si existe
+    const createdAtMs = Number(service?.createdAt || service?.createdAtMs || 0) || 0;
+    if (myEmail && createdAtMs) {
+      try {
+        const qCombo = query(
+          collection(db, 'services'),
+          where('creatorEmail', '==', myEmail),
+          where('createdAtMs', '==', createdAtMs)
+        );
+        const snapCombo = await getDocs(qCombo);
+        for (const d of snapCombo.docs) {
+          await deleteDoc(d.ref);
+          anyDeleted = true;
+          console.log('🗑️ Service eliminado por email+createdAtMs doc:', d.id);
+        }
+      } catch (e) {
+        console.log('⚠️ Query services email+createdAtMs falló:', e?.message || e);
+      }
+    }
+
+    return anyDeleted;
+  };
 
   const deletePost = (index) => {
+    const post = posts[index];
+    const isService = (post?.type || '').toLowerCase() === 'servicio';
+
     Alert.alert(
-      'Eliminar publicación',
-      '¿Estás seguro de que quieres eliminar esta publicación?',
+      isService ? 'Eliminar servicio' : 'Eliminar publicación',
+      '¿Estás seguro de que quieres eliminar esto?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -55,15 +143,33 @@ const loadPosts = async () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteCastingFromFirestore(posts[index].id, posts[index].creatorEmail);
+              if (isService) {
+                await deleteServiceFromFirestore(post);
+              } else {
+                await deleteCastingFromFirestore(post.id, post.creatorEmail);
+              }
+
+              // limpiar local
+              try {
+                const localData = await AsyncStorage.getItem('posts');
+                const localParsed = localData ? JSON.parse(localData) : [];
+                const filteredLocal = (Array.isArray(localParsed) ? localParsed : []).filter(
+                  (p) => String(p.id) !== String(post.id)
+                );
+                await AsyncStorage.setItem('posts', JSON.stringify(filteredLocal));
+              } catch (e) {
+                console.log('⚠️ Limpieza local falló:', e?.message || e);
+              }
+
+              // refrescar UI
               const updated = [...posts];
               updated.splice(index, 1);
-              await AsyncStorage.setItem('posts', JSON.stringify([...updated].reverse()));
-              setPosts([...updated].reverse());
+              setPosts([...updated]);
             } catch (error) {
-              console.error('Error al eliminar publicación:', error);
+              console.error('Error al eliminar:', error);
+              Alert.alert('Error', 'No se pudo eliminar.');
             }
-          },          
+          },
         },
       ]
     );
@@ -97,30 +203,32 @@ const loadPosts = async () => {
               {post.image && (
                 <Image source={{ uri: post.image }} style={styles.image} />
               )}
+
               <Text style={styles.cardTitle}>{post.title}</Text>
-              <Text style={styles.cardText}>{post.description}</Text>
-              <Text style={styles.cardText}>📂 {post.category}</Text>
-              {post.location && (
-                <Text style={styles.cardText}>📍 {post.location}</Text>
-              )}
-              {post.date && (
-                <Text style={styles.cardText}>📅 {post.date}</Text>
-              )}
+              {!!post.description && <Text style={styles.cardText}>{post.description}</Text>}
+              {!!post.category && <Text style={styles.cardText}>📂 {post.category}</Text>}
+              {!!post.location && <Text style={styles.cardText}>📍 {post.location}</Text>}
+              {!!post.date && <Text style={styles.cardText}>📅 {post.date}</Text>}
               {post.isPromotional && (
                 <Text style={styles.promotionalText}>⭐ Publicación Promocional</Text>
               )}
 
-              {/* Botón de editar (solo si NO es promocional) */}
+              {/* Editar → pasa isService si corresponde */}
               {!post.isPromotional && (
                 <TouchableOpacity
-                  onPress={() => navigation.navigate('EditPost', { post })}
+                  onPress={() =>
+                    navigation.navigate('EditPost', {
+                      post,
+                      isService: (post?.type || '').toLowerCase() === 'servicio',
+                    })
+                  }
                   style={styles.editButton}
                 >
                   <Text style={styles.editText}>✏️ Editar</Text>
                 </TouchableOpacity>
               )}
 
-              {/* Botón de eliminar */}
+              {/* Eliminar */}
               <TouchableOpacity
                 onPress={() => deletePost(index)}
                 style={styles.deleteButton}
@@ -131,15 +239,13 @@ const loadPosts = async () => {
           ))
         )}
 
-       <TouchableOpacity
-  onPress={() => navigation.goBack()}
-  style={{ position: 'absolute', top: 0, left: 20, zIndex: 10 }}
->
-  <Ionicons name="arrow-back" size={28} color="#fff" />
-</TouchableOpacity>
-
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={{ position: 'absolute', top: 0, left: 20, zIndex: 10 }}
+        >
+          <Ionicons name="arrow-back" size={28} color="#fff" />
+        </TouchableOpacity>
       </ScrollView>
-    
     </View>
   );
 }
@@ -150,7 +256,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   container: {
-    padding: 20,
+    padding: 10,
     paddingBottom: 120,
     marginTop: 40,
   },
@@ -182,10 +288,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#1B1B1B',
     borderColor: '#D8A353',
-    borderWidth: 1,
     borderRadius: 10,
     padding: 15,
-    marginBottom: 15,
+    marginBottom: 5,
   },
   promotionalCard: {
     borderColor: '#FFD700',

@@ -8,118 +8,141 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// 👇 MARCADOR PARA LOGS (debe aparecer sí o sí si esta versión despliega)
+console.log('=== SERVICE FN vFINAL-aug10 ===');
+
+// normaliza la clave donde el cliente escucha notifications/{email}/items
+const normalizeEmail = (e) =>
+  (e || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '')
+    //         ↓↓↓ guion escapado correctamente (o podrías dejar el guion al final)
+    .replace(/[^a-z0-9@._+\-]/gi, '')
+    .replace(/@{2,}/g, '@');
+
+// chunk para no superar 500 escrituras
+const chunk = (arr, size = 450) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
+
 exports.sendServicePushNotifications = functions.firestore
   .document('services/{serviceId}')
   .onCreate(async (snap, context) => {
     try {
-      const serviceData = snap.data();
-      const {
-        title,
-        description,
-        category, // Ej. 'fotografía', 'modelaje'
-        location, // Ej. 'Santiago', 'Chile'
-      } = serviceData;
+      const serviceData = snap.data() || {};
       const serviceId = context.params.serviceId;
 
-      const profileCollections = ['profiles', 'profilesPro', 'profilesElite'];
-      const notifications = [];
-      const tokensMap = new Map();
+      const title = (serviceData.title || 'Sin título').toString();
+      const description = (serviceData.description || '').toString();
 
-      // Buscar perfiles en todas las colecciones
-      for (const collection of profileCollections) {
-        const snapshot = await db.collection(collection).get();
-        snapshot.forEach(doc => {
-          const user = doc.data();
-          const email = doc.id;
+      // excluir al creador (normalizado)
+      const creatorEmailLower =
+        normalizeEmail(
+          serviceData?.creatorEmailLower ||
+          serviceData?.creatorEmail ||
+          ''
+        ) || null;
 
-          if (!user.expoPushToken) return;
+      // 👈 incluye profilesFree
+      const profileCollections = ['profiles', 'profilesFree', 'profilesPro', 'profilesElite'];
 
-          tokensMap.set(email, user.expoPushToken);
+      // fanout a TODOS (sin filtros)
+      const recipientKeys = new Set();
+      const tokensByKey = new Map();
 
-          // Filtrar por categoría y ubicación (ajusta según tu modelo de datos)
-          const matchCategory = category ? user.interests?.includes(category.toLowerCase()) : true;
-          const matchLocation = location ? user.location?.toLowerCase() === location.toLowerCase() : true;
+      for (const colName of profileCollections) {
+        const snapshot = await db.collection(colName).get();
+snapshot.forEach((docSnap) => {
+  const user = docSnap.data() || {};
+  // SIEMPRE por email, jamás por docId
+  const raw =
+    user.emailLower ||
+    user.email ||
+    user.mail ||
+    user.contactEmail ||
+    '';
 
-          if (matchCategory && matchLocation) {
-            notifications.push({
-              recipientEmail: email,
-              data: {
-                type: 'servicio',
-                title: `🛠️ Nuevo servicio: ${title}`,
-                body: description.length > 60 ? description.substring(0, 57) + '...' : description,
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                serviceId,
-              }
-            });
-          }
-        });
+  const key = normalizeEmail(raw);
+
+  // Si no parece email (sin @), NO lo uses
+  if (!key || !key.includes('@')) return;
+
+  // (opcional) excluir al creador:
+  // if (creatorEmailLower && key === creatorEmailLower) return;
+
+  recipientKeys.add(key);
+  if (user.expoPushToken) tokensByKey.set(key, user.expoPushToken);
+});
       }
 
-      if (notifications.length === 0) {
-        console.log('🔕 Ningún perfil coincide con el servicio.');
-        return { success: false, message: 'No matching profiles found.' };
+      if (recipientKeys.size === 0) {
+        console.log('🔕 No hay destinatarios.');
+        return { success: false, message: 'No recipients' };
       }
 
-      let successCount = 0;
-      for (const noti of notifications) {
-        const pushToken = tokensMap.get(noti.recipientEmail);
-        if (!pushToken) continue;
+      const notifTitle = `🛠️ Nuevo servicio: ${title}`;
+      const bodyText = description.length > 60 ? description.substring(0, 57) + '…' : description;
+      const nowServerTs = admin.firestore.FieldValue.serverTimestamp();
+
+      // PUSH opcional (solo a quien tenga token)
+      let pushSent = 0;
+      for (const key of recipientKeys) {
+        const token = tokensByKey.get(key);
+        if (!token) continue;
+
+        const message = {
+          token,
+          notification: { title: notifTitle, body: bodyText },
+          data: { type: 'servicio', serviceId },
+          android: { priority: 'high', notification: { sound: 'default', channelId: 'default' } },
+          apns: { payload: { aps: { sound: 'default', contentAvailable: true } } },
+        };
 
         try {
-          const message = {
-            token: pushToken,
-            notification: {
-              title: noti.data.title,
-              body: noti.data.body,
-            },
-            data: {
-              type: noti.data.type,
-              serviceId: noti.data.serviceId,
-            },
-            android: {
-              priority: 'high',
-              notification: {
-                sound: 'default',
-                channelId: 'default',
-              },
-            },
-            apns: {
-              payload: {
-                aps: {
-                  sound: 'default',
-                  contentAvailable: true,
-                },
-              },
-            },
-          };
-
           await messaging.send(message);
-          successCount++;
+          pushSent++;
         } catch (e) {
-          console.warn(`❌ Error enviando a ${noti.recipientEmail}:`, e.message);
+          console.warn(`❌ Error enviando a ${key}:`, e.message);
         }
       }
+      console.log(`📤 Push enviados: ${pushSent} / ${recipientKeys.size}`);
 
-      console.log(`✅ Notificaciones enviadas: ${successCount}`);
+      // TARJETAS en Firestore (chunks)
+      const recipients = Array.from(recipientKeys);
+      const chunks = chunk(recipients, 450);
+      let written = 0;
 
-      const batch = db.batch();
-      notifications.forEach(noti => {
-        const ref = db.collection('notifications').doc(noti.recipientEmail).collection('items').doc();
-        batch.set(ref, {
-          recipient: noti.recipientEmail,
-          type: noti.data.type,
-          title: noti.data.title,
-          body: noti.data.body,
-          timestamp: noti.data.timestamp,
-          serviceId: noti.data.serviceId,
-          read: false,
-          sender: 'sistema',
-        });
-      });
-      await batch.commit();
-      console.log('📝 Notificaciones guardadas en Firestore');
+for (const slice of chunks) {
+  const batch = db.batch();
+  const createdAtMs = Date.now(); // para orden estable en el cliente
 
-      return { success: true, sent: successCount };
+  slice.forEach((key) => {
+    const ref = db.collection('notifications').doc(key).collection('items').doc();
+    batch.set(ref, {
+      id: ref.id,                 // <-- tu UI lo espera
+      recipient: key,
+      type: 'servicio',
+      title: notifTitle,
+      body: bodyText,             // como casting
+      message: bodyText,          // <-- espejo (tu UI a veces lee 'message')
+      timestamp: nowServerTs,     // serverTimestamp
+      createdAtMs,                // <-- ms plano para ordenar en cliente
+      serviceId,
+      read: false,
+      sender: 'sistema',
+      creatorEmailLower,
+    });
+  });
+
+  await batch.commit();
+  written += slice.length;
+}
+
+      console.log('📝 Notificaciones guardadas en Firestore:', written);
+      return { success: true, sentPush: pushSent, savedDocs: written };
     } catch (error) {
       console.error('❌ Error en sendServicePushNotifications:', error);
       return { success: false, error: error.message };

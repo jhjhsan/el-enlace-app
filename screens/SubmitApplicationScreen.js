@@ -33,13 +33,13 @@ export default function SubmitApplicationScreen({ route, navigation }) {
           const parsed = JSON.parse(data);
           const now = new Date();
           const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
-          if (parsed.month === currentMonth) {
-            setRemainingPostulations(2 - parsed.count);
-          } else {
-            setRemainingPostulations(2);
-          }
+       if (parsed.month === currentMonth) {
+  setRemainingPostulations(Math.max(0, 4 - (parsed.count || 0)));
+} else {
+  setRemainingPostulations(4);
+}
         } else {
-          setRemainingPostulations(2);
+          setRemainingPostulations(4);
         }
       } catch (error) {
         console.error('Error al obtener postulaciones restantes:', error);
@@ -85,35 +85,67 @@ export default function SubmitApplicationScreen({ route, navigation }) {
       if (!allowed) {
         Alert.alert(
           'Límite alcanzado',
-          'Solo puedes postularte a 2 castings por mes con el plan Free. Mejora a Pro para postulaciones ilimitadas.'
+          'Solo puedes postularte a 4 castings por mes con el plan Free. Mejora a Pro para postulaciones ilimitadas.'
         );
         return;
       }
     }
 
-    const applicationData = {
-      castingId: castingId || 'sin-id',
-      castingTitle: castingTitle || 'Sin título',
-      timestamp: new Date().toISOString(),
-      videos: filteredVideos,
-      profile: {
-        name: userProfile.name || '',
-        email: userProfile.email || '',
-        age: userProfile.age || '',
-        sex: userProfile.sex || '',
-        height: userProfile.height || '',
-        region: userProfile.region || '',
-        city: userProfile.city || '',
-        address: userProfile.address || '',
-        ethnicity: userProfile.ethnicity || '',
-        phoneNumber: userProfile.phoneNumber || '',
-        instagram: userProfile.instagram || '',
-        profilePhoto: userProfile.profilePhoto || '',
-        presentationVideo: userProfile.presentationVideo || '',
-        bookPhotos: userProfile.bookPhotos || [],
-        categories: userProfile.categories || [],
-      },
-    };
+const applicationData = {
+  castingId: castingId || 'sin-id',
+  castingTitle: castingTitle || 'Sin título',
+  timestamp: new Date().toISOString(),
+  videos: filteredVideos,
+  profile: {
+    // Identificación
+    name: userProfile.name || userProfile.agencyName || '',
+    email: userProfile.email || '',
+
+    // Contacto
+    phone: userProfile.phone || userProfile.phoneNumber || '',
+    instagram: (userProfile.instagram || '').toString().replace(/^@/, ''),
+
+    // Demografía / medidas
+    age: userProfile.age || userProfile.edad || '',
+    sex: userProfile.sex || userProfile.sexo || '',
+    height: userProfile.height || userProfile.estatura || '',
+    skinColor: userProfile.skinColor || userProfile.piel || '',
+    eyeColor: userProfile.eyeColor || userProfile.ojos || '',
+    hairColor: userProfile.hairColor || userProfile.cabello || '',
+
+    // Tatuajes / piercings
+    tattoos: userProfile.tattoos || '',
+    tattoosLocation: userProfile.tattoosLocation || userProfile.tattoosUbicacion || '',
+    piercings: userProfile.piercings || '',
+    piercingsLocation: userProfile.piercingsLocation || userProfile.piercingsUbicacion || '',
+
+    // Tallas
+    shirtSize: userProfile.shirtSize || userProfile.tallaPolera || '',
+    pantsSize: userProfile.pantsSize || userProfile.tallaPantalon || '',
+    shoeSize: userProfile.shoeSize || userProfile.tallaZapato || '',
+
+    // Ubicación
+    country: userProfile.country || userProfile.pais || '',
+    region: userProfile.region || '',
+    city: userProfile.city || userProfile.ciudad || '',
+    comuna: userProfile.comuna || '',
+    address: userProfile.address || '',
+
+    // Media
+    profilePhoto: userProfile.profilePhoto || '',
+    presentationVideo: userProfile.presentationVideo || userProfile.profileVideo || '',
+
+    // Categorías (normalizado a array)
+    categories: Array.isArray(userProfile.categories)
+      ? userProfile.categories
+      : Array.isArray(userProfile.category)
+      ? userProfile.category
+      : (userProfile.category ? [userProfile.category] : []),
+
+    // Book
+    bookPhotos: Array.isArray(userProfile.bookPhotos) ? userProfile.bookPhotos : [],
+  },
+};
 
     try {
       const existing = await AsyncStorage.getItem('applications');
@@ -131,6 +163,8 @@ export default function SubmitApplicationScreen({ route, navigation }) {
       parsed.push(applicationData);
       await AsyncStorage.setItem('applications', JSON.stringify(parsed));
       await syncApplicationToFirestore(applicationData);
+
+      route.params?.onSubmitted?.();
 
       Alert.alert('✅ Postulación enviada', 'Tu postulación fue guardada con éxito.');
       navigation.goBack();

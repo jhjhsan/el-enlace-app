@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video } from 'expo-av'; // ✅
-import { generatePostulationsPdf } from '../utils/generatePostulationsPdf.js';
+import { exportSelectedToPDF } from '../utils/exportUtils';
 import CheckBox from '@react-native-community/checkbox';
 
 export default function PostulationHistoryEliteScreen() {
@@ -139,9 +139,12 @@ const [selectedPostulations, setSelectedPostulations] = useState([]);
       <View style={styles.exportButtonsContainer}>
         <TouchableOpacity
           style={[styles.exportButton, { backgroundColor: '#FF0000' }]}
-          onPress={() => generatePostulationsPdf(
-            postulations.filter(p => selectedPostulations.includes(p.email))
-          )}
+      onPress={() =>
+  exportSelectedToPDF(
+    postulations.filter(p => selectedPostulations.includes(p.email)),
+    'Seleccionados'
+  )
+}
         >
           <Ionicons name="document-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
           <Text style={[styles.exportButtonText, { color: '#fff' }]}>Exportar seleccionados</Text>

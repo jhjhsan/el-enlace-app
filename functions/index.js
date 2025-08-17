@@ -43,3 +43,6 @@ exports.sendFocusPushNotifications = sendFocusPushNotifications;
 
 const { syncFocusToFirestore } = require("./syncFocusToFirestore");
 exports.syncFocusToFirestore = syncFocusToFirestore;
+
+const { normalizeProfile } = require('./profileNormalize');
+exports.normalizeProfile = normalizeProfile;

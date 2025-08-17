@@ -13,112 +13,117 @@ exports.sendCastingPushNotifications = functions.firestore
   .onCreate(async (snap, context) => {
     try {
       const castingData = snap.data();
+      const castingId = context.params.castingId;
+
       const {
         title,
         description,
-        gender, // 'masculino', 'femenino', 'otro'
-        minAge, // e.g. 25
-        maxAge, // e.g. 35
-        ethnicity, // e.g. 'afroamericano', 'blanco', etc.
+        gender,     // filtro opcional
+        minAge,     // filtro opcional
+        maxAge,     // filtro opcional
+        ethnicity,  // filtro opcional
       } = castingData;
-      const castingId = context.params.castingId;
+
+      // 🔑 Email del creador en minúsculas (de preferencia usa creatorEmailLower guardado en el doc)
+      const creatorEmailLower =
+        (castingData.creatorEmailLower && String(castingData.creatorEmailLower).toLowerCase()) ||
+        (castingData.creatorEmail && String(castingData.creatorEmail).toLowerCase()) ||
+        null;
 
       const profileCollections = ['profiles', 'profilesPro', 'profilesElite'];
-      const notifications = [];
-      const tokensMap = new Map();
 
-      // Buscar en todas las colecciones de perfiles
-      for (const collection of profileCollections) {
-        const snapshot = await db.collection(collection).get();
+      // Usamos Set para no repetir destinatarios (si aparece en varias colecciones)
+      const recipientEmails = new Set();
+      const tokensByEmail = new Map();
+
+      for (const colName of profileCollections) {
+        const snapshot = await db.collection(colName).get();
+
         snapshot.forEach(doc => {
+          const email = String(doc.id || '').toLowerCase();
           const user = doc.data();
-          const email = doc.id;
 
+          // 🛑 Excluir SIEMPRE al creador
+          if (creatorEmailLower && email === creatorEmailLower) return;
+
+          // Debe tener token
           if (!user.expoPushToken) return;
 
-          tokensMap.set(email, user.expoPushToken);
-
+          // Filtros opcionales
           const userAge = user.birthYear ? new Date().getFullYear() - user.birthYear : null;
-          const matchGender = gender ? user.gender?.toLowerCase() === gender.toLowerCase() : true;
-          const matchEthnicity = ethnicity ? user.ethnicity?.toLowerCase() === ethnicity.toLowerCase() : true;
-          const matchAge = userAge && minAge && maxAge ? userAge >= minAge && userAge <= maxAge : true;
+          const matchGender = gender ? String(user.gender || '').toLowerCase() === String(gender).toLowerCase() : true;
+          const matchEthnicity = ethnicity ? String(user.ethnicity || '').toLowerCase() === String(ethnicity).toLowerCase() : true;
+          const matchAge = (userAge && minAge && maxAge) ? (userAge >= minAge && userAge <= maxAge) : true;
 
           if (matchGender && matchEthnicity && matchAge) {
-            notifications.push({
-              recipientEmail: email,
-              data: {
-                type: 'casting',
-                title: `🎬 Nuevo casting: ${title}`,
-                body: `Buscamos perfiles como el tuyo. ¡Revisa los detalles!`,
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                castingId,
-              }
-            });
+            recipientEmails.add(email);
+            // último token conocido por email (si hay duplicado, se reemplaza; está bien)
+            tokensByEmail.set(email, user.expoPushToken);
           }
         });
       }
 
-      if (notifications.length === 0) {
-        console.log('🔕 Ningún perfil coincide con el casting.');
+      if (recipientEmails.size === 0) {
+        console.log('🔕 Ningún perfil coincide con el casting (o solo el creador coincidía y fue excluido).');
         return { success: false, message: 'No matching profiles found.' };
       }
 
+      // Construye el payload común
+      const notifTitle = `🎬 Nuevo casting: ${title}`;
+      const notifBody  = `Buscamos perfiles como el tuyo. ¡Revisa los detalles!`;
+      const nowServerTs = admin.firestore.FieldValue.serverTimestamp();
+
+      // Enviar push 1 vez por destinatario
       let successCount = 0;
-      for (const noti of notifications) {
-        const pushToken = tokensMap.get(noti.recipientEmail);
-        if (!pushToken) continue;
+      for (const email of recipientEmails) {
+        const token = tokensByEmail.get(email);
+        if (!token) continue;
+
+        const message = {
+          token,
+          notification: {
+            title: notifTitle,
+            body: notifBody,
+          },
+          data: {
+            type: 'casting',
+            castingId,
+          },
+          android: {
+            priority: 'high',
+            notification: { sound: 'default', channelId: 'default' },
+          },
+          apns: {
+            payload: { aps: { sound: 'default', contentAvailable: true } },
+          },
+        };
 
         try {
-          const message = {
-            token: pushToken,
-            notification: {
-              title: noti.data.title,
-              body: noti.data.body,
-            },
-            data: {
-              type: noti.data.type,
-              castingId: noti.data.castingId,
-            },
-            android: {
-              priority: 'high',
-              notification: {
-                sound: 'default',
-                channelId: 'default',
-              },
-            },
-            apns: {
-              payload: {
-                aps: {
-                  sound: 'default',
-                  contentAvailable: true,
-                },
-              },
-            },
-          };
-
           await messaging.send(message);
           successCount++;
         } catch (e) {
-          console.warn(`❌ Error enviando a ${noti.recipientEmail}:`, e.message);
+          console.warn(`❌ Error enviando a ${email}:`, e.message);
         }
       }
 
-      console.log(`✅ Notificaciones enviadas: ${successCount}`);
+      console.log(`✅ Notificaciones enviadas (únicas): ${successCount}`);
 
+      // Guardar una notificación por destinatario (única)
       const batch = db.batch();
-      notifications.forEach(noti => {
-        const ref = db.collection('notifications').doc(noti.recipientEmail).collection('items').doc();
+      for (const email of recipientEmails) {
+        const ref = db.collection('notifications').doc(email).collection('items').doc();
         batch.set(ref, {
-          recipient: noti.recipientEmail,
-          type: noti.data.type,
-          title: noti.data.title,
-          body: noti.data.body,
-          timestamp: noti.data.timestamp,
-          castingId: noti.data.castingId,
+          recipient: email,
+          type: 'casting',
+          title: notifTitle,
+          body: notifBody,
+          timestamp: nowServerTs,
+          castingId,
           read: false,
           sender: 'sistema',
+          creatorEmailLower, // útil para auditoría
         });
-      });
+      }
       await batch.commit();
       console.log('📝 Notificaciones guardadas en Firestore');
 

@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#000',
     flex: 1,
-    padding: 20,
+    padding: 10,
     marginTop: 20,
   },
   title: {
@@ -162,10 +162,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 10,
     overflow: 'hidden',
     borderColor: '#D8A353',
-    borderWidth: 1,
+    borderWidth: 0.3,
   },
   image: {
     width: '100%',

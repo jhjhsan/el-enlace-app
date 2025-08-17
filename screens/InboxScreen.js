@@ -26,6 +26,10 @@ export default function InboxScreen() {
   const navigation = useNavigation();
   const { userData } = useUser();
   const [conversations, setConversations] = useState([]);
+  useEffect(() => {
+  console.log('👀 conversations actualizado:', conversations.map(c => c.user));
+}, [conversations]);
+
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [allProfiles, setAllProfiles] = useState([]);
@@ -42,90 +46,81 @@ export default function InboxScreen() {
       .replace(/@{2,}/g, '@')
   };
 
-  const deleteMessage = async (userToDelete) => {
-    try {
-      setIsDeleting(true);
-      const normalizedUser = normalizeEmail(userData.email);
-      const normalizedTarget = normalizeEmail(userToDelete);
-      console.log(`🗑️ Iniciando eliminación para user: ${normalizedUser}, target: ${normalizedTarget}`);
+const deleteMessage = async (userToDelete) => {
+  try {
+    setIsDeleting(true);
+    const normalizedUser = normalizeEmail(userData.email);
+    const normalizedTarget = normalizeEmail(userToDelete);
 
-      // Eliminar de AsyncStorage (professionalMessages)
-      const json = await AsyncStorage.getItem('professionalMessages');
-      let allMessages = json ? JSON.parse(json) : [];
-      allMessages = allMessages.filter(
-        (msg) =>
-          !(
-            (msg.from === normalizedUser && msg.to === normalizedTarget) ||
-            (msg.from === normalizedTarget && msg.to === normalizedUser)
-          )
-      );
-      const safe = (allMessages || []).map((conv) => ({
-  ...conv,
-  messages: (conv.messages || []).slice(-50), // Limita a últimos 50
-}));
-await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
+    // 1. BORRA SOLO la conversación local del usuario actual (NO afecta al otro)
+    const json = await AsyncStorage.getItem('professionalMessages');
 
-      setConversations((prev) =>
-        prev.filter((conv) => normalizeEmail(conv.user) !== normalizedTarget)
-      );
-      console.log('🗑️ Conversación eliminada de AsyncStorage:', normalizedTarget);
+const debugRaw = await AsyncStorage.getItem('professionalMessages');
+const debugParsed = debugRaw ? JSON.parse(debugRaw) : [];
+console.log('🧪 DEBUG FINAL - BLOQUES CONVERSACIONES:', debugParsed.length);
+debugParsed.forEach((c, i) =>
+  console.log(`🔢 ${i + 1}. De: ${c.from} → ${c.to}, mensajes: ${c.messages?.length || 0}`)
+);
+console.log('📦 professionalMessages cargadas desde AsyncStorage:');
+convs.forEach((c, i) => {
+  console.log(
+    `📬 ${i + 1}. De: ${c.from} → ${c.to}, Mensajes: ${c.messages?.length || 0}`
+  );
+});
 
-      // Eliminar mensajes de Firestore
-      const q = query(
-        collection(db, 'mensajes'),
-        where('from', 'in', [normalizedUser, normalizedTarget]),
-        where('to', 'in', [normalizedUser, normalizedTarget])
-      );
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
-      await Promise.all(deletePromises);
-      console.log(`🗑️ ${deletePromises.length} mensajes eliminados de Firestore`);
+    setConversations((prev) =>
+      prev.filter((conv) => normalizeEmail(conv.user) !== normalizedTarget)
+    );
+    console.log('🗑️ Conversación eliminada SOLO localmente para:', normalizedTarget);
 
-      // Eliminar notificaciones asociadas de Firestore (sender o recipient)
-      const notifRef = collection(db, 'notifications', normalizedUser, 'items');
-      const notifQuery = query(
-        notifRef,
-        where('type', '==', 'mensaje'),
-        where('sender', 'in', [normalizedUser, normalizedTarget]),
-        where('recipient', 'in', [normalizedUser, normalizedTarget])
-      );
-      const notifSnapshot = await getDocs(notifQuery);
-      const notifDeletePromises = notifSnapshot.docs.map((docSnap) => {
-        console.log(`🗑️ Eliminando notificación de Firestore: ${docSnap.id}`);
-        return deleteDoc(docSnap.ref);
-      });
-      await Promise.all(notifDeletePromises);
-      console.log(`🗑️ ${notifDeletePromises.length} notificaciones eliminadas de Firestore`);
+    // 2. Opcional: borra notificaciones locales de este contacto
+    const notifKey = `notifications_${normalizedUser}`;
+    const notifJson = await AsyncStorage.getItem(notifKey);
+    let localNotifications = notifJson ? JSON.parse(notifJson) : [];
+    localNotifications = localNotifications.filter(
+      (notif) =>
+        !(
+          (normalizeEmail(notif.sender) === normalizedTarget) ||
+          (normalizeEmail(notif.recipient) === normalizedTarget)
+        )
+    );
+    await AsyncStorage.setItem(notifKey, JSON.stringify(localNotifications));
+    console.log(`🗑️ Notificaciones locales eliminadas SOLO para ${normalizedTarget}`);
 
-      // Eliminar notificaciones locales (AsyncStorage)
-      const notifKey = `notifications_${normalizedUser}`;
-      const notifJson = await AsyncStorage.getItem(notifKey);
-      let localNotifications = notifJson ? JSON.parse(notifJson) : [];
-      localNotifications = localNotifications.filter(
-        (notif) =>
-          !(
-            (notif.sender === normalizedTarget && notif.recipient === normalizedUser) ||
-            (notif.sender === normalizedUser && notif.recipient === normalizedTarget)
-          )
-      );
-      await AsyncStorage.setItem(notifKey, JSON.stringify(localNotifications));
-      console.log(`🗑️ Notificaciones locales eliminadas para ${normalizedTarget}`);
+    // 3. NO borres nada de Firestore (no toques mensajes globales, ni notificaciones de la otra persona)
+    // 4. Listo: la conversación solo se borra para el usuario actual
 
+    console.log('✅ Conversación eliminada SOLO para este usuario');
+// 5. Añade el contacto eliminado a la blacklist CON TIMESTAMP
+const blacklistKey = `deletedConversations_${normalizedUser}`;
+const existingBlacklist = await AsyncStorage.getItem(blacklistKey);
+let blacklist = existingBlacklist ? JSON.parse(existingBlacklist) : [];
 
-      // Mostrar mensaje de éxito
-      console.log('✅ Conversación y notificaciones eliminadas exitosamente');
-    } catch (error) {
-      console.error('❌ Error al eliminar mensaje:', error);
-      setShowDeleteModal(false);
-      throw error; // Lanzar error para que el modal no se cierre si falla
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+const entry = {
+  email: normalizedTarget,
+  timestamp: Date.now(), // guardamos momento de eliminación
+};
+
+// Solo guarda si no existe aún
+if (!blacklist.find((b) => b.email === normalizedTarget)) {
+  blacklist.push(entry);
+  await AsyncStorage.setItem(blacklistKey, JSON.stringify(blacklist));
+  console.log(`🚫 Añadido a blacklist de conversaciones: ${normalizedTarget}`);
+}
+
+  } catch (error) {
+    console.error('❌ Error al eliminar mensaje:', error);
+    setShowDeleteModal(false);
+    throw error;
+  } finally {
+    setIsDeleting(false);
+  }
+};
 
   useEffect(() => {
     const loadInbox = async () => {
       try {
+        
         const isFree = userData?.membershipType === 'free';
         const isEliteBlocked = userData?.membershipType === 'elite' && !userData?.hasPaid;
 
@@ -146,6 +141,12 @@ await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
         }
 
 const json = await AsyncStorage.getItem('professionalMessages');
+  const parsed = json ? JSON.parse(json) : [];
+    console.log('🧪 Cantidad de bloques en professionalMessages:', parsed.length);
+    parsed.forEach((c, i) =>
+      console.log(`🔢 ${i + 1}. De: ${c.from} → ${c.to}, Mensajes: ${c.messages?.length || 0}`)
+    );
+    console.log('🧪 raw professionalMessages json:', json);
 if (!json) {
   setConversations([]);
   return;
@@ -156,13 +157,90 @@ const allMessages = JSON.parse(json);
 const myConversations = allMessages.filter(
   (msg) => msg.from === userData.email || msg.to === userData.email
 );
+// 🚫 Cargar blacklist con timestamp
+const blacklistKey = `deletedConversations_${normalizeEmail(userData.email)}`;
+const blacklistRaw = await AsyncStorage.getItem(blacklistKey);
+const blacklist = blacklistRaw ? JSON.parse(blacklistRaw) : [];
+const blacklistTimestamps = {};
+blacklist.forEach((item) => {
+  if (typeof item === 'object' && item.email && item.timestamp) {
+    blacklistTimestamps[normalizeEmail(item.email)] = item.timestamp;
+  }
+});
 
-const safe = (allMessages || []).map((conv) => ({
-  ...conv,
-  messages: (conv.messages || []).slice(-50), // Limita a últimos 50
-}));
-await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
+// 🔁 Filtro para eliminar conversaciones borradas solo si el mensaje es anterior al borrado
+console.log('🧾 Todas las conversaciones:', myConversations.map(c => c.user));
+const rebuiltConvs = myConversations.map((conv) => {
+  const normalizedFrom = normalizeEmail(conv.from);
+  const normalizedTo = normalizeEmail(conv.to);
+  const currentUser = normalizeEmail(userData.email);
+  const otherUser = normalizedFrom === currentUser ? normalizedTo : normalizedFrom;
 
+  return {
+    ...conv,
+    user: conv.user || otherUser,
+  };
+});
+
+const filteredConversations = rebuiltConvs.filter((conv) => {
+  const otherUser = conv.user;
+  const deletedAt = blacklistTimestamps[normalizeEmail(otherUser)] || 0;
+  const lastMsg = conv.messages?.[conv.messages.length - 1];
+
+  let msgTime = 0;
+  if (lastMsg?.timestamp?.seconds) {
+    msgTime = new Date(lastMsg.timestamp.seconds * 1000).getTime();
+  } else if (typeof lastMsg?.timestamp === 'string') {
+    msgTime = new Date(lastMsg.timestamp).getTime();
+  }
+
+  const isYouSender = normalizeEmail(lastMsg?.from || '') === normalizeEmail(userData.email);
+  const isAfterDeleted = msgTime > deletedAt;
+  const showConv = deletedAt === 0 || isAfterDeleted || conv.messages.length > 0;
+
+  console.log(`🧪 ${otherUser} - deletedAt: ${deletedAt} - msgTime: ${msgTime} - isYouSender: ${isYouSender} - mostrar: ${showConv}`);
+
+  return showConv;
+});
+
+console.log('📨 Conversaciones cargadas (sin blacklist):', myConversations.length);
+console.log('🚫 Emails eliminados:', blacklist.map(b => b.email));
+console.log('✅ Conversaciones finales:', filteredConversations.length);
+setConversations(filteredConversations);
+
+const safe = (allMessages || []).map((conv) => {
+  const otherUser = normalizeEmail(conv.from === userData.email ? conv.to : conv.from);
+  const entry = blacklist.find((b) => b.email === otherUser);
+  const deletedAt = entry?.timestamp || 0;
+
+  // 🔁 Filtrar mensajes solo si está en blacklist
+  const filteredMessages = (conv.messages || []).filter((m) => {
+    const timestamp = new Date(m.timestamp).getTime();
+    return !entry || timestamp > deletedAt;
+  });
+
+  return {
+    ...conv,
+    messages: filteredMessages.slice(-50),
+  };
+});
+
+// Guarda siempre el historial completo, no el recortado
+await AsyncStorage.setItem('professionalMessages', JSON.stringify(allMessages));
+
+// ✅ RECONSTRUIR conv.user si falta (por ejemplo, si se eliminó antes)
+const rebuilt = safe.map((conv) => {
+  const hasUser = !!conv.user;
+  const fallbackUser =
+    normalizeEmail(conv.from) === normalizeEmail(userData.email)
+      ? normalizeEmail(conv.to)
+      : normalizeEmail(conv.from);
+
+  return {
+    ...conv,
+    user: hasUser ? normalizeEmail(conv.user) : fallbackUser,
+  };
+});
 
         const profilesRaw = await AsyncStorage.getItem('allProfiles');
         const profilesProRaw = await AsyncStorage.getItem('allProfilesPro');
@@ -180,24 +258,47 @@ await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
         const allProfiles = [...profiles, ...profilesPro, ...profilesElite, localUserProfile];
         setAllProfiles(allProfiles);
 
-        const grouped = myConversations.reduce((acc, msg) => {
-          const otherUserRaw = msg.from === userData.email ? msg.to : msg.from;
-          const otherUser = normalizeEmail(otherUserRaw);
+const grouped = {};
 
-          if (!acc[otherUser]) {
-            acc[otherUser] = msg;
-          } else {
-            const currentTimestamp = new Date(acc[otherUser].messages?.at(-1)?.timestamp || 0).getTime();
-            const newTimestamp = new Date(msg.messages?.at(-1)?.timestamp || 0).getTime();
-            if (newTimestamp > currentTimestamp) {
-              acc[otherUser] = msg;
-            }
-          }
-          return acc;
-        }, {});
+rebuilt.forEach((conv) => {
+  const normalizedFrom = normalizeEmail(conv.from);
+  const normalizedTo = normalizeEmail(conv.to);
+  const currentUser = normalizeEmail(userData.email);
+  const otherUser = normalizedFrom === currentUser ? normalizedTo : normalizedFrom;
+
+  if (!grouped[otherUser]) {
+    grouped[otherUser] = {
+      ...conv,
+      messages: [...(conv.messages || [])],
+    };
+  } else {
+    // Combinar mensajes sin duplicados
+    const existingMessages = grouped[otherUser].messages || [];
+    const newMessages = conv.messages || [];
+
+    const mergedMessages = [
+      ...existingMessages,
+      ...newMessages.filter(
+        (newMsg) =>
+          !existingMessages.some((oldMsg) => oldMsg.id === newMsg.id)
+      ),
+    ];
+
+    // Ordenar por fecha
+    mergedMessages.sort((a, b) => {
+      const tA = new Date(a.timestamp).getTime();
+      const tB = new Date(b.timestamp).getTime();
+      return tA - tB;
+    });
+
+    grouped[otherUser].messages = mergedMessages;
+  }
+});
 
         const formatted = Object.entries(grouped).map(([user, messageObj]) => {
           const lastMsg = messageObj.messages?.at(-1);
+          console.log('🧩 Último mensaje:', lastMsg);
+
           const normalizedUser = normalizeEmail(user);
 
           const fallbackProfile =
@@ -220,7 +321,37 @@ await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
           return {
             user,
             lastMessage: lastMsg?.text || 'Mensaje enviado',
-            timestamp: lastMsg?.timestamp || '',
+timestamp: (() => {
+  try {
+    const raw = lastMsg?.timestamp;
+
+    if (!raw) return null;
+
+    if (typeof raw === 'string') {
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    if (raw?.seconds) {
+      const d = new Date(raw.seconds * 1000);
+      return isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    if (raw instanceof Date) {
+      return isNaN(raw.getTime()) ? null : raw.toISOString();
+    }
+
+    if (typeof raw.toDate === 'function') {
+      const d = raw.toDate();
+      return isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+})(),
+
             messages: messageObj.messages,
             lastMessageData: {
               ...lastMsg,
@@ -231,8 +362,14 @@ await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
             },
           };
         });
+        
+formatted.forEach(c =>
+  console.log('🕒 Timestamp visible:', c.timestamp, new Date(c.timestamp).toLocaleString())
+);
 
         setConversations(formatted);
+formatted.forEach(c => console.log('🕒 Timestamp visible:', c.timestamp));
+
       } catch (error) {
         console.log('❌ Error al cargar mensajes:', error);
       }
@@ -269,35 +406,46 @@ const cargarInicial = async () => {
 
     return () => unsubscribe();
   }, [userData, navigation]);
-
+const filtered = conversations.filter(
+  (conv) =>
+    conv &&
+    conv.user &&
+    normalizeEmail(conv.user) !== normalizeEmail(userData.email)
+);
+console.log('🧾 Renderizando tarjetas para:', (conversations || []).map(c => c.user));
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📥 Bandeja de Entrada</Text>
 
-        {conversations.length === 0 && allProfiles.length === 0 ? (
-          <Text style={styles.empty}>Cargando conversaciones...</Text>
-        ) : (
-          conversations.map((conv, index) => {
+{conversations.length === 0 ? (
+  <Text style={styles.empty}>Cargando conversaciones...</Text>
+) : (
+  
+  filtered.map((conv, index) => {
 
-            const normalizedUser = normalizeEmail(conv.user);
+    const normalizedUser = normalizeEmail(conv.user);
 
-            const matchedProfile = allProfiles.find((p) =>
-              normalizeEmail(p.email) === normalizedUser || normalizeEmail(p.id) === normalizedUser
-            );
+    const lastData = conv.lastMessageData?.profileAttachment || {};
 
-            const lastData = conv.lastMessageData?.profileAttachment || {};
+    const profileFromStorage = allProfiles.find((p) =>
+      normalizeEmail(p.email) === normalizedUser || normalizeEmail(p.id) === normalizedUser
+    );
 
-            const profileToUse = {
-              name: matchedProfile?.name?.trim() || lastData?.name?.trim() || conv.user,
-              agencyName: matchedProfile?.agencyName?.trim() || lastData?.agencyName?.trim() || '',
-              profilePhotoUrl:
-                matchedProfile?.profilePhotoUrl ||
-                matchedProfile?.profilePhoto ||
-                lastData?.profilePhotoUrl ||
-                lastData?.profilePhoto ||
-                null,
-            };
+const profileToUse = {
+  name:
+    profileFromStorage?.agencyName?.trim() ||
+    profileFromStorage?.name?.trim() ||
+    lastData?.agencyName?.trim() ||
+    lastData?.name?.trim() ||
+    conv.user,
+  profilePhotoUrl:
+    profileFromStorage?.profilePhotoUrl ||
+    profileFromStorage?.profilePhoto ||
+    lastData?.profilePhotoUrl ||
+    lastData?.profilePhoto ||
+    null,
+};
 
             if (!profileToUse.name || profileToUse.name.includes('@')) {
               const altProfile = allProfiles.find((p) =>
@@ -310,9 +458,9 @@ const cargarInicial = async () => {
               }
             }
 
-            const displayName = profileToUse.agencyName || profileToUse.name || conv.user;
+            const displayName = profileToUse.name || conv.user;
             const profilePhotoUrl = profileToUse.profilePhotoUrl;
-
+console.log('🕒 Timestamp visible:', conv.timestamp);
             return (
               <TouchableOpacity
                 key={index}
@@ -360,29 +508,18 @@ const cargarInicial = async () => {
                 
                     </View>
                     <Text style={styles.preview}>✉️ {conv.lastMessage}</Text>
-             <Text style={styles.timestamp}>
-  {conv.timestamp
-    ? (() => {
-        const ts = conv.timestamp;
-        const date =
-          typeof ts === 'string'
-            ? new Date(ts)
-            : ts?.seconds
-            ? new Date(ts.seconds * 1000)
-            : null;
-
-        return date && !isNaN(date.getTime())
-          ? date.toLocaleDateString('es-CL', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '';
-      })()
+<Text style={styles.timestamp}>
+  {conv.timestamp && !isNaN(new Date(conv.timestamp).getTime())
+    ? new Date(conv.timestamp).toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
     : ''}
 </Text>
+
                   </View>
 
                   <TouchableOpacity
@@ -510,7 +647,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   container: {
-    padding: 20,
+    padding: 10,
     paddingBottom: 100,
     marginTop: 25,
   },
@@ -519,7 +656,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#D8A353',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 30,
   },
   empty: {
     color: '#888',
@@ -531,7 +668,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 5,
     paddingHorizontal: 10,
-    marginBottom: 10,
+    marginBottom: 5,
     alignSelf: 'center',
     width: '100%',
     elevation: 1,

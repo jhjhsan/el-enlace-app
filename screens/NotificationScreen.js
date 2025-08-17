@@ -1,3 +1,4 @@
+// screens/NotificationScreen.js
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -6,6 +7,7 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -18,16 +20,35 @@ import { useNavigation } from '@react-navigation/native';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getApp } from 'firebase/app';
 import { useFocusEffect } from '@react-navigation/native';
-import { getFirestore, collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  getDoc,
+  writeBatch, // ✅ batch para marcar leídas
+} from 'firebase/firestore';
 import { CommonActions } from '@react-navigation/native';
+import eventBus from '../utils/eventBus';
+
+// 🔒 Cache de conversación a nivel módulo (persiste entre renders)
+// Clave no direccional: 'a@b.com|b@c.com'
+const __convExistCache = new Map();
 
 const icons = {
-  mensaje: <Ionicons name="mail" size={20} color="#D8A353" />,
-  chat: <MaterialIcons name="chat" size={20} color="#D8A353" />,
-  casting: <Ionicons name="checkmark-done" size={20} color="#D8A353" />,
-  reseña: <FontAwesome5 name="star" size={16} color="#D8A353" />,
-  terminos: <Feather name="tool" size={20} color="#D8A353" />,
-  servicio: <Ionicons name="construct" size={20} color="#D8A353" />,
+  mensaje: '📩',
+  chat: '💬',
+  casting: '🎬',
+  reseña: '⭐',
+  terminos: '⚙️',
+  servicio: '🛠️',
 };
 
 export default function NotificationScreen() {
@@ -35,33 +56,66 @@ export default function NotificationScreen() {
   const [membershipType, setMembershipType] = useState(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorNotificationId, setErrorNotificationId] = useState(null);
+  const [modalMessage, setModalMessage] = useState('');
+  const [nameByEmail, setNameByEmail] = useState({});
+
   const navigation = useNavigation();
   const db = getFirestore(getApp());
 
-  const markAllNotificationsAsRead = async (userEmail) => {
-  try {
-    const normalizedEmail = normalizeEmail(userEmail);
-    const notiRef = collection(db, `notifications/${normalizedEmail}/items`);
-    const snapshot = await getDocs(notiRef);
-
-    const updates = [];
-    snapshot.forEach((docSnap) => {
-      if (!docSnap.data().read) {
-        updates.push(updateDoc(docSnap.ref, { read: true }));
+  // ── Guardado local con debounce para no bloquear la UI ───────────────
+  let __saveTimer;
+  const queueSaveNotifications = (userId, getList) => {
+    try { clearTimeout(__saveTimer); } catch {}
+    __saveTimer = setTimeout(async () => {
+      try {
+        const list = typeof getList === 'function' ? getList() : [];
+        await AsyncStorage.setItem(`notifications_${userId}`, JSON.stringify(list));
+      } catch (e) {
+        console.warn('Persist notifications failed', e);
       }
-    });
+    }, 300);
+  };
 
-    await Promise.all(updates);
-    console.log(`✅ ${updates.length} notificaciones marcadas como leídas`);
+  // 🧹 Control de ejecución única para limpieza
+  const cleaningRef = React.useRef(false);
+  const cleanTimerRef = React.useRef(null);
 
-    const json = await AsyncStorage.getItem(`notifications_${userEmail}`);
-    let local = json ? JSON.parse(json) : [];
-    local = local.map(n => ({ ...n, read: true }));
-    await AsyncStorage.setItem(`notifications_${userEmail}`, JSON.stringify(local));
-  } catch (error) {
-    console.error('❌ Error marcando todas como leídas:', error);
-  }
-};
+  const openServiceFromNotification = (serviceId) => {
+    if (!serviceId) return;
+    navigation.navigate('ServiceDetailScreen', { serviceId });
+  };
+
+  // ✅ Marcar todas como leídas (UI optimista + batch)
+  const markAllNotificationsAsRead = async (userEmail) => {
+    try {
+      const normalizedEmail = normalizeEmail(userEmail);
+      const notiRef = collection(db, `notifications/${normalizedEmail}/items`);
+      const snapshot = await getDocs(notiRef);
+
+      // 1) UI optimista
+      setNotifications((prev) => prev.map(n => ({ ...n, read: true })));
+
+      // 2) Firestore en batch
+      const batch = writeBatch(db);
+      let count = 0;
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        if (data.read !== true) {
+          batch.update(docSnap.ref, { read: true });
+          count++;
+        }
+      });
+      if (count > 0) await batch.commit();
+
+      // 3) Persistencia local (debounced)
+      const jsonUser = await AsyncStorage.getItem('userProfile');
+      const user = jsonUser ? JSON.parse(jsonUser) : null;
+      if (user?.id) queueSaveNotifications(user.id, () => notifications);
+
+    } catch (error) {
+      console.error('❌ Error marcando todas como leídas:', error);
+    }
+  };
 
   const normalizeEmail = (email) => {
     if (!email || typeof email !== 'string') return '';
@@ -72,11 +126,65 @@ export default function NotificationScreen() {
       .replace(/@{2,}/g, '@');
   };
 
+  const toStr = (v) => {
+    if (typeof v === 'string') return v;
+    if (v == null) return '';
+    try {
+      return String(v);
+    } catch {
+      return '';
+    }
+  };
+
+  const loadNameIndex = async () => {
+    try {
+      const keys = ['allProfiles', 'allProfilesElite', 'allProfilesPro', 'allProfilesFree'];
+      const map = {};
+      for (const k of keys) {
+        const raw = await AsyncStorage.getItem(k);
+        if (!raw) continue;
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          arr.forEach(p => {
+            const em = normalizeEmail(p?.email);
+            if (em) {
+              map[em] =
+                p?.name ||
+                p?.agencyName ||
+                p?.displayName ||
+                p?.fullName ||
+                p?.companyName ||
+                em;
+            }
+          });
+        }
+      }
+      setNameByEmail(map);
+    } catch (_) { /* silencioso */ }
+  };
+
   const checkConversationExists = async (senderEmail, userEmail) => {
     try {
       const normalizedUser = normalizeEmail(userEmail);
       const normalizedSender = normalizeEmail(senderEmail);
-      console.log(`🔍 Verificando conversación para: ${normalizedSender} con usuario: ${normalizedUser}`);
+
+      // Cache no direccional: el par A-B es igual a B-A
+      const [a, b] = [normalizedUser, normalizedSender].sort();
+      const cacheKey = `${a}|${b}`;
+      if (__convExistCache.has(cacheKey)) {
+        return __convExistCache.get(cacheKey);
+      }
+
+      // 🔁 Si está en blacklist, lo quitamos (recibió nuevo mensaje)
+      const blacklistKey = `deletedConversations_${normalizedUser}`;
+      const blacklistJson = await AsyncStorage.getItem(blacklistKey);
+      let blacklist = blacklistJson ? JSON.parse(blacklistJson) : [];
+
+      const wasBlacklisted = blacklist.find((item) => item.email === normalizedSender);
+      if (wasBlacklisted) {
+        blacklist = blacklist.filter((item) => item.email !== normalizedSender);
+        await AsyncStorage.setItem(blacklistKey, JSON.stringify(blacklist));
+      }
 
       const q = query(
         collection(db, 'mensajes'),
@@ -85,7 +193,9 @@ export default function NotificationScreen() {
       );
       const snapshot = await getDocs(q);
       const existsInFirestore = !snapshot.empty;
-      console.log(`🔍 Conversación en Firestore para ${normalizedSender}: ${existsInFirestore ? 'encontrada' : 'no encontrada'}`);
+
+      // guarda en cache
+      __convExistCache.set(cacheKey, existsInFirestore);
 
       if (existsInFirestore) {
         const json = await AsyncStorage.getItem('professionalMessages');
@@ -116,7 +226,6 @@ export default function NotificationScreen() {
             messages: (conv.messages || []).slice(-50),
           }));
           await AsyncStorage.setItem('professionalMessages', JSON.stringify(safe));
-          console.log('✅ AsyncStorage actualizado con mensajes de Firestore');
         }
         return true;
       }
@@ -146,15 +255,13 @@ export default function NotificationScreen() {
               const bTime = b.timestamp?.seconds || 0;
               return bTime - aTime;
             })
-            .slice(0, 50)
+            .slice(0, 60)
             .reverse();
 
           await AsyncStorage.setItem('professionalMessages', JSON.stringify(safeMessages));
-          console.log('✅ Mensajes guardados localmente sin duplicados');
         } catch (error) {
           console.error('❌ Error guardando mensajes:', error);
         }
-        console.log('🗑️ Conversación eliminada de AsyncStorage:', normalizedSender);
       }
       return false;
     } catch (error) {
@@ -165,36 +272,55 @@ export default function NotificationScreen() {
 
   const cleanObsoleteNotifications = async (userEmail) => {
     try {
+      if (cleaningRef.current) return; // ya hay una limpieza corriendo
+      cleaningRef.current = true;
+
       const normalizedEmail = normalizeEmail(userEmail);
-      const notifRef = collection(db, `notifications/${normalizedEmail}/items`);
-      const snapshot = await getDocs(notifRef);
+      const notiRef = collection(db, `notifications/${normalizedEmail}/items`);
+      const snapshot = await getDocs(notiRef);
+
+      // Procesa en tandas para no congelar la UI
+      const batchSize = 8;
+      const docs = snapshot.docs.slice(0, batchSize);
       const deletions = [];
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
+
+      for (const docSnap of docs) {
+        const data = docSnap.data();
         if (data.type === 'mensaje' && data.sender) {
           const conversationExists = await checkConversationExists(data.sender, userEmail);
           if (!conversationExists) {
-            deletions.push(deleteDoc(doc.ref));
-            console.log(`🗑️ Notificación obsoleta eliminada: ${doc.id}`);
+            deletions.push(deleteDoc(docSnap.ref));
           }
         }
       }
       await Promise.all(deletions);
-      console.log(`✅ Eliminadas ${deletions.length} notificaciones obsoletas`);
+
+      // Limpia notificaciones locales obsoletas (usando el snapshot completo)
+      let local = await AsyncStorage.getItem(`notifications_${userEmail}`);
+      let localNotis = local ? JSON.parse(local) : [];
+      const remaining = snapshot.docs.map(d => (d.data() || {}).id);
+      localNotis = localNotis.filter(n => remaining.includes(n.id));
+      await AsyncStorage.setItem(`notifications_${userEmail}`, JSON.stringify(localNotis));
+
+      // Si quedan más por procesar, agenda una sola siguiente tanda
+      if (snapshot.docs.length > batchSize) {
+        if (cleanTimerRef.current) clearTimeout(cleanTimerRef.current);
+        cleanTimerRef.current = setTimeout(() => cleanObsoleteNotifications(userEmail), 500);
+      }
     } catch (error) {
       console.error('❌ Error limpiando notificaciones obsoletas:', error);
+    } finally {
+      cleaningRef.current = false;
     }
   };
 
   const debugAsyncStorage = async () => {
     try {
       const json = await AsyncStorage.getItem('professionalMessages');
-      console.log('🔍 Contenido de professionalMessages:', JSON.stringify(json ? JSON.parse(json) : [], null, 2));
       const userJson = await AsyncStorage.getItem('userProfile');
       const user = userJson ? JSON.parse(userJson) : null;
       if (user) {
-        const notifJson = await AsyncStorage.getItem(`notifications_${user.id}`);
-        console.log('🔍 Contenido de notifications:', JSON.stringify(notifJson ? JSON.parse(notifJson) : [], null, 2));
+        await AsyncStorage.getItem(`notifications_${user.id}`); // lectura para inspección manual si la necesitas
       }
     } catch (error) {
       console.error('❌ Error inspeccionando AsyncStorage:', error);
@@ -202,7 +328,6 @@ export default function NotificationScreen() {
   };
 
   const fetchUser = async () => {
-    console.log('📥 Ejecutando fetchUser en NotificationScreen');
     try {
       const json = await AsyncStorage.getItem('userProfile');
       const user = json ? JSON.parse(json) : null;
@@ -212,11 +337,10 @@ export default function NotificationScreen() {
       }
 
       setMembershipType(user?.membershipType || 'free');
+      await loadNameIndex();
       await debugAsyncStorage();
-      await cleanObsoleteNotifications(user.email); // Limpiar notificaciones obsoletas
 
       const normalizedEmail = normalizeEmail(user.email);
-      console.log('🧪 Escuchando en:', `notifications/${normalizedEmail}/items`);
 
       const notifKey = `notifications_${user.id}`;
       const pendingKey = `pendingNotifications_${normalizedEmail}`;
@@ -230,67 +354,80 @@ export default function NotificationScreen() {
         message: p.message,
       }));
 
-      const notiQuery = query(
-        collection(db, `notifications/${normalizedEmail}/items`),
-        orderBy('timestamp', 'desc'),
-        limit(20)
-      );
-      console.log('📡 Esperando notificaciones en Firestore...');
-      const unsubscribe = onSnapshot(notiQuery, async (snapshot) => {
-        console.log('📡 Snapshot activado. Nuevas notificaciones:', snapshot.size);
-        snapshot.docs.forEach((doc) => {
-          console.log(`🔍 Doc ID: ${doc.id}, Data ID: ${doc.data().id}, Data:`, doc.data());
+      const itemsRef = collection(db, `notifications/${normalizedEmail}/items`);
+
+      const unsubscribe = onSnapshot(itemsRef, async (snapshot) => {
+        const blacklistKey = `deletedNotificationIds_${user.id}`;
+        const blacklistJson = await AsyncStorage.getItem(blacklistKey);
+        const blacklist = blacklistJson ? JSON.parse(blacklistJson) : [];
+
+        const fireDocs = snapshot.docs
+          .map((doc) => {
+            const data = doc.data() || {};
+            const ts =
+              (data.timestamp && typeof data.timestamp.toDate === 'function'
+                ? data.timestamp.toDate()
+                : null) ||
+              (data.createdAtMs ? new Date(Number(data.createdAtMs)) : null) ||
+              new Date(); // fallback si no hay timestamp
+
+            const msgTitle = toStr(data.title || '🔔');
+            const msgBody  = toStr(data.body ?? data.message ?? '');
+
+            return {
+              id: data.id || `fire_${doc.id}`,      // ID estable
+              firebaseId: doc.id,
+              icon: data.type || 'terminos',
+              type: data.type,
+              chatId: data.chatId,
+              castingId: data.castingId,
+              serviceId: data.serviceId,
+              sender: data.sender || null,
+              date: ts.toISOString(),
+              timestamp: ts,
+              message: `${msgTitle}${msgBody ? ': ' + msgBody : ''}`,
+              read: data.read === true,
+            };
+          })
+          // Últimos 10 días
+          .filter((notif) => {
+            const now = new Date();
+            const diffMs = now - notif.timestamp;
+            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+            return diffDays <= 10;
+          })
+          // Respeta blacklist
+          .filter((notif) => !blacklist.includes(notif.id));
+
+        // Preserva "read" local
+        const prevJson = await AsyncStorage.getItem(`notifications_${user.id}`);
+        const prevNotis = prevJson ? JSON.parse(prevJson) : [];
+        const mergedFireDocs = fireDocs.map((n) => {
+          const old = prevNotis.find((p) => p.id === n.id);
+          return old ? { ...n, read: old.read === true } : n;
         });
 
-const fireDocs = snapshot.docs.map((doc) => {
-  const data = doc.data();
-  const safeId = data.id || `fire_0_${doc.id}`; // ✅ Usa el ID del documento si falta el campo `id`
+        // Ordena por fecha desc y limita
+        const top = mergedFireDocs
+          .sort((a, b) => new Date(b.date) - new Date(a.date))
+          .slice(0, 60);
 
-  return {
-    id: safeId,
-    icon: data.type || 'terminos',
-    type: data.type,
-    chatId: data.chatId,
-    castingId: data.castingId,
-    serviceId: data.serviceId,
-    sender: data.sender || null,
-    date: data.timestamp?.toDate()?.toISOString() || new Date().toISOString(),
-    message: `${data.title || '🔔'}: ${data.body || ''}`,
-    read: data.read === true,
-  };
-});
+        await AsyncStorage.setItem(`notifications_${user.id}`, JSON.stringify(top));
 
-        let prevJson = await AsyncStorage.getItem(notifKey);
-        let prevNotis = prevJson ? JSON.parse(prevJson) : [];
-        let mergedFireDocs = fireDocs.map(newNoti => {
-          const old = prevNotis.find(n => n.id === newNoti.id);
-          return old ? { ...newNoti, read: old.read === true } : newNoti;
-        });
-
-        await AsyncStorage.setItem(notifKey, JSON.stringify(mergedFireDocs));
-
-        const seen = new Set();
-        const merged = [...mergedFireDocs, ...enrichedPending].filter(n => {
-          if (seen.has(n.id)) return false;
-          seen.add(n.id);
-          return true;
-        });
-
-      setNotifications((prevNotis) => {
-  const all = [...prevNotis, ...merged];
-  const seen = new Set();
-  const unique = all.filter(n => {
-    if (seen.has(n.id)) return false;
-    seen.add(n.id);
-    return true;
-  });
-  return unique.sort((a, b) => new Date(b.date) - new Date(a.date));
-});
-
-        console.log('✅ Notificaciones seteadas:', merged.length);
+        // (opcional) mezclar enrichedPending si lo usas
+        setNotifications(top);
+        eventBus.emit('notificationsUpdated');
       }, (error) => {
         console.error('❌ Error en onSnapshot:', error);
       });
+
+      // ⚡ Limpieza asíncrona (single timer)
+      if (cleanTimerRef.current) clearTimeout(cleanTimerRef.current);
+      cleanTimerRef.current = setTimeout(() => {
+        cleanObsoleteNotifications(user.email).catch((e) =>
+          console.warn('cleanObsoleteNotifications (async) failed', e)
+        );
+      }, 0);
 
       if (user.trialEndsAt && !user.hasPaid) {
         const trialEndDate = new Date(user.trialEndsAt);
@@ -320,7 +457,6 @@ const fireDocs = snapshot.docs.map((doc) => {
               const sendEmail = httpsCallable(functions, 'sendTrialAlertEmail');
               await sendEmail({ email: user.email });
               await AsyncStorage.setItem(sentKey, 'true');
-              console.log('📧 Alerta de correo enviada');
             } catch (error) {
               console.error('❌ Error al enviar correo:', error);
             }
@@ -334,167 +470,171 @@ const fireDocs = snapshot.docs.map((doc) => {
     }
   };
 
-useFocusEffect(
-  useCallback(() => {
-    console.log('📥 Entrando a NotificationScreen (useFocusEffect)');
+  useFocusEffect(
+    useCallback(() => {
+      eventBus.emit('notificationsUpdated'); // 🔥 Fuerza la recarga del contador
+    }, [])
+  );
 
-    let unsubscribeSnapshot = null;
+  useFocusEffect(
+    useCallback(() => {
+      let unsubscribeSnapshot = null;
 
-    const run = async () => {
+      const run = async () => {
+        const json = await AsyncStorage.getItem('userProfile');
+        const user = json ? JSON.parse(json) : null;
+        if (!user || !user.email) return;
+
+        unsubscribeSnapshot = await fetchUser();
+      };
+
+      run();
+
+      return () => {
+        if (typeof unsubscribeSnapshot === 'function') {
+          unsubscribeSnapshot();
+        }
+      };
+    }, [])
+  );
+
+  // ✅ Marcar una notificación leída (optimista + debounce)
+  const markNotificationRead = async (item, opts = {}) => {
+    try {
       const json = await AsyncStorage.getItem('userProfile');
       const user = json ? JSON.parse(json) : null;
-      if (!user || !user.email) return;
+      if (!user) return;
 
-      
-      unsubscribeSnapshot = await fetchUser();
-    };
+      // 1) UI optimista
+      setNotifications((prev) =>
+        prev.map(n =>
+          n.id === item.id
+            ? { ...n, read: true, senderName: n.senderName || opts.optimisticName || n.senderName }
+            : n
+        )
+      );
+      eventBus.emit('notificationsUpdated');
 
-    run();
-
-    return () => {
-      if (typeof unsubscribeSnapshot === 'function') {
-        unsubscribeSnapshot();
+      // 2) Firestore (no bloquear)
+      if (item?.firebaseId) {
+        updateDoc(
+          doc(db, 'notifications', normalizeEmail(user.email), 'items', item.firebaseId),
+          { read: true }
+        ).catch((e) => console.warn('updateDoc(read) failed', e));
       }
-    };
-  }, [])
-);
 
+      // 3) Persistencia local (debounced)
+      if (user?.id) queueSaveNotifications(user.id, () => notifications);
+
+    } catch (e) {
+      console.warn('markNotificationRead error', e);
+    }
+  };
 
   const renderItem = ({ item }) => {
-    console.log('🎯 Renderizando tarjeta:', item);
+    const isRead = item?.read === true || item?.read === 'true';
 
-    const isRead = item.read === true || item.read === 'true';
+    // 🔹 Nombre a mostrar
+    const senderEmail = item?.sender ? normalizeEmail(item.sender) : '';
+    const displayName =
+      toStr(item?.displayName) ||
+      toStr(item?.senderName) ||
+      (senderEmail && nameByEmail[senderEmail]) ||
+      toStr(item?.senderProfile?.name) ||
+      (item?.title && item.title.includes('de ')
+        ? toStr(item.title.split('de ')[1]?.split(':')[0]).trim()
+        : '') ||
+      toStr(item?.sender) ||
+      'Usuario';
+
+    const bodyText =
+      item?.body ??
+      (item?.message && item.message.includes(':')
+        ? toStr(item.message.split(':').slice(1).join(':')).trim()
+        : toStr(item?.message));
+
+    let safeDate = '';
+    try {
+      safeDate = new Date(item?.date || Date.now()).toLocaleString('es-CL');
+    } catch {
+      safeDate = '';
+    }
+
+    const tipoLabel =
+      item?.type === 'casting'
+        ? 'Casting'
+        : item?.type === 'servicio'
+        ? 'Servicio'
+        : 'Mensaje';
 
     return (
       <TouchableOpacity
-      style={[
-  styles.card,
-  {
-    backgroundColor: isRead ? '#1a1a1a' : '#333',
-
-  }
-]}
-
+        style={[
+          styles.card,
+          { backgroundColor: isRead ? '#1a1a1a' : '#333' }
+        ]}
         onPress={async () => {
-          try {
-            const json = await AsyncStorage.getItem('userProfile');
-            const user = json ? JSON.parse(json) : null;
-            if (!user) {
-              console.error('❌ Usuario no encontrado');
+          const json = await AsyncStorage.getItem('userProfile');
+          const user = json ? JSON.parse(json) : null;
+          if (!user) return;
+
+          // MENSAJE
+          if (item?.type === 'mensaje' && item?.sender && item.sender !== user.email) {
+            await markNotificationRead(item, { optimisticName: displayName });
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: 'MessageDetail',
+                params: {
+                  contactEmail: item.sender,
+                  contactName: displayName,
+                  refreshFromFirestore: true
+                },
+              })
+            );
+            return;
+          }
+
+          // SERVICIO
+          if (item?.type === 'servicio') {
+            await markNotificationRead(item, { optimisticName: displayName });
+            openServiceFromNotification(item.serviceId);
+            return;
+          }
+
+          // CASTING
+          if (item?.type === 'casting') {
+            if (!item?.castingId) {
+              setModalMessage('Este casting ya no está disponible.');
+              setShowErrorModal(true);
+              setErrorNotificationId(item?.firebaseId || null);
               return;
             }
-
-            if (item.type === 'mensaje' && item.sender && item.sender !== user.email) {
-              const conversationExists = await checkConversationExists(item.sender, user.email);
-              if (!conversationExists) {
-                setErrorNotificationId(item.id);
-                setShowErrorModal(true);
-                return;
-              }
-
-              // Marcar como leída
-   if (item.type === 'mensaje' && item.sender && item.sender !== user.email) {
-  const conversationExists = await checkConversationExists(item.sender, user.email);
-  if (!conversationExists) {
-    setErrorNotificationId(item.id);
-    setShowErrorModal(true);
-    return;
-  }
-
-  // ✅ Marcar como leída en Firestore (usando el ID real)
-  if (item.firebaseId) {
-    const docRef = doc(
-      db,
-      'notifications',
-      normalizeEmail(user.email),
-      'items',
-      item.firebaseId
-    );
-    try {
-      await updateDoc(docRef, { read: true });
-      console.log('📝 Notificación marcada como leída en Firestore:', item.firebaseId);
-    } catch (err) {
-      console.error('❌ Error marcando como leída:', err);
-    }
-  }
-
-  // ✅ Marcar como leída localmente
-  const stored = await AsyncStorage.getItem(`notifications_${user.id}`);
-  const local = stored ? JSON.parse(stored) : [];
-  const updated = local.map(n =>
-    n.id === item.id ? { ...n, read: true } : n
-  );
-  await AsyncStorage.setItem(`notifications_${user.id}`, JSON.stringify(updated));
-  setNotifications(prev =>
-    prev.map(n => (n.id === item.id ? { ...n, read: true } : n))
-  );
-
-  // ✅ Navegar a la conversación
-  navigation.dispatch(
-    CommonActions.navigate({
-      name: 'MessageDetail',
-      params: {
-        contactEmail: item.sender,
-        refreshFromFirestore: true,
-      },
-    })
-  );
-}
-
-            } else if (item.type === 'servicio' && item.serviceId) {
-              navigation.navigate('ServiceDetailScreen', { serviceId: item.serviceId });
-            } else if (item.type === 'casting' && item.castingId) {
-              const allCastings = await AsyncStorage.getItem('posts');
-              const castings = allCastings ? JSON.parse(allCastings) : [];
-              const casting = castings.find(c => c.id === item.castingId);
-              if (casting) {
-                navigation.navigate('CastingDetail', { casting });
-              } else {
-                Alert.alert('Casting no encontrado', 'Este casting ya no está disponible.');
-              }
-            }
-          } catch (err) {
-            console.error('❌ Error marcando como leída o navegando:', err);
+            await markNotificationRead(item, { optimisticName: displayName });
+            navigation.navigate('CastingDetail', { castingId: item.castingId });
+            return;
           }
         }}
       >
-        <Ionicons
-          name={
-            item.type === 'mensaje'
-              ? isRead ? 'mail-open' : 'mail'
-              : item.type === 'casting'
-              ? 'megaphone'
-              : item.type === 'servicio'
-              ? 'briefcase'
-              : 'notifications'
-          }
-          size={24}
-          color="#D8A353"
-          style={{ marginRight: 12 }}
-        />
+        <Text style={{ fontSize: 22, marginRight: 12 }}>
+          {icons[item?.type] || '🔔'}
+        </Text>
 
-<View style={{ flex: 1, minHeight: 60 }}>
-  {/* Línea 1: título con nombre */}
-  {item.message?.includes('de ') ? (
-    <Text style={styles.message} numberOfLines={1}>
-      Nuevo mensaje de: {item.message.split('de ')[1]?.split(':')[0]?.trim()}
-    </Text>
-  ) : (
-    <Text style={styles.message} numberOfLines={1}>
-      Nuevo mensaje
-    </Text>
-  )}
+        <View style={{ flex: 1, minHeight: 60 }}>
+          {/* Título */}
+          <Text style={styles.message} numberOfLines={1}>
+            {item?.type === 'mensaje'
+              ? `Nuevo mensaje de: ${displayName}`
+              : tipoLabel}
+          </Text>
 
-  {/* Línea 2: el mensaje */}
-  <Text style={styles.message} numberOfLines={2}>
-    {item.message?.split(':').slice(1).join(':').trim()}
-  </Text>
+          {/* Cuerpo */}
+          <Text style={styles.message} numberOfLines={2}>
+            {bodyText}
+          </Text>
 
-  {/* Línea 3: fecha */}
-  <Text style={styles.time}>
-    {new Date(item.date).toLocaleString('es-CL')}
-  </Text>
-</View>
+          {/* Fecha */}
+          <Text style={styles.time}>{safeDate}</Text>
+        </View>
 
         {!isRead && (
           <View style={styles.badgeNuevo}>
@@ -504,12 +644,6 @@ useFocusEffect(
       </TouchableOpacity>
     );
   };
-
-  console.log('🧾 Renderizando notificaciones:', notifications.length);
-  notifications.forEach((n, i) => {
-    console.log(`🔹 Noti ${i + 1}: ID=${n.id}, Type=${n.type}, Sender=${n.sender}, Message=${n.message}`);
-  });
-
 
   return (
     <View style={styles.container}>
@@ -522,8 +656,14 @@ useFocusEffect(
         <FlatList
           data={notifications}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
+          // 🔧 Optimización de rendimiento para listas grandes
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews
+          getItemLayout={(_, index) => ({ length: 74, offset: 74 * index, index })} // alto aprox de la card
         />
       )}
       <Modal visible={showErrorModal} transparent animationType="slide">
@@ -531,8 +671,9 @@ useFocusEffect(
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>❌ Error</Text>
             <Text style={styles.modalText}>
-              No se pudo cargar la conversación. Es posible que haya sido eliminada.
+              {toStr(modalMessage || 'No se pudo abrir esta notificación. Puede que ya no esté disponible.')}
             </Text>
+
             <TouchableOpacity
               style={styles.modalButton}
               onPress={async () => {
@@ -541,16 +682,8 @@ useFocusEffect(
                   const user = json ? JSON.parse(json) : null;
                   if (!user) return;
 
-                  const stored = await AsyncStorage.getItem(`notifications_${user.id}`);
-                  let local = stored ? JSON.parse(stored) : [];
-                  local = local.filter(n => n.id !== errorNotificationId);
-                  await AsyncStorage.setItem(`notifications_${user.id}`, JSON.stringify(local));
-                  console.log('📦 Notificaciones Firestore procesadas:', mergedFireDocs);
-
-                  setNotifications(local);
-                  console.log('🗑️ Notificación eliminada localmente:', errorNotificationId);
-
-                  if (errorNotificationId?.startsWith('fire_0_')) {
+                  // Si tenemos un firebaseId, elimina ese doc (no el id "fire_*")
+                  if (errorNotificationId) {
                     const docRef = doc(
                       db,
                       'notifications',
@@ -558,8 +691,11 @@ useFocusEffect(
                       'items',
                       errorNotificationId
                     );
-                    await deleteDoc(docRef);
-                    console.log('🗑️ Notificación eliminada de Firestore:', errorNotificationId);
+                    try {
+                      await deleteDoc(docRef);
+                    } catch (e) {
+                      // Puede no existir, no rompemos el flujo
+                    }
                   }
                 } catch (error) {
                   console.error('❌ Error al eliminar notificación:', error);

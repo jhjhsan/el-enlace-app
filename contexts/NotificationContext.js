@@ -1,44 +1,39 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onSnapshot, collection } from 'firebase/firestore';
-import { db } from '../src/firebase/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import normalizeEmail from '../utils/normalizeEmail'; // asegúrate de tener esta función
 
 const NotificationContext = createContext();
 
-export const NotificationProvider = ({ children }) => {
+export function NotificationProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const recalculateUnreadCount = async (userId) => {
+    if (!userId) return;
+    const stored = await AsyncStorage.getItem(`notifications_${userId}`);
+    const notifications = stored ? JSON.parse(stored) : [];
+    const unread = notifications.filter(n => n.read === false);
+    setUnreadCount(unread.length);
+    console.log('[NotificationContext] 🔄 Unread count recalculado:', unread.length);
+  };
+
+  // Si quieres que se calcule al entrar la app
   useEffect(() => {
-    let unsubscribe;
-
-    const startListening = async () => {
-      const json = await AsyncStorage.getItem('userProfile');
-      const user = json ? JSON.parse(json) : null;
-      if (!user || !user.email) return;
-
-      const email = normalizeEmail(user.email);
-      const ref = collection(db, `notifications/${email}/items`);
-
- unsubscribe = onSnapshot(ref, (snapshot) => {
-  const count = snapshot.docs.filter(doc => doc.data().read !== true).length;
-  console.log('🔔 Unread count actualizado:', count);
-  setUnreadCount(count);
-});
-    };
-
-    startListening();
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+    (async () => {
+      const userJson = await AsyncStorage.getItem('userProfile');
+      const user = userJson ? JSON.parse(userJson) : null;
+      if (user?.id) await recalculateUnreadCount(user.id);
+    })();
   }, []);
 
   return (
-    <NotificationContext.Provider value={{ unreadCount }}>
+    <NotificationContext.Provider value={{
+      unreadCount,
+      recalculateUnreadCount, // 👈 EXPORTA LA FUNCIÓN!
+    }}>
       {children}
     </NotificationContext.Provider>
   );
-};
+}
 
-export const useNotification = () => useContext(NotificationContext);
+export function useNotification() {
+  return useContext(NotificationContext);
+}

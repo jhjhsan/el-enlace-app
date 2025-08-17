@@ -1,17 +1,17 @@
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../src/firebase/firebaseConfig';
 
 // 🔄 Cuenta cuántos servicios ha publicado un usuario esta semana en Firestore
 export const getWeeklyServicePostCountFromFirestore = async (email) => {
   try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgoTs = Timestamp.fromMillis(sevenDaysAgoMs);
 
     const servicesRef = collection(db, 'services');
     const q = query(
       servicesRef,
-      where('creatorEmail', '==', email),
-      where('createdAt', '>=', sevenDaysAgo.toISOString())
+      where('creatorEmail', '==', email.trim().toLowerCase()),
+      where('createdAtTS', '>=', sevenDaysAgoTs) // usamos el campo Timestamp
     );
 
     const snapshot = await getDocs(q);
@@ -24,7 +24,9 @@ export const getWeeklyServicePostCountFromFirestore = async (email) => {
 
 // 🧠 Valida si el usuario puede publicar un nuevo servicio esta semana
 export const canPostNewService = async (email, membershipType) => {
-  if (membershipType === 'pro') return true; // Pro puede publicar ilimitadamente
+  if (membershipType === 'pro' || membershipType === 'elite') {
+    return true; // Pro y Elite publican ilimitadamente
+  }
 
   const count = await getWeeklyServicePostCountFromFirestore(email);
   return count < 1; // Free solo 1 por semana

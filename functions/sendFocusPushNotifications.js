@@ -11,62 +11,110 @@ const messaging = admin.messaging();
 exports.sendFocusPushNotifications = functions.firestore
   .document('focusGroups/{focusId}')
   .onCreate(async (snap, context) => {
-    console.log('Inicializando...');
-    const focusData = snap.data();
-    const { title, dateTime, payment, paymentMethod, authorEmail } = focusData;
-    const focusId = context.params.focusId;
+    try {
+      const focusData = snap.data() || {};
+      const focusId = context.params.focusId;
 
-    const profileCollections = ['profiles', 'profilesPro', 'profilesElite'];
-    const notifications = [];
-    const tokensMap = new Map();
+      const {
+        title = 'Nuevo focus',
+        dateTime = '',
+        payment = '',
+        paymentMethod = '',
+        authorEmail = null,
+      } = focusData;
 
-    for (const collection of profileCollections) {
-      const snapshot = await db.collection(collection).get();
-      snapshot.forEach(doc => {
-        const user = doc.data();
-        if (user.expoPushToken) tokensMap.set(doc.id, user.expoPushToken);
-      });
-    }
+      // email del creador normalizado
+      const authorEmailLower = authorEmail ? String(authorEmail).toLowerCase() : null;
 
-    if (!tokensMap.size) return { success: false, message: 'No tokens found.' };
+      const profileCollections = ['profiles', 'profilesPro', 'profilesElite'];
 
-    notifications.push(...Array.from(tokensMap.keys()).map(email => ({
-      recipientEmail: email,
-      data: {
-        type: 'focus',
-        title: `🎯 Nuevo focus: ${title}`,
-        body: `Participa el ${dateTime}. Pago: ${payment} (${paymentMethod})`,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        focusId,
-      }
-    })));
+      // deduplicación por email
+      const recipientEmails = new Set();
+      const tokensByEmail = new Map();
 
-    let successCount = 0;
-    for (const noti of notifications) {
-      try {
-        await messaging.send({
-          token: tokensMap.get(noti.recipientEmail),
-          notification: { title: noti.data.title, body: noti.data.body },
-          data: { type: noti.data.type, focusId: noti.data.focusId },
-          android: { priority: 'high', notification: { sound: 'default', channelId: 'default' } },
-          apns: { payload: { aps: { sound: 'default', contentAvailable: true } } },
+      // recolectar tokens
+      for (const colName of profileCollections) {
+        const snapshot = await db.collection(colName).get();
+        snapshot.forEach(doc => {
+          const email = String(doc.id || '').toLowerCase();
+          const user = doc.data() || {};
+
+          // excluir creador
+          if (authorEmailLower && email === authorEmailLower) return;
+
+          // requiere token
+          if (!user.expoPushToken) return;
+
+          recipientEmails.add(email);
+          tokensByEmail.set(email, user.expoPushToken); // último token conocido
         });
-        successCount++;
-      } catch (e) {
-        console.warn(`❌ Error a ${noti.recipientEmail}:`, e.message);
       }
+
+      if (recipientEmails.size === 0) {
+        console.log('🔕 No hay destinatarios (o solo el autor y fue excluido).');
+        return { success: false, message: 'No recipients' };
+      }
+
+      const notifTitle = `🎯 ${title}`;
+      const notifBody = `Participa el ${dateTime}. Pago: ${payment} (${paymentMethod})`;
+      const nowServerTs = admin.firestore.FieldValue.serverTimestamp();
+
+      // enviar push
+      let successCount = 0;
+      for (const email of recipientEmails) {
+        const token = tokensByEmail.get(email);
+        if (!token) continue;
+
+        const message = {
+          token,
+          notification: {
+            title: notifTitle,
+            body: notifBody,
+          },
+          data: {
+            type: 'focus',
+            focusId,
+          },
+          android: {
+            priority: 'high',
+            notification: { sound: 'default', channelId: 'default' },
+          },
+          apns: {
+            payload: { aps: { sound: 'default', contentAvailable: true } },
+          },
+        };
+
+        try {
+          await messaging.send(message);
+          successCount++;
+        } catch (e) {
+          console.warn(`❌ Error enviando a ${email}:`, e.message);
+        }
+      }
+
+      console.log(`✅ Notificaciones enviadas (únicas): ${successCount}`);
+
+      // guardar en Firestore (una por destinatario)
+      const batch = db.batch();
+      for (const email of recipientEmails) {
+        const ref = db.collection('notifications').doc(email).collection('items').doc();
+        batch.set(ref, {
+          recipient: email,
+          type: 'focus',
+          title: notifTitle,
+          body: notifBody,
+          timestamp: nowServerTs,
+          focusId,
+          read: false,
+          sender: authorEmailLower || 'sistema',
+        });
+      }
+      await batch.commit();
+      console.log('📝 Notificaciones guardadas en Firestore');
+
+      return { success: true, sent: successCount };
+    } catch (error) {
+      console.error('❌ Error en sendFocusPushNotifications:', error);
+      return { success: false, error: error.message };
     }
-
-    console.log(`✅ Enviadas: ${successCount}`);
-    const batch = db.batch();
-    notifications.forEach(noti => {
-      batch.set(db.collection('notifications').doc(noti.recipientEmail).collection('items').doc(), {
-        recipient: noti.recipientEmail, type: 'focus', title: noti.data.title, body: noti.data.body,
-        timestamp: noti.data.timestamp, focusId: noti.data.focusId, read: false, sender: authorEmail || 'sistema',
-      });
-    });
-    await batch.commit();
-    console.log('📝 Guardadas en Firestore');
-
-    return { success: true, sent: successCount };
   });

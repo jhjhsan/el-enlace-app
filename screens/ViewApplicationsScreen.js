@@ -6,51 +6,129 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Modal,
-  TextInput,
+  ActivityIndicator,
 } from 'react-native';
-import { Video } from 'expo-av'; // ✅
+import { Video } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
-import { exportApplicationsToPDF } from '../utils/exportUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../contexts/UserContext';
-import { syncApplicationToFirestore } from '../src/firebase/helpers/syncApplicationToFirestore';
-import * as MailComposer from 'expo-mail-composer';
+import { db } from '../src/firebase/firebaseConfig';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import {
+  exportApplicationsToPDF,
+  exportApplicationsToExcel,
+  EXPORT_STATUS,
+} from '../utils/exportUtils';
+
+// Helpers
+const normalizeEmail = (email = '') =>
+  email.toLowerCase().trim().replace(/\s+/g, '').replace(/[^a-z0-9@._\-+]/gi, '');
+
+const toMs = (t) => {
+  if (typeof t === 'number') return t;
+  if (t?.seconds) return t.seconds * 1000; // Firestore Timestamp
+  const n = Date.parse(t || '');
+  return isNaN(n) ? 0 : n;
+};
 
 export default function ViewApplicationsScreen({ route }) {
-  const { castingId } = route.params || {};
+  const { castingId, castingTitle } = route.params || {};
   const [applications, setApplications] = useState([]);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [emailToSend, setEmailToSend] = useState('');
   const navigation = useNavigation();
   const { userData } = useUser();
 
+  // Estados de carga para los botones
+  const [loadingPDF, setLoadingPDF] = useState(false);
+  const [loadingExcel, setLoadingExcel] = useState(false);
+
+  // Callback que reciben las funciones de exportación
+  const onStatus = (type, phase) => {
+    if (type === 'pdf' || type === 'pdf_selected') {
+      setLoadingPDF(phase === EXPORT_STATUS.START);
+    }
+    if (type === 'excel' || type === 'excel_selected') {
+      setLoadingExcel(phase === EXPORT_STATUS.START);
+    }
+  };
+
+  // Solo Elite puede ver esta pantalla
   useEffect(() => {
     if (userData?.membershipType !== 'elite') {
       navigation.goBack();
     }
   }, [userData]);
 
+  // 1) Carga caché local (si existe) para abrir rápido/offline
   useEffect(() => {
-    const loadApplications = async () => {
+    const loadCache = async () => {
       try {
-        const data = await AsyncStorage.getItem('applications');
-        const parsed = data ? JSON.parse(data) : [];
-        const filtered = parsed.filter(app => app.castingId === castingId);
+        const raw = await AsyncStorage.getItem('applications');
+        const parsed = raw ? JSON.parse(raw) : [];
+        const filtered = parsed
+          .filter((app) => app.castingId === castingId)
+          .map((a) => ({ ...a }));
+        filtered.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
         setApplications(filtered);
-
-        for (const app of filtered) {
-          await syncApplicationToFirestore(app);
-        }
       } catch (error) {
-        console.error('Error al cargar postulaciones:', error);
+        console.error('Error al cargar postulaciones (cache):', error);
       }
     };
+    const unsub = navigation.addListener('focus', loadCache);
+    return unsub;
+  }, [navigation, castingId]);
 
-    const unsubscribe = navigation.addListener('focus', loadApplications);
-    return unsubscribe;
-  }, [navigation]);
+  // 2) Escucha Firestore (fuente de verdad)
+  useEffect(() => {
+    if (!castingId) return;
+
+    const q = query(collection(db, 'applications'), where('castingId', '==', castingId));
+
+    const unsub = onSnapshot(
+      q,
+      async (snap) => {
+        const fromFs = snap.docs.map((d) => {
+          const data = d.data() || {};
+          return {
+            id: d.id,
+            castingId: data.castingId ?? castingId,
+            castingTitle: data.castingTitle ?? '',
+            timestamp: data.timestamp ?? data.createdAt ?? Date.now(),
+            videos: Array.isArray(data.videos) ? data.videos : [],
+            profile: {
+              ...(data.profile || {}),
+              name: data.profile?.name || '',
+              email: data.profile?.email || '',
+              profilePhoto: data.profile?.profilePhoto || '',
+            },
+          };
+        });
+
+        // Merge con lo que ya tuvieses y dedup por (castingId + email + ts)
+        setApplications((prev) => {
+          const merged = [...prev, ...fromFs];
+          const seen = new Set();
+          const dedup = merged.filter((a) => {
+            const key = `${a.castingId}__${normalizeEmail(a.profile?.email)}__${toMs(a.timestamp)}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          dedup.sort((x, y) => toMs(y.timestamp) - toMs(x.timestamp));
+          return dedup;
+        });
+
+        // Cachea último snapshot (opcional)
+        try {
+          const cacheKey = `applications_cache_${castingId}`;
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(fromFs));
+        } catch {}
+      },
+      (err) => console.error('❌ Firestore applications error:', err)
+    );
+
+    return () => unsub();
+  }, [castingId]);
 
   const sanitizeProfileData = (profile) => {
     const cleaned = { ...profile };
@@ -60,75 +138,40 @@ export default function ViewApplicationsScreen({ route }) {
     return cleaned;
   };
 
-  const handleSendEmail = async () => {
-    if (!emailToSend.includes('@')) {
-      alert('Por favor, ingresa un correo válido.');
-      return;
-    }
+  const resolveProfileForNav = async (appProfile) => {
+    const base = sanitizeProfileData(appProfile || {});
+    const email = normalizeEmail(base.email);
+    if (!email) return base;
 
-    const isAvailable = await MailComposer.isAvailableAsync();
-    if (!isAvailable) {
-      alert('Tu dispositivo no soporta envío de correos.');
-      return;
-    }
+    const [rawFree, rawPro, rawElite] = await Promise.all([
+      AsyncStorage.getItem('allProfilesFree'),
+      AsyncStorage.getItem('allProfiles'), // Pro
+      AsyncStorage.getItem('allProfilesElite'),
+    ]);
 
-    try {
-      await MailComposer.composeAsync({
-        recipients: [emailToSend],
-        subject: 'Postulaciones exportadas - El Enlace',
-        body: 'Adjunto encontrarás el PDF generado con las postulaciones.',
-      });
+    const free = rawFree ? JSON.parse(rawFree) : [];
+    const pro = rawPro ? JSON.parse(rawPro) : [];
+    const elite = rawElite ? JSON.parse(rawElite) : [];
 
-      alert('📨 Correo preparado correctamente.');
-      setEmailToSend('');
-      setShowExportModal(false);
-    } catch (error) {
-      console.error('Error al enviar correo:', error);
-      alert('No se pudo preparar el correo.');
-    }
+    const all = [...free, ...pro, ...elite].filter((p) => normalizeEmail(p.email) === email);
+    const rank = { free: 1, pro: 2, elite: 3 };
+    const best = all.sort((a, b) => (rank[b.membershipType] || 0) - (rank[a.membershipType] || 0))[0];
+
+    return best ? { ...base, ...best, email } : base;
   };
-const [insightModalVisible, setInsightModalVisible] = useState(false);
-const [insightResult, setInsightResult] = useState('');
-const [loadingInsight, setLoadingInsight] = useState(false);
 
-const generateApplicationInsights = async () => {
-  if (!applications.length) return;
-
-  setLoadingInsight(true);
-  try {
-    const resumenPostulantes = applications
-      .map((app, index) => {
-        const p = app.profile;
-        return `${index + 1}. Nombre: ${p.name || 'Sin nombre'}, Edad: ${p.age || 'N/A'}, Categoría: ${p.category || 'N/A'}, Descripción: ${p.description?.slice(0, 60) || 'Sin descripción'}...`;
-      })
-      .join('\n');
-
-    const prompt = `
-Eres un experto en selección de talentos para castings audiovisuales. Basado en esta lista de postulantes, genera un resumen con insights clave para una agencia elite.
-
-Postulantes:
-${resumenPostulantes}
-
-El resumen debe indicar coincidencias, fortalezas notables y posibles candidatos ideales. Usa tono profesional pero claro.
-    `.trim();
-
-    const functions = getFunctions(getApp());
-    const getInsight = httpsCallable(functions, 'generateInsightsForCasting');
-    const result = await getInsight({ prompt });
-
-    if (result.data?.text) {
-      setInsightResult(result.data.text.trim());
-      setInsightModalVisible(true);
-    } else {
-      alert("No se pudo generar análisis.");
-    }
-  } catch (err) {
-    console.warn("❌ Error al generar análisis IA:", err);
-    alert("Error al generar análisis con IA.");
-  } finally {
-    setLoadingInsight(false);
-  }
-};
+  // Debug opcional
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('applications');
+        const arr = raw ? JSON.parse(raw) : [];
+        console.log('🧪 SAMPLE APPLICATION:', JSON.stringify(arr[0], null, 2));
+      } catch (e) {
+        console.log('🧪 SAMPLE APPLICATION ERROR:', e);
+      }
+    })();
+  }, []);
 
   return (
     <View style={styles.screen}>
@@ -138,146 +181,117 @@ El resumen debe indicar coincidencias, fortalezas notables y posibles candidatos
 
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>📥 Postulaciones Recibidas</Text>
+        <Text style={styles.subtitle}>{castingTitle || 'Casting'}</Text>
         <Text style={styles.counter}>Total: {applications.length}</Text>
 
         {applications.length === 0 ? (
           <Text style={styles.empty}>No hay postulaciones aún para este casting.</Text>
         ) : (
           applications.map((app, index) => (
-            <View key={index} style={styles.card}>
-              <Text style={styles.label}>🕒 Enviado:</Text>
-              <Text style={styles.value}>{new Date(app.timestamp).toLocaleString()}</Text>
+            <View key={`${app.id || index}`} style={styles.card}>
+              <View style={styles.row}>
+                <Text style={styles.label}>🕒 Enviado: </Text>
+                <Text style={styles.value}>{new Date(toMs(app.timestamp)).toLocaleString()}</Text>
+              </View>
 
               <TouchableOpacity
                 style={styles.profilePreview}
-                onPress={() => {
-                  const cleaned = sanitizeProfileData(app.profile);
-                  navigation.navigate('ProfileDetail', {
-                    profileData: cleaned,
-                    returnTo: 'ViewApplications',
-                  });
+                onPress={async () => {
+                  try {
+                    const cleaned = await resolveProfileForNav(app.profile);
+                    const tipo = (cleaned?.membershipType || 'free').toLowerCase();
+
+                    if (tipo === 'elite') {
+                      navigation.navigate('ProfileElite', { viewedProfile: cleaned });
+                    } else if (tipo === 'pro') {
+                      navigation.navigate('ProfilePro', { viewedProfile: cleaned });
+                    } else {
+                      navigation.navigate('Profile', { viewedProfile: cleaned });
+                    }
+                  } catch (e) {
+                    console.log('❌ Error al navegar al perfil:', e);
+                    navigation.navigate('Profile', { viewedProfile: app.profile });
+                  }
                 }}
               >
                 {app.profile.profilePhoto ? (
                   <Image source={{ uri: app.profile.profilePhoto }} style={styles.avatar} />
                 ) : (
-                  <View style={styles.avatarPlaceholder}><Text>👤</Text></View>
+                  <View style={styles.avatarPlaceholder}>
+                    <Text>👤</Text>
+                  </View>
                 )}
                 <Text style={styles.name}>{app.profile.name || 'Sin nombre'}</Text>
                 <Text style={styles.link}>Ver perfil</Text>
               </TouchableOpacity>
 
               {app.videos?.map((uri, i) => (
-                <Video
-                  key={i}
-                  source={{ uri }}
-                  useNativeControls
-                  resizeMode="contain"
-                  style={styles.video}
-                />
+                <Video key={i} source={{ uri }} useNativeControls resizeMode="contain" style={styles.video} />
               ))}
             </View>
           ))
         )}
 
-  <View style={{ marginTop: 10 }}>
-  <TouchableOpacity
-    style={[
-      styles.exportPdfButton,
-      { backgroundColor: '#8B0000' }, // color original PDF
-      applications.length === 0 && { opacity: 0.5 },
-    ]}
-    onPress={() => {
-      if (applications.length === 0) {
-        alert('Aún no hay postulaciones para exportar.');
-        return;
-      }
-      exportApplicationsToPDF(castingId, 'Casting sin título', () => setShowExportModal(true));
-    }}
-  >
-    <Text style={styles.exportPdfText}>🧾 Exportar a PDF</Text>
-  </TouchableOpacity>
+        <View style={{ marginTop: 10 }}>
+          {/* Botón PDF */}
+          <TouchableOpacity
+            style={[
+              styles.exportPdfButton,
+              { backgroundColor: '#8B0000' },
+              (applications.length === 0 || loadingPDF) && { opacity: 0.5 },
+            ]}
+            onPress={() => {
+              if (applications.length === 0) {
+                alert('Aún no hay postulaciones para exportar.');
+                return;
+              }
+              exportApplicationsToPDF(castingId, castingTitle || 'Casting', { onStatus });
+            }}
+            disabled={applications.length === 0 || loadingPDF}
+          >
+            {loadingPDF ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ActivityIndicator size="small" />
+                <Text style={styles.exportPdfText}>  Exportando…</Text>
+              </View>
+            ) : (
+              <Text style={styles.exportPdfText}>🧾 Exportar a PDF</Text>
+            )}
+          </TouchableOpacity>
 
-  <TouchableOpacity
-    style={[
-      styles.exportPdfButton,
-      { backgroundColor: '#D8A353', marginTop: 10 }, // color dorado IA
-      applications.length === 0 && { opacity: 0.5 },
-    ]}
-    onPress={() => {
-      if (applications.length === 0) {
-        alert('Aún no hay postulaciones para analizar.');
-        return;
-      }
-      generateApplicationInsights();
-    }}
-  >
-    <Text style={[styles.exportPdfText, { color: '#000' }]}>🧠 Análisis Inteligente</Text>
-  </TouchableOpacity>
-</View>
-      </ScrollView>
-
-      <Modal
-        visible={showExportModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowExportModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>✅ Exportación completada</Text>
-            <Text style={styles.modalText}>¿Qué deseas hacer con el archivo?</Text>
-
-            <TextInput
-              placeholder="Ingresar correo"
-              placeholderTextColor="#aaa"
-              value={emailToSend}
-              onChangeText={setEmailToSend}
-              style={styles.input}
-              keyboardType="email-address"
-            />
-
-            <TouchableOpacity style={styles.modalButton} onPress={() => setShowExportModal(false)}>
-              <Text style={styles.modalButtonText}>📁 Guardar en dispositivo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: '#444', marginTop: 10 }]}
-              onPress={handleSendEmail}
-            >
-              <Text style={[styles.modalButtonText, { color: '#fff' }]}>📧 Enviar por correo</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Botón Excel */}
+          <TouchableOpacity
+            style={[
+              styles.exportPdfButton,
+              { backgroundColor: '#2E7D32' },
+              (applications.length === 0 || loadingExcel) && { opacity: 0.5 },
+            ]}
+            onPress={() => {
+              if (applications.length === 0) {
+                alert('Aún no hay postulaciones para exportar.');
+                return;
+              }
+              exportApplicationsToExcel(castingId, castingTitle || 'Casting', { onStatus });
+            }}
+            disabled={applications.length === 0 || loadingExcel}
+          >
+            {loadingExcel ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ActivityIndicator size="small" />
+                <Text style={styles.exportPdfText}>  Exportando…</Text>
+              </View>
+            ) : (
+              <Text style={styles.exportPdfText}>📊 Exportar a Excel</Text>
+            )}
+          </TouchableOpacity>
         </View>
-      </Modal>
-      <Modal
-  visible={insightModalVisible}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setInsightModalVisible(false)}
->
-  <View style={styles.modalOverlay}>
-    <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-      <Text style={styles.modalTitle}>🧠 Resultado del análisis</Text>
-      <ScrollView style={{ maxHeight: 300 }}>
-        <Text style={{ color: '#ccc', fontSize: 14, lineHeight: 20 }}>{insightResult}</Text>
       </ScrollView>
-      <TouchableOpacity style={[styles.modalButton, { marginTop: 20 }]} onPress={() => setInsightModalVisible(false)}>
-        <Text style={styles.modalButtonText}>Cerrar</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  screen: { flex: 1, backgroundColor: '#000' },
   backButton: {
     position: 'absolute',
     top: 40,
@@ -285,11 +299,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
     backgroundColor: 'transparent',
   },
-  container: {
-    padding: 20,
-    top: 30,
-    paddingBottom: 100,
-  },
+  container: { padding: 10, top: 30, paddingBottom: 100 },
   title: {
     color: '#D8A353',
     fontSize: 22,
@@ -297,44 +307,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 5,
   },
-  counter: {
-    color: '#aaa',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  empty: {
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 40,
-  },
+  counter: { color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 20 },
+  empty: { color: '#999', textAlign: 'center', marginTop: 40 },
   card: {
     backgroundColor: '#1B1B1B',
     borderColor: '#D8A353',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
+    borderWidth: 0.5,
+    borderRadius: 8,
+    paddingVertical: 0,
+    paddingHorizontal: 8,
+    marginBottom: 6,
   },
-  label: {
-    color: '#D8A353',
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  value: {
-    color: '#ccc',
-    marginBottom: 10,
-  },
-  profilePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
+  label: { color: '#D8A353', fontWeight: 'bold', marginBottom: 4 },
+  value: { color: '#ccc', marginBottom: 10 },
+  profilePreview: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+    marginTop: -10,
   },
   avatarPlaceholder: {
     width: 40,
@@ -345,82 +337,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10,
   },
-  name: {
-    color: '#fff',
-    fontWeight: 'bold',
-    flex: 1,
-  },
-  link: {
-    color: '#D8A353',
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
+  name: { color: '#fff', fontWeight: 'bold', flex: 1 },
+  link: { color: '#D8A353', fontSize: 13, textDecorationLine: 'underline' },
   video: {
     width: '100%',
     height: 200,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderColor: '#D8A353',
     marginBottom: 10,
   },
   exportPdfButton: {
-    backgroundColor: '#8B0000',
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 25,
   },
-  exportPdfText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  modalContent: {
-    backgroundColor: '#1B1B1B',
-    padding: 20,
-    borderRadius: 12,
-    width: '80%',
-    alignItems: 'center',
-    borderColor: '#D8A353',
-    borderWidth: 1,
-  },
-  modalTitle: {
-    color: '#D8A353',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  modalText: {
-    color: '#ccc',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  modalButton: {
-    backgroundColor: '#D8A353',
-    paddingHorizontal: 25,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  modalButtonText: {
-    color: '#000',
-    fontWeight: 'bold',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D8A353',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    color: '#fff',
-    width: '100%',
-    marginBottom: 15,
-  },
+  exportPdfText: { color: '#fff', fontWeight: 'bold' },
+  row: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  subtitle: { color: '#ccc', fontSize: 14, textAlign: 'center', marginBottom: 6 },
 });

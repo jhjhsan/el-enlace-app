@@ -5,24 +5,26 @@ import { guardarAllProfiles } from './profileHelpers';
 
 export const rebuildAllProfiles = async () => {
   try {
-const isValidEmail = (email) => {
-  if (!email || typeof email !== 'string') return false;
+    const normalizeEmail = (email) =>
+      email?.toLowerCase().trim().replace(/\s+/g, '').replace(/[^a-z0-9@._\-+]/gi, '');
 
-  const cleaned = email.trim().toLowerCase();
+    const isValidEmail = (email) => {
+      if (!email || typeof email !== 'string') return false;
 
-  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned);
+      const cleaned = email.trim().toLowerCase();
+      const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned);
 
-  if (
-    !isValid &&
-    cleaned.includes('@') &&
-    cleaned.length > 5 &&
-    cleaned.includes('@cl')  // ⚠️ Caso típico del error
-  ) {
-    console.warn('📛 Correo malformado detectado y descartado (Elite):', cleaned);
-  }
+      if (
+        !isValid &&
+        cleaned.includes('@') &&
+        cleaned.length > 5 &&
+        cleaned.includes('@cl')
+      ) {
+        console.warn('📛 Correo malformado detectado y descartado (Elite):', cleaned);
+      }
 
-  return isValid;
-};
+      return isValid;
+    };
 
     console.log('🔁 Iniciando reconstrucción de allProfiles desde Firestore...');
     const db = getFirestore(getApp());
@@ -40,12 +42,24 @@ const isValidEmail = (email) => {
     for (const col of collectionsToRead) {
       const snapshot = await getDocs(collection(db, col));
       snapshot.forEach((doc) => {
-        const data = doc.data();
-        let cleanEmail = data.email?.trim().toLowerCase();
-        if (!isValidEmail(cleanEmail)) return;
-        data.email = cleanEmail;
-        const email = cleanEmail;
+        const raw = doc.data();
+        const data = {
+          ...raw,
+          name: raw.name?.trim() || '',
+          profilePhoto: raw.profilePhoto || raw.profilePhotoUrl || '',
+          email: raw.email?.trim().toLowerCase() || '',
+          id: raw.id || raw.email?.trim().toLowerCase() || '',
+          membershipType: raw.membershipType || 'free',
+        };
+
+        const email = data.email;
+        if (!isValidEmail(email)) return;
         if (!email || data.visibleInExplorer === false) return;
+
+        if (!data.name || !data.profilePhoto) {
+          console.warn('⚠️ Perfil incompleto, no se guardará en allProfiles:', email);
+          return;
+        }
 
         const existing = tempMap.get(email);
         const newRank = rank[data.membershipType] || 0;
@@ -76,6 +90,23 @@ const isValidEmail = (email) => {
       }
     }
 
+    // 🔁 Recuperar perfiles actuales y combinar con los nuevos
+    const existingRaw = await AsyncStorage.getItem('allProfiles');
+    const existing = existingRaw ? JSON.parse(existingRaw) : [];
+
+    const merged = [...profiles];
+
+    for (const old of existing) {
+      const exists = merged.find(p => normalizeEmail(p.email) === normalizeEmail(old.email));
+      if (!exists && old.name && old.profilePhoto) {
+        merged.push(old);
+        console.log(`📌 Perfil preservado desde local: ${old.email}`);
+      }
+    }
+
+    profiles = merged;
+
+    // ✅ Guardar después del merge final
     await guardarAllProfiles(profiles);
     console.log(`✅ allProfiles reconstruido con ${profiles.length} perfiles`);
 
