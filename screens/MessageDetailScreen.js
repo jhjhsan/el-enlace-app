@@ -1,3 +1,4 @@
+// screens/MessageDetailScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -15,21 +16,19 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
-import BackButton from '../components/BackButton';
+// ⛔️ Eliminado: import BackButton from '../components/BackButton';
 import { onSnapshot, collection, query, where, orderBy, getDocs, updateDoc, addDoc, Timestamp, doc } from 'firebase/firestore';
 import { db } from '../src/firebase/firebaseConfig';
 import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 import eventBus from '../utils/eventBus';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// ✅ Agregado para usar misma navegación que Menu/Inbox
+import { goToDashboardTab } from '../utils/navigationHelpers';
 
 export default function MessageDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const flatListRef = useRef(null);
-  const insets = useSafeAreaInsets();
-  // ✅ Offset para iPhone: safe-area top + ~50px de tu header custom
-  const keyboardOffset = insets.top + 50;
 
   const {
     contactEmail = '',
@@ -606,7 +605,7 @@ export default function MessageDetailScreen() {
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardOffset : 0}
+      keyboardVerticalOffset={0}
     >
       <View style={styles.container}>
         {isLoading ? (
@@ -622,7 +621,13 @@ export default function MessageDetailScreen() {
           </View>
         ) : (
           <>
-            <BackButton color="#fff" size={28} top={45} left={20} />
+            {/* 🔙 Flecha real como en Menu/Inbox */}
+            <TouchableOpacity
+              onPress={() => { goToDashboardTab(navigation); }}
+              style={{ position: 'absolute', top: 45, left: 20, zIndex: 10 }}
+            >
+              <Ionicons name="arrow-back" size={28} color="#fff" />
+            </TouchableOpacity>
 
             {/* HEADER */}
             <View style={styles.header}>
@@ -698,10 +703,10 @@ export default function MessageDetailScreen() {
                 windowSize={5}
                 maxToRenderPerBatch={10}
                 inverted={false}
-                keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => {
                   flatListRef.current?.scrollToEnd({ animated: true });
                 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => {
                   const isMine = item.sender === normalizeEmail(userData.email);
                   return (
@@ -725,9 +730,6 @@ export default function MessageDetailScreen() {
                 placeholderTextColor="#aaa"
                 value={newMessage}
                 onChangeText={setNewMessage}
-                returnKeyType="send"
-                onSubmitEditing={handleSendMessage}
-                blurOnSubmit={false}
               />
               <TouchableOpacity
                 onPress={handleSendMessage}
@@ -810,8 +812,7 @@ export default function MessageDetailScreen() {
                   <Text style={styles.modalText}>
                     {isBlocked
                       ? `¿Deseas desbloquear a ${contactName || targetEmail}?`
-                      : `¿Seguro que deseas bloquear a ${contactName || targetEmail}? No verás más sus mensajes.`
-                    }
+                      : `¿Seguro que deseas bloquear a ${contactName || targetEmail}? No verás más sus mensajes.`}
                   </Text>
 
                   <TouchableOpacity style={styles.modalButton} onPress={isBlocked ? confirmUnblock : confirmBlock}>
@@ -835,7 +836,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    paddingTop: 40,
+    paddingTop: Platform.OS === 'ios' ? 56 : 40, // ↓ baja un poco el contenido solo en iOS
   },
   loadingContainer: {
     flex: 1,
