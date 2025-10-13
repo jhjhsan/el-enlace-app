@@ -1,30 +1,30 @@
-﻿# Expo / React Native
+﻿# Expo / builds
 .expo/
 .expo-shared/
-node_modules/
-android/
-ios/
-web-build/
 dist/
+web-build/
 build/
 
-# Metro cache
-.expo/web/cache/
-.expo/cache/
+# Si generas nativo con prebuild
+ios/
+android/
 
-# Logs y OS
-*.log
-.DS_Store
-
-# Firebase / credenciales
-*.env
-*.env.*
-*.pem
+# Secrets / credenciales
+.env
+.env.*
+*.p8
 *.p12
-*service-account*.json
-firebase-service-account.json
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+*.keystore
+*.jks
+*.crt
+*.key
 
-# Firebase Functions (si usas /functions)
-functions/node_modules/
-functions/.env
-functions/*.log
+# Node / editores / SO
+node_modules/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
