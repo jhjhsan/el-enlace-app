@@ -4,7 +4,18 @@ import { TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { IOS_BACK_BUTTON_CONFIG as C } from './backButtonConfig';
+
+// ✅ Config iOS in-line (reemplaza backButtonConfig)
+const C = {
+  ICON_SIZE: 24,                 // tamaño del ícono
+  BUBBLE_PADDING: 6,             // padding interno de la “burbuja”
+  TOP_OFFSET: 6,                 // desplazamiento extra desde el safe area top
+  LEFT_OFFSET: 12,               // separación desde el borde izquierdo
+  BACKGROUND: 'rgba(0,0,0,0.4)', // fondo semi-transparente
+  BORDER_WIDTH: 0,               // sin borde por defecto
+  BORDER_COLOR: 'transparent',
+  SHADOW: true,                  // sombra sutil
+};
 
 /**
  * ANDROID: conserva props top/left/size/color exactamente como las usas hoy.
@@ -33,7 +44,7 @@ export default function BackButton({
         style={[
           stylesIOS.bubble,
           {
-            top: insets.top + C.TOP_OFFSET,
+            top: (insets?.top || 0) + C.TOP_OFFSET,
             left: C.LEFT_OFFSET,
             width: bubbleSize,
             height: bubbleSize,
