@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   Modal,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -42,6 +43,50 @@ export default function LoginScreen({ navigation }) {
   const [showModal, setShowModal] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // 👇 Helper agregado (no reemplaza ni elimina nada)
+  const resetToKnownRoute = (nav, targets = ['InitialRedirect', 'MainTabs']) => {
+    try {
+      // Sube hasta el contenedor raíz buscando un navigator que conozca alguna ruta objetivo
+      let cursor = nav;
+      let holder = null;
+      while (cursor) {
+        const state = cursor.getState?.();
+        const names = state?.routeNames || [];
+        if (targets.some(t => names.includes(t))) {
+          holder = cursor;
+          break;
+        }
+        cursor = cursor.getParent?.();
+      }
+
+      // Elige la primera ruta disponible según prioridad
+      const pick = () => {
+        if (!holder) return null;
+        const names = holder.getState?.()?.routeNames || [];
+        for (const t of targets) if (names.includes(t)) return t;
+        return null;
+      };
+      const chosen = pick();
+
+      if (chosen) {
+        holder.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: chosen }],
+          })
+        );
+      } else {
+        if (__DEV__) {
+          console.log('⚠️ Ningún navigator conoce InitialRedirect/MainTabs en este ciclo (dev). Omito reset para evitar warning.');
+        }
+      }
+    } catch (e) {
+      if (__DEV__) {
+        console.log('⚠️ resetToKnownRoute error (dev-only):', e?.message || e);
+      }
+    }
+  };
 
 const handleLogin = async () => {
   setIsLoading(true);
@@ -171,6 +216,11 @@ console.log('💾 userData guardado en AsyncStorage:', {
     }
 
     console.log('🟢 Login completo. Redirección a cargo de InitialRedirectScreen.');
+
+    // 👇 AÑADIDO: forzar navegación SOLO si el stack actual conoce la ruta; si no, sube al padre que sí la conozca.
+    // Evita el warning en desarrollo y a la vez te salva el teléfono que se quedaba en Login en la APK real.
+    resetToKnownRoute(navigation, ['InitialRedirect', 'MainTabs']);
+
     setIsLoading(false);
     
   } catch (error) {
@@ -230,7 +280,14 @@ const deleteFreeProfile = async (email) => {
 };
 
   return (
-    <View style={styles.container}>
+  <View style={styles.container}>
+    {/* Sección superior: logotipo */}
+    <View style={styles.topSection}>
+      <Image
+        source={require('../assets/logo.png')} // ⬅️ Ajusta la ruta si tu logo está en otra carpeta
+        style={styles.logo}
+      />
+    </View>
 
       <TextInput
         style={styles.input}
@@ -314,7 +371,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
     padding: 20,
-    justifyContent: 'center',
+    justifyContent: 'flex-start', 
   },
   title: {
     color: '#D8A353',
@@ -330,7 +387,7 @@ const styles = StyleSheet.create({
     padding: 15,
     fontSize: 16,
     borderColor: '#D8A353',
-    borderWidth: 1,
+    borderWidth: 0.5,
     marginBottom: 15,
   },
   passwordContainer: {
@@ -391,4 +448,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
+topSection: {
+  alignItems: 'center',
+  marginTop: 80,
+  marginBottom: 16,
+},
+logo: {
+  width: 120,
+  height: 120,
+  resizeMode: 'contain',
+},
+formSection: {
+  marginTop: 20,
+},
 });

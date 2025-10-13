@@ -32,6 +32,43 @@ const getTalentId = (p, fallback = '') =>
   p?.id || p?.uid || (p?.email ? p.email.trim().toLowerCase() : '') || fallback;
 
 /* =========================================================
+   DETECCIÓN DE RECURSO
+   ========================================================= */
+const RESOURCE_KEYWORDS = [
+  // transporte / vehículos
+  'transporte','van','vans','camion','camión','camiones','motorhome','casa rodante','camerino',
+  'auto','autos','vehiculo','vehículo','moto','motos','bicicleta','bicicletas',
+  // locaciones / estudios
+  'locacion','locación','locaciones','estudio','set','plató','plato','foro','galpón','galpon','bodega',
+  // rental / equipos
+  'arriendo','alquiler','equipo','equipos','cámara','camara','lente','lentes','iluminación','iluminacion',
+  'grip','rigging','generador','generadores','drone','dron','gimbal','steady','video assist','monitoreo',
+  'inalambrico','inalámbrico','dit',
+  // arte / props / vestuario
+  'utileria','utilería','props','vestuario','sastrería','sastreria','mobiliario','ambientación','ambientacion',
+  // servicios / base
+  'catering','coffee break','snacks','baños','banos','químicos','quimicos','carpas','toldos','vallas',
+  // post / salas
+  'postproducción','postproduccion','edición','edicion','color','grading','mezcla','estudio de sonido',
+  // animales / armería
+  'animal','animales','handler','armería','armeria','armas de utilería','armas de utileria',
+  // otros
+  'permiso','permisos','seguridad','paramédico','paramedico','ambulancia','bodega','storage','resource','recurso'
+];
+
+function isResourceProfile(p = {}) {
+  const typeHints = [p.accountType, p.profileKind, p.profileLock]
+    .map(x => String(x || '').toLowerCase());
+  if (typeHints.includes('resource')) return true;
+
+  const cats = Array.isArray(p.category) ? p.category
+            : Array.isArray(p.categories) ? p.categories
+            : (p.category ? [p.category] : []);
+  const low = cats.map(c => String(c || '').toLowerCase());
+  return low.some(c => RESOURCE_KEYWORDS.some(k => c.includes(k)));
+}
+
+/* =========================================================
    HELPERS (escape, show, limpieza caché, upload, CSV, filename)
    ========================================================= */
 const esc = (v) =>
@@ -165,8 +202,12 @@ async function withBookGalleries(profiles, fileStamp) {
     const p = profiles[i] || {};
     const id = getTalentId(p, `talent_${i}`);
     const title = p.name || p.agencyName || `Perfil ${i + 1}`;
-    const urls = Array.isArray(p.bookPhotos)
-      ? p.bookPhotos.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u))
+    // 🆕 Prioriza resourcePhotos si es Recurso; si no, bookPhotos
+    const primaryPhotos = Array.isArray(p.resourcePhotos) && p.resourcePhotos.length
+      ? p.resourcePhotos
+      : p.bookPhotos;
+    const urls = Array.isArray(primaryPhotos)
+      ? primaryPhotos.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u))
       : [];
     let _bookHref = null;
 
@@ -181,7 +222,8 @@ async function withBookGalleries(profiles, fileStamp) {
 }
 
 /* =========================================================
-   PDF – HTML (sin “Ver Perfil”)
+   PDF – HTML (PRO idéntico al original; FREE sin Video/Reel)
+   + Layout especial para RECURSO
    ========================================================= */
 function buildPDFHtmlFromProfiles(profiles, title) {
   const esc = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -191,13 +233,24 @@ function buildPDFHtmlFromProfiles(profiles, title) {
     const s = String(v).trim();
     return s !== '' && s !== '-' && s !== '–';
   };
+  const segEmail = (email, min = 56) =>
+    has(email)
+      ? `<span class="seg email"><span class="key" style="min-width:${min}px">Correo:</span> <a class="mail" href="mailto:${esc(email)}">${esc(email)}</a></span>`
+      : '';
   const seg = (k, v, min = 64) =>
     has(v) ? `<span class="seg"><span class="key" style="min-width:${min}px">${k}:</span> ${esc(v)}</span>` : '';
+  const segMult = (k, v, min = 64) =>
+    has(v) ? `<span class="seg multiline"><span class="key" style="min-width:${min}px">${k}:</span> ${esc(v)}</span>` : '';
   const onlyDigits = (s='') => (s.match(/\d+/g) || []).join('');
   const igHandle = (ig='') => ig.toString().replace(/^@/, '').trim();
+  const planOf = (p={}) => String(p.membershipType || p.plan || p.type || 'free').toLowerCase();
 
   const rows = profiles.map((p, i) => {
-    const id = p.id || p.uid || (p.email ? p.email.trim().toLowerCase() : `talent_${i}`);
+    const plan = planOf(p);                 // 'free' | 'pro' | 'elite'
+    const isFree = plan === 'free';
+    const isResource = isResourceProfile(p);
+
+    const id   = p.id || p.uid || (p.email ? p.email.trim().toLowerCase() : `talent_${i}`);
     const name = p.name || p.agencyName || 'Sin nombre';
 
     // contacto
@@ -211,17 +264,92 @@ function buildPDFHtmlFromProfiles(profiles, title) {
       ? `<img class="avatar" src="${esc(p.profilePhoto)}" />`
       : '<div class="avatar ph">👤</div>';
 
-    // materiales
+    // materiales (PRO igual que antes; FREE sin Video/Reel)
     const videoDirect = has(p.profileVideo) ? p.profileVideo : null;
     const reelDirect  = p.reelActoral || p.actorReel || p.reel || null;
 
-    const videoHref = videoDirect || videoUrl(id);
-    const bookHref  = (p._bookHref)
-      || (Array.isArray(p.bookPhotos) && p.bookPhotos.filter(Boolean).length ? p.bookPhotos[0] : null)
-      || bookUrl(id);
-    const reelHref  = reelDirect  || reelUrl(id);
+    const videoHref = !isFree ? (videoDirect || videoUrl(id)) : null;
 
-    // Col 1
+    // Book: usa _bookHref si existe; si no, prioriza resourcePhotos/bookPhotos; luego fallback
+    const primaryPhotos = Array.isArray(p.resourcePhotos) && p.resourcePhotos.length
+      ? p.resourcePhotos
+      : p.bookPhotos;
+    const singlePhoto = Array.isArray(primaryPhotos) ? primaryPhotos.find(Boolean) : null;
+
+    const bookHref  = (p._bookHref)
+      || (singlePhoto ? singlePhoto : null)
+      || bookUrl(id);
+
+    const reelHref  = !isFree ? (reelDirect || reelUrl(id)) : null;
+
+    if (isResource) {
+      // ====== Layout RECURSO ======
+      const cats = Array.isArray(p.categories) ? p.categories.join(', ')
+                 : Array.isArray(p.category)   ? p.category.join(', ')
+                 : (p.category || '');
+
+      const priceFrom = has(p.resourcePriceFrom) ? p.resourcePriceFrom : null;
+      const priceTo   = has(p.resourcePriceTo)   ? p.resourcePriceTo   : null;
+      const priceLbl  = (priceFrom || priceTo)
+        ? `${priceFrom ? priceFrom : ''}${priceFrom && priceTo ? ' – ' : ''}${priceTo ? priceTo : ''}`
+        : '';
+
+      // Col 1 (título comercial y básicos)
+      const col1 = [
+        `<span class="name">${esc(name)}</span>`,
+        seg('Título', p.resourceTitle, 50),
+        seg('Tipo',   p.resourceType, 50),
+        seg('Ubicación', p.resourceLocation, 50),
+        seg('Precio', priceLbl, 50),
+      ].filter(Boolean).join('');
+
+      // Col 2 (clasificación y ubicación extendida)
+      const col2 = [
+        seg('Categorías', cats, 70),
+        seg('Disponibilidad', p.resourceAvailability, 70),
+        seg('Tags', Array.isArray(p.resourceTags) ? p.resourceTags.join(', ') : p.resourceTags, 70),
+        seg('País', p.country || p.pais, 70),
+        seg('Región', p.region, 70),
+        seg('Comuna', p.comuna, 70),
+        seg('Ciudad', p.ciudad || p.city, 70),
+        seg('Dirección', p.address, 70),
+      ].filter(Boolean).join('');
+
+      // Col 3 (descripción + correo)
+      const col3 = [
+        segMult('Descripción', p.resourceDescription, 66),
+        segEmail(email, 56),
+      ].filter(Boolean).join('');
+
+      // Col 4 (enlaces de contacto y materiales)
+      const col4Items = [
+        has(phone)       ? `<a class="vlink" href="tel:${esc(phoneDigits || phone)}"><i class="fas fa-phone" style="color:#111;"></i> ${esc(phone)}</a>` : '',
+        has(phoneDigits) ? `<a class="vlink" href="https://wa.me/${esc(phoneDigits)}" target="_blank"><i class="fab fa-whatsapp" style="color:#25D366;"></i> WhatsApp</a>` : '',
+        has(ig)          ? `<a class="vlink" href="https://instagram.com/${esc(ig)}" target="_blank"><i class="fab fa-instagram" style="color:#E4405F;"></i> ${esc(ig)}</a>` : '',
+        videoHref        ? `<a class="vlink" href="${esc(videoHref)}" target="_blank"><i class="fas fa-video" style="color:#E11D48;"></i> Video</a>` : '',
+        bookHref         ? `<a class="vlink" href="${esc(bookHref)}"  target="_blank"><i class="fas fa-camera" style="color:#111;"></i> Book</a>` : '',
+        (!isFree && has(reelDirect)) ? `<a class="vlink" href="${esc(reelHref)}" target="_blank"><i class="fas fa-film" style="color:#6B7280;"></i> Reel</a>` : '',
+      ].filter(Boolean).join('');
+      
+
+      return `
+        <div class="card">
+          <div class="left">
+            <div class="check"></div>
+            ${photo}
+          </div>
+          <div class="right">
+            <div class="grid4">
+              <div class="col col1">${col1}</div>
+              <div class="col">${col2}</div>
+              <div class="col">${col3}</div>
+              <div class="col col4">${col4Items}</div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ====== Layout TALENTO (idéntico al tuyo) ======
     const col1 = [
       `<span class="name">${esc(name)}</span>`,
       seg('Edad', p.age || p.edad, 54),
@@ -232,7 +360,6 @@ function buildPDFHtmlFromProfiles(profiles, title) {
       seg('Cabello', p.hairColor || p.cabello, 54),
     ].filter(Boolean).join('');
 
-    // Col 2
     const col2 = [
       seg('Etnia', p.ethnicity),
       seg('Tatuajes', p.tattoos),
@@ -243,7 +370,6 @@ function buildPDFHtmlFromProfiles(profiles, title) {
       seg('Zapatos', p.shoeSize || p.tallaZapato),
     ].filter(Boolean).join('');
 
-    // Col 3
     const cats = Array.isArray(p.categories) ? p.categories.join(', ')
                : Array.isArray(p.category)   ? p.category.join(', ')
                : (p.category || '');
@@ -254,18 +380,22 @@ function buildPDFHtmlFromProfiles(profiles, title) {
       seg('Comuna', p.comuna),
       seg('Ciudad', p.ciudad || p.city),
       seg('Dirección', p.address),
-      seg('Correo', email),
+      segEmail(email),
     ].filter(Boolean).join('');
 
-    // Col 4: SIN enlace “Perfil”
     const col4Items = [
       has(phone)       ? `<a class="vlink" href="tel:${esc(phoneDigits || phone)}"><i class="fas fa-phone" style="color:#111;"></i> ${esc(phone)}</a>` : '',
       has(phoneDigits) ? `<a class="vlink" href="https://wa.me/${esc(phoneDigits)}" target="_blank"><i class="fab fa-whatsapp" style="color:#25D366;"></i> WhatsApp</a>` : '',
       has(ig)          ? `<a class="vlink" href="https://instagram.com/${esc(ig)}" target="_blank"><i class="fab fa-instagram" style="color:#E4405F;"></i> ${esc(ig)}</a>` : '',
-      `<a class="vlink" href="${esc(videoHref)}" target="_blank"><i class="fas fa-video" style="color:#E11D48;"></i> Video</a>`,
-      bookHref ? `<a class="vlink" href="${esc(bookHref)}"  target="_blank"><i class="fas fa-camera" style="color:#111;"></i> Book</a>` : '',
-      has(reelDirect)  ? `<a class="vlink" href="${esc(reelHref)}" target="_blank"><i class="fas fa-film" style="color:#6B7280;"></i> Reel</a>` : '',
+      (!isFree ? (videoHref ? `<a class="vlink" href="${esc(videoHref)}" target="_blank"><i class="fas fa-video" style="color:#E11D48;"></i> Video</a>` : '') : ''),
+      (bookHref ? `<a class="vlink" href="${esc(bookHref)}"  target="_blank"><i class="fas fa-camera" style="color:#111;"></i> Book</a>` : ''),
+      (!isFree && has(reelDirect)) ? `<a class="vlink" href="${esc(reelHref)}" target="_blank"><i class="fas fa-film" style="color:#6B7280;"></i> Reel</a>` : '',
     ].filter(Boolean).join('');
+        // 🆕 Acting videos por casting (links numerados)
+    const acting = Array.isArray(p.actingVideos) ? p.actingVideos.filter(u => /^https?:\/\//i.test(u)) : [];
+    const actingLinks = acting.map((u, idx) =>
+      `<a class="vlink" href="${esc(u)}" target="_blank"><i class="fas fa-video" style="color:#ef4444;"></i> Acting ${idx+1}</a>`
+    ).join('');
 
     return `
       <div class="card">
@@ -278,7 +408,10 @@ function buildPDFHtmlFromProfiles(profiles, title) {
             <div class="col col1">${col1}</div>
             <div class="col">${col2}</div>
             <div class="col">${col3}</div>
-            <div class="col col4">${col4Items}</div>
+            <div class="col col4">
+  ${col4Items}
+  ${actingLinks}
+</div>
           </div>
         </div>
       </div>`;
@@ -288,7 +421,6 @@ function buildPDFHtmlFromProfiles(profiles, title) {
   <html>
   <head>
     <meta charset="utf-8" />
-    <!-- Font Awesome para iconos -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
       @page { size: A4; margin: 6mm; }
@@ -297,24 +429,41 @@ function buildPDFHtmlFromProfiles(profiles, title) {
       h1 { font-size: 13px; margin: 0 0 4px 0; }
       .sub { color:#666; font-size: 9px; margin: 0 0 8px 0; }
 
-      .card { display:flex; gap:10px; border:1px solid #eee; border-radius:10px; padding:7px; margin-bottom:7px; }
-      .left { width:112px; display:flex; align-items:center; gap:9px; }
+      /* Correo en una sola línea (con ellipsis si no entra) */
+      .seg.email{
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mail{
+        color: #0b65c2;
+        text-decoration: none;
+      }
+      .mail:hover{ text-decoration: underline; }
+
+      /* SIN CAMBIAR TU GRID NI ORDEN */
+      .card  { display:flex; gap:10px; border:1px solid #eee; border-radius:10px; padding:7px; margin-bottom:7px; overflow:hidden; }
+      .left  { width:112px; display:flex; align-items:center; gap:9px; }
       .check { width:14px; height:14px; border:1.25px solid #bbb; border-radius:3px; }
       .avatar { width:62px; height:62px; border-radius:10px; object-fit:cover; border:1px solid #eaeaea; }
       .avatar.ph { width:62px; height:62px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; color:#777; border:1px solid #eaeaea; }
 
       .right { flex:1; min-width:0; }
-
       .grid4 { display:grid; grid-template-columns: 1.28fr 1fr 1.15fr 0.95fr; gap:5px 14px; align-items:start; }
-      .col   { display:flex; flex-wrap:wrap; gap:3px 14px; align-content:flex-start; }
+      .col   { display:flex; flex-wrap:wrap; gap:3px 14px; align-content:flex-start; min-width:0; }
       .col1 .seg { width:100%; }
 
       .name { font-weight:700; font-size:12px; width:100%; }
-      .seg  { white-space:nowrap; font-size:9.8px; color:#333; line-height:1.22; }
+
+      /* Default: una línea por seg para no romper layout */
+      .seg  { white-space:nowrap; font-size:9.8px; color:#333; line-height:1.22; display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
       .key  { display:inline-block; font-weight:600; color:#000; }
 
+      /* Multilínea solo donde lo pedimos (Descripción de Recurso) */
+      .seg.multiline { white-space:normal; display:block; }
+
       .col4 { display:flex; flex-direction:column; gap:4px; align-items:flex-start; padding-top:2px; }
-      .vlink { display:block; color:#0b65c2; text-decoration:none; font-size:9.8px; line-height:1.22; }
+      .vlink { display:block; color:#0b65c2; text-decoration:none; font-size:9.8px; line-height:1.22; white-space:nowrap; }
       .vlink i { font-size:11px; margin-right:6px; vertical-align:-1px; }
       .vlink:hover { text-decoration:underline; }
     </style>
@@ -338,7 +487,7 @@ function buildCSVFromProfiles(profiles, title) {
     'Edad','Sexo','Estatura','Piel','Ojos','Cabello','Etnia','Tatuajes','Ubic. Tatuajes','Piercing',
     'Polera','Pantalón','Zapatos','País','Región','Comuna','Ciudad','Dirección','Categorías',
     'Video (link)','Book (link)','Reel actoral (link)',
-    'Video URL','Book URL','Reel URL'
+     'Video URL','Book URL','Reel URL'
   ];
 
   // helper para fórmula de hipervínculo con separador local
@@ -358,8 +507,11 @@ function buildCSVFromProfiles(profiles, title) {
     const rUrlDef  = reelUrl(id);
 
     // Si existe galería (_bookHref), úsala
+    const primaryPhotos = Array.isArray(p.resourcePhotos) && p.resourcePhotos.length
+      ? p.resourcePhotos
+      : p.bookPhotos;
     const bookHref = p._bookHref
-      || (Array.isArray(p.bookPhotos) ? (p.bookPhotos.find(u => /^https?:\/\//i.test(u)) || '') : '')
+      || (Array.isArray(primaryPhotos) ? (primaryPhotos.find(u => /^https?:\/\//i.test(u)) || '') : '')
       || bUrlDef;
 
     // Fórmulas clicables (sin comillas externas)
@@ -415,13 +567,48 @@ function buildCSVFromProfiles(profiles, title) {
    CARGA DE PERFILES (mejor perfil por email) – POR CASTING
    ========================================================= */
 async function loadProfilesForCasting(castingId) {
-  const appsRaw = await AsyncStorage.getItem('applications');
-  const appsAll = appsRaw ? JSON.parse(appsRaw) : [];
-  const apps = appsAll.filter((a) => a.castingId === castingId);
-  if (!apps.length) throw new Error('No hay postulantes para este casting.');
+  const castingIdStr = String(castingId || '').trim();
 
+  // 1) Intentar PRIMERO con el caché por casting que llena la pantalla
+  //    (applications_cache_<castingId>) → contiene el snapshot completo
+  let apps = [];
+  try {
+    const cacheKey = `applications_cache_${castingIdStr}`;
+    const rawCache = await AsyncStorage.getItem(cacheKey);
+    const parsedCache = rawCache ? JSON.parse(rawCache) : [];
+    if (Array.isArray(parsedCache) && parsedCache.length) {
+      apps = parsedCache;
+    }
+  } catch { /* ignore */ }
+
+  // 2) Si no hay caché por casting, caemos al viejo "applications" global
+  if (!apps.length) {
+    try {
+      const rawAll = await AsyncStorage.getItem('applications');
+      let all = rawAll ? JSON.parse(rawAll) : [];
+      if (!Array.isArray(all) && all && typeof all === 'object') {
+        all = Object.values(all);
+      }
+      apps = Array.isArray(all) ? all.filter(a => String(a?.castingId || '') === castingIdStr) : [];
+    } catch { /* ignore */ }
+  }
+
+  if (!apps.length) {
+    throw new Error('No hay postulantes para este casting.');
+  }
+
+  // Ordenar por fecha descendente (por si acaso)
+  const toMs = (t) => {
+    if (typeof t === 'number') return t;
+    if (t && typeof t === 'object' && typeof t.seconds === 'number') return t.seconds * 1000;
+    const n = Date.parse(t || '');
+    return isNaN(n) ? 0 : n;
+  };
+  apps.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+
+  // 3) Elegir el mejor perfil por email (elite > pro > free)
   const wanted = new Set(
-    apps.map((a) => (a.profile?.email || '').toLowerCase().trim()).filter(Boolean)
+    apps.map((a) => (a?.profile?.email || '').toLowerCase().trim()).filter(Boolean)
   );
 
   const [rawFree, rawPro, rawElite] = await Promise.all([
@@ -429,24 +616,32 @@ async function loadProfilesForCasting(castingId) {
     AsyncStorage.getItem('allProfiles'),       // Pro
     AsyncStorage.getItem('allProfilesElite'),
   ]);
-  const free = rawFree ? JSON.parse(rawFree) : [];
-  const pro = rawPro ? JSON.parse(rawPro) : [];
+
+  const free  = rawFree  ? JSON.parse(rawFree)  : [];
+  const pro   = rawPro   ? JSON.parse(rawPro)   : [];
   const elite = rawElite ? JSON.parse(rawElite) : [];
   const rank = { free: 1, pro: 2, elite: 3 };
 
   const bestByEmail = {};
   [...free, ...pro, ...elite].forEach((p) => {
-    const k = (p.email || '').toLowerCase().trim();
+    const k = (p?.email || '').toLowerCase().trim();
     if (!wanted.has(k)) return;
     const cur = bestByEmail[k];
-    if (!cur || (rank[p.membershipType] || 0) > (rank[cur.membershipType] || 0)) {
+    if (!cur || (rank[p?.membershipType] || 0) > (rank[cur?.membershipType] || 0)) {
       bestByEmail[k] = p;
     }
   });
 
-  const profiles = apps
-    .map((a) => bestByEmail[(a.profile?.email || '').toLowerCase().trim()])
-    .filter(Boolean);
+  // 4) Construir lista final de perfiles en el mismo orden que "apps"
+  const profiles = apps.map((a) => {
+    const email = (a?.profile?.email || '').toLowerCase().trim();
+    const base = bestByEmail[email] ? { ...bestByEmail[email] } : { ...(a?.profile || {}) };
+
+    // 🆕 inyecta actingVideos desde la postulación (prioriza actingVideos, luego videos)
+    const actingVideos = Array.isArray(a?.actingVideos) ? a.actingVideos
+                      : (Array.isArray(a?.videos) ? a.videos : []);
+    return { ...base, actingVideos };
+  }).filter(Boolean);
 
   const effectiveTitle = apps[0]?.castingTitle || 'Casting';
   return { profiles, effectiveTitle };
@@ -454,6 +649,7 @@ async function loadProfilesForCasting(castingId) {
 
 /* =========================================================
    NORMALIZAR lista de postulaciones SUELTAS (seleccionados)
+   (🆕 incluye campos de RECURSO para que salgan en el PDF)
    ========================================================= */
 function normalizePostulationsToProfiles(rawList = []) {
   const safeArr = Array.isArray(rawList) ? rawList : [];
@@ -486,6 +682,22 @@ function normalizePostulationsToProfiles(rawList = []) {
     profileVideo: p.profileVideo || '',
     bookPhotos: Array.isArray(p.bookPhotos) ? p.bookPhotos : [],
     reelActoral: p.reelActoral || p.reelActoral || p.actorReel || p.reel || '',
+
+    // 🆕 Campos RECURSO
+    accountType: p.accountType || '',
+    profileKind: p.profileKind || '',
+    profileLock: p.profileLock || '',
+    resourceTitle: p.resourceTitle || '',
+    resourceType: p.resourceType || '',
+    resourceLocation: p.resourceLocation || '',
+    resourcePriceFrom: p.resourcePriceFrom ?? null,
+    resourcePriceTo: p.resourcePriceTo ?? null,
+    resourceAvailability: p.resourceAvailability || '',
+    resourceTags: Array.isArray(p.resourceTags) ? p.resourceTags : (p.resourceTags ? String(p.resourceTags).split(',').map(s=>s.trim()).filter(Boolean) : []),
+    resourcePhotos: Array.isArray(p.resourcePhotos) ? p.resourcePhotos : [],
+        // 🆕 Acting específicos de la postulación
+    actingVideos: Array.isArray(p.actingVideos) ? p.actingVideos
+                : (Array.isArray(p.videos) ? p.videos : []),
   }));
 }
 
@@ -507,19 +719,39 @@ function signal(onStatus, type, phase) {
    EXPORTAR PDF – POR CASTING (sin modal propio) + onStatus
    ========================================================= */
 export async function exportApplicationsToPDF(castingId, castingTitle = '', opts = {}) {
-  const { onStatus } = opts;
+  const { onStatus, type, data } = opts || {};
+   const isSelectedReq = (type === 'pdf_selected');
+
   try {
-    signal(onStatus, 'pdf', EXPORT_STATUS.START);
+    signal(onStatus, isSelectedReq ? 'pdf_selected' : 'pdf', EXPORT_STATUS.START);
     await cleanOldPrintCache();
 
-    const { profiles, effectiveTitle: fallbackTitle } = await loadProfilesForCasting(castingId);
-    const effectiveTitle = castingTitle || fallbackTitle;
+    let effectiveTitle = castingTitle || 'Casting';
+    let profilesForExport = [];
 
-    // Prepara Book galleries (si aplica)
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const profilesReady = await withBookGalleries(profiles, stamp);
+    if (isSelectedReq) {
+      // ✅ Exportar solo seleccionados (data puede venir como array de "applications" o de "profiles")
+      const selectedProfilesRaw = (data || []).map((item) => {
+         if (item?.profile) {
+           const acting = Array.isArray(item.actingVideos) ? item.actingVideos
+                        : (Array.isArray(item.videos) ? item.videos : []);
+           return { ...item.profile, actingVideos: acting };
+         }
+         return item;
+       });
+      const selectedProfilesNorm = normalizePostulationsToProfiles(selectedProfilesRaw);
+      const stampSel = new Date().toISOString().replace(/[:.]/g, '-');
+      profilesForExport = await withBookGalleries(selectedProfilesNorm, stampSel);
+      if (!castingTitle) effectiveTitle = 'Seleccionados';
+    } else {
+      // 🔄 Exportar todo el casting (comportamiento original)
+      const { profiles, effectiveTitle: fallbackTitle } = await loadProfilesForCasting(castingId);
+      effectiveTitle = castingTitle || fallbackTitle;
+      const stampAll = new Date().toISOString().replace(/[:.]/g, '-');
+      profilesForExport = await withBookGalleries(profiles, stampAll);
+    }
 
-    const html = buildPDFHtmlFromProfiles(profilesReady, effectiveTitle);
+    const html = buildPDFHtmlFromProfiles(profilesForExport, effectiveTitle);
     const { uri } = await Print.printToFileAsync({ html, base64: false });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -542,10 +774,10 @@ export async function exportApplicationsToPDF(castingId, castingTitle = '', opts
       }
     }
 
-    signal(onStatus, 'pdf', EXPORT_STATUS.DONE);
+    signal(onStatus, isSelectedReq ? 'pdf_selected' : 'pdf', EXPORT_STATUS.DONE);
   } catch (e) {
-    console.error('Error al exportar PDF (perfiles):', e);
-    signal(onStatus, 'pdf', EXPORT_STATUS.ERROR);
+    console.error('Error al exportar PDF:', e);
+    signal(onStatus, isSelectedReq ? 'pdf_selected' : 'pdf', EXPORT_STATUS.ERROR);
     throw e;
   }
 }
@@ -592,31 +824,52 @@ export async function sendPDFByEmail(castingId, castingTitle = '', opts = {}) {
    EXPORTAR EXCEL (CSV) – POR CASTING (sin modal propio) + onStatus
    ========================================================= */
 export async function exportApplicationsToExcel(castingId, castingTitle = '', opts = {}) {
-  const { onStatus } = opts;
+  const { onStatus, type, data } = opts || {};
+  const isSelectedReq = (type === 'excel_selected');
+
   try {
-    signal(onStatus, 'excel', EXPORT_STATUS.START);
+    signal(onStatus, isSelectedReq ? 'excel_selected' : 'excel', EXPORT_STATUS.START);
 
-    const { profiles, effectiveTitle: fallbackTitle } = await loadProfilesForCasting(castingId);
-    const effectiveTitle = castingTitle || fallbackTitle;
+    let effectiveTitle = castingTitle || 'Casting';
+    let profilesForExport = [];
 
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const profilesReady = await withBookGalleries(profiles, stamp);
+    if (isSelectedReq) {
+      // ✅ Exportar solo seleccionados (data puede venir como array de "applications" o de "profiles")
+       const selectedProfilesRaw = (data || []).map((item) => {
+         if (item?.profile) {
+           const acting = Array.isArray(item.actingVideos) ? item.actingVideos
+                        : (Array.isArray(item.videos) ? item.videos : []);
+           return { ...item.profile, actingVideos: acting };
+         }
+         return item;
+       });
+      const selectedProfilesNorm = normalizePostulationsToProfiles(selectedProfilesRaw);
+      const stampSel = new Date().toISOString().replace(/[:.]/g, '-');
+      profilesForExport = await withBookGalleries(selectedProfilesNorm, stampSel);
+      if (!castingTitle) effectiveTitle = 'Seleccionados';
+    } else {
+      // 🔄 Exportar todo el casting (comportamiento original)
+      const { profiles, effectiveTitle: fallbackTitle } = await loadProfilesForCasting(castingId);
+      effectiveTitle = castingTitle || fallbackTitle;
+      const stampAll = new Date().toISOString().replace(/[:.]/g, '-');
+      profilesForExport = await withBookGalleries(profiles, stampAll);
+    }
 
-    const { filename, content } = buildCSVFromProfiles(profilesReady, effectiveTitle);
+    const { filename, content } = buildCSVFromProfiles(profilesForExport, effectiveTitle);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const finalName = `${sanitizeFilename(filename.replace(/\.csv$/i,''))}_${timestamp}.csv`;
+    const finalName = `${sanitizeFilename(filename.replace(/\.csv$/i, ''))}_${timestamp}.csv`;
     const target = FileSystem.documentDirectory + finalName;
 
     const contentWithBOM = '\uFEFF' + content; // UTF-8 BOM
-await FileSystem.writeAsStringAsync(target, contentWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
+    await FileSystem.writeAsStringAsync(target, contentWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
 
     await Sharing.shareAsync(target);
     await uploadFileToFirebase(target, finalName);
 
-    signal(onStatus, 'excel', EXPORT_STATUS.DONE);
+    signal(onStatus, isSelectedReq ? 'excel_selected' : 'excel', EXPORT_STATUS.DONE);
   } catch (e) {
     console.error('Error al exportar Excel (CSV):', e);
-    signal(onStatus, 'excel', EXPORT_STATUS.ERROR);
+    signal(onStatus, isSelectedReq ? 'excel_selected' : 'excel', EXPORT_STATUS.ERROR);
     throw e;
   }
 }
@@ -640,7 +893,7 @@ export async function sendExcelByEmail(castingId, castingTitle = '', opts = {}) 
 
     const target = FileSystem.documentDirectory + finalName;
     const contentWithBOM = '\uFEFF' + content; // UTF-8 BOM
-await FileSystem.writeAsStringAsync(target, contentWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
+    await FileSystem.writeAsStringAsync(target, contentWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
 
     const ok = await MailComposer.isAvailableAsync();
     if (!ok) {
@@ -725,8 +978,8 @@ export async function exportSelectedToExcel(selectedPostulations = [], title = '
     const finalName = `${sanitizeFilename(filename.replace(/\.csv$/i,''))}_${timestamp}.csv`;
     const target = FileSystem.documentDirectory + finalName;
 
-   const contentWithBOM = '\uFEFF' + content; // UTF-8 BOM
-await FileSystem.writeAsStringAsync(target, contentWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
+    const contentWithBOM = '\uFEFF' + content; // UTF-8 BOM
+    await FileSystem.writeAsStringAsync(target, contentWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
 
     await Sharing.shareAsync(target);
     await uploadFileToFirebase(target, finalName);

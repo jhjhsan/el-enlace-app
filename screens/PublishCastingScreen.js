@@ -24,11 +24,30 @@ import { syncCastingToFirestore } from '../src/firebase/helpers/syncCastingToFir
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuth } from 'firebase/auth';
 
-export default function PublishCastingScreen({ navigation }) {
+export default function PublishCastingScreen({ navigation, route }) {
   const { userData } = useUser();
+  const { mode: navMode, castingId: editCastingId, original } = route?.params || {};
+
+  // ---------- Normalización del modo al entrar ----------
+  const normalizeMode = (m) => {
+    const v = (m || '').toString().toLowerCase();
+    return v === 'extras' || v === 'full' ? v : null;
+  };
+  const inferModeFromOriginal = (o) => {
+    if (!o) return null;
+    const byField = normalizeMode(o.mode);
+    if (byField) return byField;
+    if (Array.isArray(o.roles) && o.roles.length) return 'full';
+    if (o.extras) return 'extras';
+    return null;
+  };
+  const computedInitialMode =
+    normalizeMode(navMode) ||
+    inferModeFromOriginal(original) ||
+    'extras';
 
   // ---- Selector de modo
-  const [mode, setMode] = useState('extras'); // 'extras' | 'full'
+  const [mode, setMode] = useState(computedInitialMode); // 'extras' | 'full'
 
   // ---- Estado común
   const [title, setTitle] = useState('');
@@ -113,12 +132,12 @@ export default function PublishCastingScreen({ navigation }) {
     { label: 'Indígena', value: 'indigena' },
     { label: 'Otro', value: 'otro' },
   ];
-    // Defaults invisibles para modo EXTRAS
-const extrasDefaults = {
-  modalityDefault: 'Presencial',
-  producerDefault: userData?.companyName || userData?.displayName || '',
-  agencyDefault: userData?.companyName || userData?.displayName || '',
-};
+
+  const extrasDefaults = {
+    modalityDefault: 'Presencial',
+    producerDefault: userData?.companyName || userData?.displayName || '',
+    agencyDefault: userData?.companyName || userData?.displayName || '',
+  };
 
   // ---- Roles (FULL)
   const addRole = () => {
@@ -161,19 +180,63 @@ const extrasDefaults = {
     return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   };
 
+  // ---- Prefill si venimos a editar (y asegura modo correcto)
+  useEffect(() => {
+    // Asegura que el modo NUNCA sea 'edit'
+    const targetMode =
+      normalizeMode(navMode) ||
+      inferModeFromOriginal(original) ||
+      'extras';
+    if (targetMode !== mode) setMode(targetMode);
+
+    if (!original) return;
+
+    // comunes
+    setTitle(original.title || '');
+    setAgencyName(original.agencyName || '');
+    setProducerName(original.producer || '');
+    setModality(original.modality || '');
+    setLocation(original.location || '');
+    setDescription(original.description || '');
+    setCastingType(original.castingType || null);
+
+    // filtros
+    setGender(original?.filters?.gender ?? null);
+    setEthnicity(original?.filters?.ethnicity ?? null);
+
+    // full
+    setPayment(original.payment || '');
+    if (Array.isArray(original.roles) && original.roles.length) setRoles(original.roles);
+
+    // extras
+    if (original.extras) {
+      setExDate(original.extras.date || '');
+      setExTime(original.extras.time || '');
+      setExScene(original.extras.scene || '');
+      setExAgeRange(original.extras?.profile?.ageRange || '');
+      setExGender(original.extras?.profile?.gender ?? null);
+      setExLook(original.extras?.profile?.lookNotes || '');
+      setExPayAmount(original.extras?.pay?.amount || '');
+      setExPayNotes(original.extras?.pay?.notes || '');
+    }
+  }, [original, navMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- Publicar
   const handlePublish = async () => {
     if (isPublishing) return;
 
-// Validaciones comunes
-if (!title.trim()) return Alert.alert('Falta título', 'Ingresa el título del casting.');
-if (!location.trim()) return Alert.alert('Falta ubicación', 'Ingresa la ciudad/país o remoto.');
+    const isEdit = Boolean(original || editCastingId);
+    const persistedId = String(original?.id || editCastingId || Date.now());
 
-// Agencia obligatoria (ambos modos)
-if (!agencyName.trim()) {
-  setShowAgencyModal(true);
-  return;
-}
+    // Validaciones comunes
+    if (!title.trim()) return Alert.alert('Falta título', 'Ingresa el título del casting.');
+    if (!location.trim()) return Alert.alert('Falta ubicación', 'Ingresa la ciudad/país o remoto.');
+
+    // Agencia obligatoria (ambos modos)
+    if (!agencyName.trim()) {
+      setShowAgencyModal(true);
+      return;
+    }
 
     // Validaciones por modo
     if (mode === 'extras') {
@@ -194,19 +257,25 @@ if (!agencyName.trim()) {
     try {
       setIsPublishing(true);
 
-      // Subir media
+      // Subir media nueva (si agregaste en esta sesión)
       const attachmentUrls = [];
       for (const uri of images) {
-        const url = await uploadMediaToStorage(uri, `castings/images/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`);
+        const url = await uploadMediaToStorage(
+          uri,
+          `castings/images/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`
+        );
         if (url) attachmentUrls.push(url);
       }
       let videoUrl = null;
       if (video?.uri) {
-        videoUrl = await uploadMediaToStorage(video.uri, `castings/videos/${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`);
+        videoUrl = await uploadMediaToStorage(
+          video.uri,
+          `castings/videos/${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`
+        );
       }
 
       const base = {
-        id: Date.now().toString(),
+        id: persistedId,
         type: 'casting',
         title: title.trim(),
         agencyName: agencyName.trim(),
@@ -219,46 +288,38 @@ if (!agencyName.trim()) {
         status: 'published',
         creatorId: userData?.id || '',
         creatorEmail: userData?.email || '',
-        image: attachmentUrls[0] || null,
-        images: attachmentUrls,
-        videoExplain: videoUrl,
+        image: attachmentUrls[0] || (original?.image ?? null),
+        images: (original?.images || []).concat(attachmentUrls),
+        videoExplain: videoUrl || original?.videoExplain || null,
         filters: { gender, ethnicity },
         structured: { schemaVersion: '1.0', source: 'manual' },
-        timestamp: Date.now(),
-        mode, // <-- clave
+        timestamp: Number(original?.timestamp) || Date.now(),
+        mode, // <-- usar el modo NORMALIZADO ('extras' | 'full')
       };
 
       let payload = {};
-if (mode === 'extras') {
-  payload = {
-    ...base,
-    // sobrescribir con defaults invisibles en EXTRAS
-agencyName: agencyName.trim(),
-producer: (producerName || '').trim(),
-modality: (modality || '').trim() || 'Presencial',
-
-    description: description.trim(),
-    // En extras NO usamos deadline (si quieres mantenerlo, deja finalDeadline)
-    deadline: '',
-
-    extras: {
-      date: toISODate(exDate) || exDate,
-      time: exTime.trim(),
-      scene: exScene.trim(),
-      profile: {
-        ageRange: exAgeRange.trim(),
-        gender: exGender,
-        lookNotes: exLook.trim(),
-      },
-      pay: {
-        amount: (exPayAmount || '').toString().trim(),
-        notes: exPayNotes.trim(),
-      },
-    },
-
-    roles: [],
-    payment: '',
-  };
+      if (mode === 'extras') {
+        payload = {
+          ...base,
+          description: description.trim(),
+          deadline: '',
+          extras: {
+            date: toISODate(exDate) || exDate,
+            time: exTime.trim(),
+            scene: exScene.trim(),
+            profile: {
+              ageRange: exAgeRange.trim(),
+              gender: exGender,
+              lookNotes: exLook.trim(),
+            },
+            pay: {
+              amount: (exPayAmount || '').toString().trim(),
+              notes: exPayNotes.trim(),
+            },
+          },
+          roles: [],
+          payment: '',
+        };
       } else {
         payload = {
           ...base,
@@ -277,15 +338,30 @@ modality: (modality || '').trim() || 'Presencial',
         };
       }
 
-      const res = await syncCastingToFirestore(payload);
+      // Guardar en Firestore (merge si tu helper lo soporta)
+      let res;
+      try {
+        res = await syncCastingToFirestore(payload, { merge: true });
+      } catch {
+        res = await syncCastingToFirestore(payload);
+      }
       if (!res?.ok) throw new Error(res?.error || 'No se pudo guardar en Firestore');
 
-      // Guardado local para Dashboard
+      // Guardado local: reemplaza si existe, si no inserta
       try {
         const raw = await AsyncStorage.getItem('castings');
         const list = raw ? JSON.parse(raw) : [];
-        const withId = { ...payload, docId: res.docId || payload.id };
-        const updated = [withId, ...list].slice(0, 50);
+        const withId = { ...payload, docId: res?.docId || original?.docId || payload.id };
+
+        const keyOf = (x) => String(x?.docId || x?.id || '');
+        const idx = list.findIndex(x => keyOf(x) === keyOf(withId));
+        let updated;
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...withId };
+          updated = [...list];
+        } else {
+          updated = [withId, ...list].slice(0, 50);
+        }
         await AsyncStorage.setItem('castings', JSON.stringify(updated));
       } catch {}
 
@@ -331,13 +407,10 @@ modality: (modality || '').trim() || 'Presencial',
             <Text style={styles.mediaBtnText}>Subir imágenes</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-  onPress={pickVideo} 
-  style={[styles.mediaBtn, { marginLeft: 'auto' }]}
->
-  <Ionicons name="videocam-outline" size={18} color="#fff" />
-  <Text style={styles.mediaBtnText}>Video explicativo</Text>
-</TouchableOpacity>
+          <TouchableOpacity onPress={pickVideo} style={[styles.mediaBtn, { marginLeft: 'auto' }]}>
+            <Ionicons name="videocam-outline" size={18} color="#fff" />
+            <Text style={styles.mediaBtnText}>Video explicativo</Text>
+          </TouchableOpacity>
         </View>
 
         {!!images.length && (
@@ -348,71 +421,71 @@ modality: (modality || '').trim() || 'Presencial',
           </ScrollView>
         )}
         {video?.uri ? (
-  <View style={{ width: '60%', height: 140, marginTop: 8, marginBottom: 6, alignSelf: 'center' }}>
-    <Video
-      source={{ uri: video.uri }}
-      useNativeControls
-      resizeMode="contain"
-      style={{ width: '100%', height: '100%', borderRadius: 10 }}
-      shouldPlay={false}
-    />
-  </View>
-) : null}
+          <View style={{ width: '60%', height: 140, marginTop: 8, marginBottom: 6, alignSelf: 'center' }}>
+            <Video
+              source={{ uri: video.uri }}
+              useNativeControls
+              resizeMode="contain"
+              style={{ width: '100%', height: '100%', borderRadius: 10 }}
+              shouldPlay={false}
+            />
+          </View>
+        ) : null}
 
-{/* Campos comunes */}
-<TextInput
-  placeholder="Título del casting"
-  placeholderTextColor="#888"
-  style={styles.input}
-  value={title}
-  onChangeText={setTitle}
-/>
+        {/* Campos comunes */}
+        <TextInput
+          placeholder="Título del casting"
+          placeholderTextColor="#888"
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+        />
 
-<TextInput
-  placeholder="Ciudad o lugar"
-  placeholderTextColor="#888"
-  style={styles.input}
-  value={location}
-  onChangeText={setLocation}
-/>
+        <TextInput
+          placeholder="Ciudad o lugar"
+          placeholderTextColor="#888"
+          style={styles.input}
+          value={location}
+          onChangeText={setLocation}
+        />
 
-{/* Estos campos SOLO aparecen en modo FULL */}
-{mode === 'full' && (
-  <>
-    <TextInput
-      placeholder="Productora"
-      placeholderTextColor="#888"
-      style={styles.input}
-      value={producerName}
-      onChangeText={setProducerName}
-    />
- <TextInput
-  placeholder="Nombre de la agencia que envía el casting (obligatorio)"
-  placeholderTextColor="#888"
-  style={styles.input}
-  value={agencyName}
-  onChangeText={setAgencyName}
-/>
-    <TextInput
-      placeholder="Modalidad (presencial / remoto / selftape)"
-      placeholderTextColor="#888"
-      style={styles.input}
-      value={modality}
-      onChangeText={setModality}
-    />
-  </>
-)}
+        {/* FULL */}
+        {mode === 'full' && (
+          <>
+            <TextInput
+              placeholder="Productora"
+              placeholderTextColor="#888"
+              style={styles.input}
+              value={producerName}
+              onChangeText={setProducerName}
+            />
+            <TextInput
+              placeholder="Nombre de la agencia que envía el casting (obligatorio)"
+              placeholderTextColor="#888"
+              style={styles.input}
+              value={agencyName}
+              onChangeText={setAgencyName}
+            />
+            <TextInput
+              placeholder="Modalidad (presencial / remoto / selftape)"
+              placeholderTextColor="#888"
+              style={styles.input}
+              value={modality}
+              onChangeText={setModality}
+            />
+          </>
+        )}
 
-        {/* Modo EXTRAS */}
+        {/* EXTRAS */}
         {mode === 'extras' && (
           <>
-<TextInput
-  placeholder="Nombre de la agencia / productora (obligatorio)"
-  placeholderTextColor="#888"
-  style={styles.input}
-  value={agencyName}
-  onChangeText={setAgencyName}
-/>
+            <TextInput
+              placeholder="Nombre de la agencia / productora (obligatorio)"
+              placeholderTextColor="#888"
+              style={styles.input}
+              value={agencyName}
+              onChangeText={setAgencyName}
+            />
             <TextInput
               placeholder="Fecha de rodaje (DD-MM-AAAA)"
               placeholderTextColor="#888"
@@ -497,7 +570,7 @@ modality: (modality || '').trim() || 'Presencial',
           </>
         )}
 
-        {/* Modo FULL */}
+        {/* Modo FULL (bloque extra) */}
         {mode === 'full' && (
           <>
             <TextInput
@@ -678,7 +751,9 @@ modality: (modality || '').trim() || 'Presencial',
                 style={styles.modalBtn}
                 onPress={() => {
                   setSuccessVisible(false);
-                  navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+                  const isEdit = Boolean(original || editCastingId);
+                  if (isEdit) navigation.goBack();
+                  else navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
                 }}
               >
                 <Text style={styles.modalBtnText}>OK</Text>
@@ -781,7 +856,6 @@ const styles = StyleSheet.create({
   },
   mediaBtnText: { color: '#fff', fontWeight: '600' },
   thumb: { width: 90, height: 90, borderRadius: 10, marginRight: 8 },
-  videoHint: { color: '#9DD6FF', marginVertical: 6 },
 
   // Roles (full)
   section: { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 18, marginBottom: 8 },

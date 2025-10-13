@@ -1,57 +1,46 @@
 // screens/SettingsScreen.js
 import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Modal,
-  ActivityIndicator,
-  TextInput,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
+  ActivityIndicator, TextInput, Alert, Linking
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../src/firebase/firebaseConfig';
 import {
-  sendEmailVerification,
-  signOut,
-  sendPasswordResetEmail,
-  deleteUser,
-  reauthenticateWithCredential,
-  EmailAuthProvider,
+  sendEmailVerification, signOut, sendPasswordResetEmail, deleteUser,
+  reauthenticateWithCredential, EmailAuthProvider
 } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import deleteUserDataDeep from '../src/firebase/helpers/deleteUserDataDeep';
 
-// 🔧 Limpieza robusta de AsyncStorage (incluye cualquier clave "notifications_*")
+// ===== URLs web =====
+const PRIVACY_URL = 'https://www.elenlace.cl/privacidad';
+const DELETE_URL  = 'https://www.elenlace.cl/eliminar-cuenta';
+const CSAE_URL    = 'https://www.elenlace.cl/seguridad-ninos';
+const HELP_URL    = 'https://www.elenlace.cl/ayuda';
+
+// Helper abrir enlace
+async function openLink(url) {
+  try {
+    const ok = await Linking.canOpenURL(url);
+    if (ok) return Linking.openURL(url);
+  } catch (_) {}
+  Alert.alert('No se pudo abrir', `Copia este enlace en tu navegador:\n${url}`);
+}
+
+// Limpieza de storage
 async function cleanLocalStorageAfterDelete() {
   try {
     const keys = await AsyncStorage.getAllKeys();
     const known = new Set([
-      'userProfile',
-      'userProfileFree',
-      'userProfilePro',
-      'userProfileElite',
-      'userData',
-      'allProfiles',
-      'allProfilesPro',
-      'allProfilesElite',
-      'professionalMessages',
+      'userProfile','userProfileFree','userProfilePro','userProfileElite',
+      'userData','allProfiles','allProfilesPro','allProfilesElite','professionalMessages',
     ]);
     const toRemove = new Set([...known]);
-    keys.forEach((k) => {
-      if (k && (k.startsWith('notifications_') || known.has(k))) {
-        toRemove.add(k);
-      }
-    });
-    if (toRemove.size > 0) {
-      await AsyncStorage.multiRemove(Array.from(toRemove));
-    }
-  } catch (e) {
-    console.warn('cleanLocalStorageAfterDelete warn:', e?.message || e);
-  }
+    keys.forEach(k => { if (k && (k.startsWith('notifications_') || known.has(k))) toRemove.add(k); });
+    if (toRemove.size > 0) await AsyncStorage.multiRemove(Array.from(toRemove));
+  } catch (e) { console.warn('cleanLocalStorageAfterDelete warn:', e?.message || e); }
 }
 
 export default function SettingsScreen() {
@@ -60,8 +49,6 @@ export default function SettingsScreen() {
   const [isVerified, setIsVerified] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  // Reauth
   const [showReauthModal, setShowReauthModal] = useState(false);
   const [password, setPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -73,7 +60,7 @@ export default function SettingsScreen() {
         const refreshed = auth.currentUser;
         setUser(refreshed || null);
         setIsVerified(!!refreshed?.emailVerified);
-  } catch (_) {}
+      } catch {}
     };
     fetchStatus();
   }, []);
@@ -83,8 +70,7 @@ export default function SettingsScreen() {
       if (!user) throw new Error('No hay sesión activa');
       await sendEmailVerification(user);
       setShowPasswordModal(true);
-    } catch (error) {
-      console.error('Error enviando verificación:', error);
+    } catch {
       Alert.alert('Error', 'No se pudo enviar la verificación.');
     }
   };
@@ -94,8 +80,7 @@ export default function SettingsScreen() {
       if (!user?.email) throw new Error('No hay correo asociado');
       await sendPasswordResetEmail(auth, user.email);
       setShowPasswordModal(true);
-    } catch (error) {
-      console.error('Error al enviar reset:', error);
+    } catch {
       Alert.alert('Error', 'No se pudo enviar el enlace de restablecimiento.');
     }
   };
@@ -104,57 +89,32 @@ export default function SettingsScreen() {
     try {
       await signOut(auth);
       navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
-    } catch (error) {
-      console.log('Error al cerrar sesión:', error);
+    } catch {
       Alert.alert('Error', 'No se pudo cerrar sesión.');
     }
   };
 
   const askDeleteAccount = () => setShowDeleteModal(true);
-
-  const proceedDeleteAfterConfirm = () => {
-    setShowDeleteModal(false);
-    setShowReauthModal(true);
-  };
+  const proceedDeleteAfterConfirm = () => { setShowDeleteModal(false); setShowReauthModal(true); };
 
   const performAccountDeletion = async () => {
-    if (!user?.email) {
-      Alert.alert('Error', 'No hay sesión activa.');
-      return;
-    }
-    if (!password.trim()) {
-      Alert.alert('Contraseña requerida', 'Ingresa tu contraseña para continuar.');
-      return;
-    }
+    if (!user?.email) return Alert.alert('Error', 'No hay sesión activa.');
+    if (!password.trim()) return Alert.alert('Contraseña requerida', 'Ingresa tu contraseña para continuar.');
 
     setDeleting(true);
     try {
-      // 1) Reautenticación
       const credential = EmailAuthProvider.credential(user.email, password.trim());
       await reauthenticateWithCredential(user, credential);
-
-      // 2) Borrado profundo de datos (Firestore/Storage/otros)
       await deleteUserDataDeep(user.uid, user.email);
-
-      // 3) Limpieza local robusta
       await cleanLocalStorageAfterDelete();
-
-      // 4) Eliminar cuenta de Auth (al final)
       await deleteUser(auth.currentUser);
-
-      // 5) Navegación
       navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
     } catch (error) {
-      console.log('Error al eliminar cuenta:', error);
-      let msg = 'No se pudo eliminar la cuenta.';
       const code = String(error?.code || '');
-      if (code.includes('auth/wrong-password')) {
-        msg = 'Contraseña incorrecta. Intenta nuevamente.';
-      } else if (code.includes('auth/too-many-requests')) {
-        msg = 'Demasiados intentos. Espera un momento e inténtalo otra vez.';
-      } else if (code.includes('auth/requires-recent-login')) {
-        msg = 'Por seguridad, vuelve a iniciar sesión y reintenta.';
-      }
+      let msg = 'No se pudo eliminar la cuenta.';
+      if (code.includes('auth/wrong-password')) msg = 'Contraseña incorrecta. Intenta nuevamente.';
+      else if (code.includes('auth/too-many-requests')) msg = 'Demasiados intentos. Intenta más tarde.';
+      else if (code.includes('auth/requires-recent-login')) msg = 'Por seguridad, vuelve a iniciar sesión.';
       Alert.alert('Error', msg);
     } finally {
       setDeleting(false);
@@ -196,11 +156,12 @@ export default function SettingsScreen() {
           <Text style={styles.buttonText}>🚪 Cerrar sesión</Text>
         </TouchableOpacity>
 
-        {/* 📄 Documentos legales */}
+        {/* ✅ Un solo botón: abre la política en la WEB */}
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('PrivacyPolicy')} disabled={deleting}>
-          <Text style={styles.buttonText}>🛡️ Política de privacidad</Text>
-        </TouchableOpacity>
+    <Text style={styles.buttonText}>🛡️ Política de privacidad</Text>
+  </TouchableOpacity>
 
+        {/* Internas que ya tienes (si las usas) */}
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('TermsAndConditions')} disabled={deleting}>
           <Text style={styles.buttonText}>📄 Términos y condiciones</Text>
         </TouchableOpacity>
@@ -208,23 +169,35 @@ export default function SettingsScreen() {
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('LegalNotice')} disabled={deleting}>
           <Text style={styles.buttonText}>📌 Aviso legal</Text>
         </TouchableOpacity>
-<TouchableOpacity
-  style={styles.button}
-  onPress={() => navigation.navigate('PrivacySecurity', { email: user?.email })}
-  disabled={deleting}
->
-  <Text style={styles.buttonText}>🔒 Privacidad y seguridad</Text>
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate('PrivacySecurity', { email: user?.email })}
+          disabled={deleting}
+        >
+          <Text style={styles.buttonText}>🔒 Privacidad y seguridad</Text>
+        </TouchableOpacity>
+
+        {/* Enlaces web adicionales (mismo estilo) */}
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('ChildSafety')} disabled={deleting}>
+    <Text style={styles.buttonText}>👶 Seguridad de los niños</Text>
+  </TouchableOpacity>
+
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('HelpSupport')} disabled={deleting}>
+  <Text style={styles.buttonText}>❓ Ayuda / Soporte</Text>
 </TouchableOpacity>
+
+        {/* Web: instrucciones de eliminación + botón rojo in-app (requisito Apple) */}
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('DeleteAccountInfo')} disabled={deleting}>
+    <Text style={styles.buttonText}>🗑️ Instrucciones para eliminar cuenta</Text>
+  </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.button, { backgroundColor: '#ff4d4d' }]}
           onPress={askDeleteAccount}
           disabled={deleting}
         >
-          {deleting ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>🗑️ Eliminar cuenta</Text>
-          )}
+          {deleting ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>🗑️ Eliminar cuenta</Text>}
         </TouchableOpacity>
       </ScrollView>
 
@@ -265,14 +238,12 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
-      {/* Reautenticación con contraseña */}
+      {/* Reautenticación */}
       <Modal visible={showReauthModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>🔐 Reautenticación requerida</Text>
-            <Text style={styles.modalText}>
-              Ingresa tu contraseña para eliminar la cuenta de forma segura.
-            </Text>
+            <Text style={styles.modalText}>Ingresa tu contraseña para eliminar la cuenta de forma segura.</Text>
             <TextInput
               value={password}
               onChangeText={setPassword}
@@ -283,11 +254,7 @@ export default function SettingsScreen() {
               editable={!deleting}
             />
             <TouchableOpacity style={styles.modalButton} onPress={performAccountDeletion} disabled={deleting}>
-              {deleting ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={styles.modalButtonText}>Eliminar definitivamente</Text>
-              )}
+              {deleting ? <ActivityIndicator color="#000" /> : <Text style={styles.modalButtonText}>Eliminar definitivamente</Text>}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: '#444', marginTop: 10 }]}
@@ -309,7 +276,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, color: '#D8A353', fontWeight: 'bold', marginBottom: 30, textAlign: 'center' },
   label: { color: '#aaa', fontSize: 12, marginTop: 20 },
   text: { color: '#fff', fontSize: 14, marginBottom: 10 },
-  button: { backgroundColor: '#D8A353', padding: 15, borderRadius: 10, marginTop: 25, alignItems: 'center' },
+  button: {
+    backgroundColor: '#D8A353',
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 16,
+    alignItems: 'center',
+  },
   buttonText: { color: '#000', fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: '#1a1a1a', padding: 25, borderRadius: 10, borderColor: '#D8A353', borderWidth: 1, alignItems: 'center', width: '85%' },
@@ -319,12 +292,7 @@ const styles = StyleSheet.create({
   modalButtonText: { color: '#000', fontWeight: 'bold' },
   input: {
     width: '100%',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 10,
-    padding: 12,
-    color: '#fff',
-    marginBottom: 12,
-    backgroundColor: '#111',
+    borderWidth: 1, borderColor: '#333', borderRadius: 10,
+    padding: 12, color: '#fff', marginBottom: 12, backgroundColor: '#111',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,26 @@ import {
   Alert,
 } from 'react-native';
 
-import { AntDesign } from '@expo/vector-icons';
+import { AntDesign, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../contexts/UserContext';
 import { goToFormularioFree } from '../utils/navigationHelpers';
 import { Image as CachedImage } from 'react-native-expo-image-cache';
 
 const { width } = Dimensions.get('window');
+
+/** --- Catálogo/Helper para detectar "resource" por categorías (fallback si no hay profileKind) --- */
+const RESOURCE_CATS = [
+  'drone','auto','vehículo','vehiculo','vestuar','maquill','catering','herramient','equipo',
+  'locación','locacion','recurso','transporte','grúa','grua','camión','camion','casa rodante',
+  'estudio fotográfico','estudio fotografico','van','coffee break','snack','backline','iluminación',
+  'iluminacion','grúas para filmación','gruas para filmacion','camiones de arte','vans de producción',
+  'vans de produccion','servicios de catering','operador de drone','autos personales','motos','bicicletas'
+];
+const isResourceCategory = (categories = []) => {
+  const cats = (Array.isArray(categories) ? categories : [categories]).map(c => String(c || '').toLowerCase());
+  return cats.some(c => RESOURCE_CATS.some(k => c.includes(k)));
+};
 
 export default function ProfileScreen({ navigation, route }) {
   const { userData } = useUser();
@@ -40,11 +53,19 @@ export default function ProfileScreen({ navigation, route }) {
   const [isReady, setIsReady] = useState(false);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
 
+  /** Derivar si es un perfil de Resource para layout/validación de vista */
+  const isResourceProfile = useMemo(() => {
+    if (profileData?.profileKind === 'resource') return true;
+    if (profileData?.profileKind === 'talent') return false;
+    return isResourceCategory(profileData?.category);
+  }, [profileData]);
+
   useEffect(() => {
     if (!userData || isExternal) return;
 
     const verificarPerfil = async () => {
       try {
+        // Redirecciones actuales
         if (userData.membershipType === 'elite') {
           if (userData.hasPaid === true) {
             navigation.replace('ProfileElite');
@@ -60,7 +81,7 @@ export default function ProfileScreen({ navigation, route }) {
           return;
         }
 
-        // 🔍 Validar perfil Free
+        // 🔍 Validar perfil Free con lógica dinámica por tipo
         const profileFreeRaw = await AsyncStorage.getItem('userProfileFree');
         const hasCompletedForm = await AsyncStorage.getItem('hasCompletedFreeForm');
         let profileFree = null;
@@ -70,17 +91,45 @@ export default function ProfileScreen({ navigation, route }) {
           console.warn('⚠️ Error al parsear userProfileFree:', e);
         }
 
-        const isValid =
-          profileFree &&
+        // Si no hay perfil guardado
+        if (!profileFree) {
+          if (hasCompletedForm !== 'true') setShowIncompleteModal(true);
+          setIsReady(true);
+          return;
+        }
+
+        const baseOk =
           typeof profileFree.name === 'string' &&
           profileFree.name.trim() !== '' &&
           Array.isArray(profileFree.bookPhotos) &&
           profileFree.bookPhotos.length >= 1 &&
           profileFree.profilePhoto &&
-          profileFree.edad &&
-          profileFree.sexo &&
           Array.isArray(profileFree.category) &&
           profileFree.category.length > 0;
+
+        // Detectar modo en Free
+        const freeIsResource =
+          profileFree.profileKind === 'resource' ||
+          profileFree.profileLock === 'resource' ||
+          isResourceCategory(profileFree.category);
+
+        let isValid;
+        if (freeIsResource) {
+          // Reglas Resource Free
+          const desc = (profileFree.resourceDescription || '').trim();
+          isValid =
+            baseOk &&
+            (profileFree.resourceTitle || '').trim() !== '' &&
+            desc !== '' &&
+            desc.length <= 300 &&
+            (profileFree.resourceLocation || '').trim() !== '';
+        } else {
+          // Reglas Talent Free (tus reglas originales)
+          isValid =
+            baseOk &&
+            profileFree.edad &&
+            profileFree.sexo;
+        }
 
         if (!isValid && hasCompletedForm !== 'true') {
           setShowIncompleteModal(true);
@@ -93,7 +142,7 @@ export default function ProfileScreen({ navigation, route }) {
     };
 
     verificarPerfil();
-  }, [userData]);
+  }, [userData, isExternal, navigation]);
 
   if (
     !isExternal &&
@@ -116,6 +165,15 @@ export default function ProfileScreen({ navigation, route }) {
     sexo = 'No definido',
     profilePhoto,
     bookPhotos = [],
+    category,
+    // Campos Resource (pueden venir null en talento)
+    resourceTitle,
+    resourceDescription,
+    resourceLocation,
+    resourceTags,
+    profileKind,
+    profileLock,
+    membershipType,
   } = profileData;
 
   const handleProfileImagePress = () => {
@@ -128,9 +186,24 @@ export default function ProfileScreen({ navigation, route }) {
     });
   };
 
+  // Helpers de UI
+  const printableCategories = Array.isArray(category) ? category.join(', ') : (category || '');
+  const resourceTagsArr = Array.isArray(resourceTags)
+    ? resourceTags
+    : (typeof resourceTags === 'string' && resourceTags.length ? resourceTags.split(',').map(t => t.trim()) : []);
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
+{/* Botón editar perfil (solo si es tu perfil Free) */}
+{!isExternal && (
+  <TouchableOpacity
+    style={styles.editButton}
+    onPress={() => navigation.navigate('EditProfileFree')}
+  >
+    <AntDesign name="edit" size={24} color="#D8A353" />
+  </TouchableOpacity>
+)}
         {isExternal && (
           <View style={{ position: 'absolute', top: 30, left: 20, zIndex: 999 }}>
             <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -139,7 +212,9 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         )}
 
-        <Text style={styles.freeBadge}>Miembro Free 🎬</Text>
+        <Text style={styles.freeBadge}>
+          Miembro Free 🎬 {isResourceProfile ? '• Perfil Resource' : '• Perfil Talento'}
+        </Text>
 
         {profilePhoto ? (
           <TouchableOpacity onPress={handleProfileImagePress}>
@@ -153,26 +228,66 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         )}
 
+        {/* Nombre visible siempre */}
         <Text style={styles.name}>{name}</Text>
+
+        {/* Categorías */}
         <Text style={styles.categoryLabel}>
-          Categorías:{' '}
-          {Array.isArray(profileData.category) ? profileData.category.join(', ') : profileData.category}
+          Categorías: {printableCategories || '—'}
         </Text>
 
+        {/* Bloque de info base */}
         <View style={styles.infoBox}>
           <Text style={styles.label}>Correo:</Text>
           <Text style={styles.text}>{email}</Text>
         </View>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.label}>Edad:</Text>
-          <Text style={styles.text}>{edad}</Text>
-        </View>
+        {/* Layout condicional por tipo */}
+        {isResourceProfile ? (
+          <>
+            {/* RESOURCE: Campos específicos */}
+            <View style={styles.infoBox}>
+              <Text style={styles.label}>Título comercial:</Text>
+              <Text style={styles.text}>{(resourceTitle || '—')}</Text>
+            </View>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.label}>Sexo:</Text>
-          <Text style={styles.text}>{sexo}</Text>
-        </View>
+            <View style={styles.infoBox}>
+              <Text style={styles.label}>Descripción:</Text>
+              <Text style={styles.text}>{(resourceDescription || '—')}</Text>
+            </View>
+
+            <View style={styles.infoBox}>
+              <Text style={styles.label}>Ubicación:</Text>
+              <Text style={styles.text}>{(resourceLocation || '—')}</Text>
+            </View>
+
+            {resourceTagsArr.length > 0 && (
+              <View style={styles.infoBox}>
+                <Text style={styles.label}>Tags:</Text>
+                <View style={styles.tagsRow}>
+                  {resourceTagsArr.slice(0, 12).map((tag, i) => (
+                    <View key={`${tag}-${i}`} style={styles.tagChip}>
+                      <Text style={styles.tagText}>#{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
+        ) : (
+          <>
+            {/* TALENTO: tus campos originales */}
+            <View style={styles.infoBox}>
+              <Text style={styles.label}>Edad:</Text>
+              <Text style={styles.text}>{edad}</Text>
+            </View>
+
+            <View style={styles.infoBox}>
+              <Text style={styles.label}>Sexo:</Text>
+              <Text style={styles.text}>{sexo}</Text>
+            </View>
+          </>
+        )}
 
         {/* Contactar */}
         {isExternal && profileData?.email && (
@@ -190,9 +305,12 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
 
+        {/* Galería (book o fotos del recurso) */}
         {bookPhotos.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Book de Fotos:</Text>
+            <Text style={styles.sectionTitle}>
+              {isResourceProfile ? 'Galería del servicio:' : 'Book de Fotos:'}
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -202,7 +320,7 @@ export default function ProfileScreen({ navigation, route }) {
                 justifyContent: bookPhotos.length === 1 ? 'center' : 'flex-start',
               }}
             >
-              {bookPhotos.slice(0, 3).map((uri, index) => (
+              {bookPhotos.slice(0, 12).map((uri, index) => (
                 <View key={index} style={styles.bookImageWrapper}>
                   <TouchableOpacity onPress={() => setSelectedImage(uri)}>
                     <CachedImage uri={(uri || '').trim()} style={styles.bookImage} resizeMode="cover" />
@@ -213,6 +331,7 @@ export default function ProfileScreen({ navigation, route }) {
           </>
         )}
 
+        {/* Modal imagen fullscreen */}
         <Modal
           visible={selectedImage !== null}
           transparent={true}
@@ -259,7 +378,12 @@ export default function ProfileScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
   container: { alignItems: 'center', paddingBottom: 100, marginTop: 20 },
-  editButton: { position: 'absolute', top: 50, right: 30, zIndex: 20 },
+  editButton: {
+  position: 'absolute',
+  top: 45,
+  right: 30,
+  zIndex: 10,
+},
   profileImage: {
     width: 120, height: 120, borderRadius: 60, borderWidth: 0.5, borderColor: '#D8A353', marginTop: 20,
   },
@@ -296,4 +420,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A', borderRadius: 10, width: '85%',
   },
   contactText: { fontSize: 14, color: '#FFF' },
+
+  // Tags chips
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  tagChip: { backgroundColor: '#D8A353', borderRadius: 14, paddingVertical: 3, paddingHorizontal: 8 },
+  tagText: { color: '#000', fontWeight: 'bold', fontSize: 12 },
 });

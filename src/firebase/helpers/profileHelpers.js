@@ -1,29 +1,46 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const guardarAllProfiles = async (lista) => {
-  try {
-const limpio = lista.filter(p => {
-  if (!p || typeof p !== 'object') return false;
+const fixEmail = (raw) => {
+  if (!raw) return '';
+  let email = String(raw).trim().toLowerCase();
 
-  const email = (p.email || '').trim().toLowerCase();
+  // quitar espacios
+  email = email.replace(/\s+/g, '');
 
-  // Mostrar si viene mal
-  if (email.includes('@@')) {
-    console.warn('🚫 Correo con doble arroba detectado en guardarAllProfiles:', email);
+  // si tiene múltiples @, unir la parte local con puntos y dejar el último dominio
+  const atCount = (email.match(/@/g) || []).length;
+  if (atCount > 1) {
+    const parts = email.split('@');
+    const domain = parts.pop();
+    const local = parts.join('.');
+    email = `${local}@${domain}`;
+    console.warn('🧽 Email autocorregido (múltiples @):', raw, '→', email);
   }
 
-  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  if (!isValid) {
-    console.warn('❌ Correo descartado por inválido:', email);
-  }
-
-  return isValid;
-});
-
-    await AsyncStorage.setItem('allProfiles', JSON.stringify(limpio));
-    console.log(`✅ guardados ${limpio.length} perfiles limpios`);
-  } catch (e) {
-    console.warn('❌ Error guardando allProfiles filtrado:', e.message);
-  }
+  return email;
 };
 
+export const guardarAllProfiles = async (lista) => {
+  try {
+    const limpio = (Array.isArray(lista) ? lista : []).filter((p) => {
+      if (!p || typeof p !== 'object') return false;
+
+      const fixed = fixEmail(p.email);
+      const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fixed);
+
+      if (!isValid) {
+        console.warn('❌ Correo descartado por inválido:', p.email, '→', fixed);
+        return false;
+      }
+
+      // persistimos el email corregido para guardar
+      p.email = fixed;
+      return true;
+    });
+
+    await AsyncStorage.setItem('allProfiles', JSON.stringify(limpio));
+    console.log(`✅ guardados ${limpio.length} perfiles limpios en allProfiles`);
+  } catch (e) {
+    console.warn('❌ Error guardando allProfiles filtrado:', e.message || e);
+  }
+};

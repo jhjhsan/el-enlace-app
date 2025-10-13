@@ -1,133 +1,149 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const { Expo } = require('expo-server-sdk');
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
 const db = admin.firestore();
-const messaging = admin.messaging();
+const expo = new Expo();
+
+const ICON_URL = "https://firebasestorage.googleapis.com/v0/b/elenlaceapp.firebasestorage.app/o/logo-banner.png?alt=media&token=c5865b54-d7a4-4fce-a967-0e2d85d2149a";
+const PROFILE_COLLECTIONS = ['profiles', 'profilesPro', 'profilesElite', 'profilesFree'];
 
 exports.sendCastingPushNotifications = functions.firestore
   .document('castings/{castingId}')
   .onCreate(async (snap, context) => {
     try {
-      const castingData = snap.data();
+      const castingData = snap.data() || {};
       const castingId = context.params.castingId;
 
       const {
         title,
         description,
-        gender,     // filtro opcional
-        minAge,     // filtro opcional
-        maxAge,     // filtro opcional
-        ethnicity,  // filtro opcional
+        gender,     // opcional
+        minAge,     // opcional
+        maxAge,     // opcional
+        ethnicity,  // opcional
       } = castingData;
 
-      // 🔑 Email del creador en minúsculas (de preferencia usa creatorEmailLower guardado en el doc)
+      // email creador normalizado
       const creatorEmailLower =
-        (castingData.creatorEmailLower && String(castingData.creatorEmailLower).toLowerCase()) ||
-        (castingData.creatorEmail && String(castingData.creatorEmail).toLowerCase()) ||
+        (castingData?.creatorEmailLower && String(castingData.creatorEmailLower).toLowerCase()) ||
+        (castingData?.creatorEmail && String(castingData.creatorEmail).toLowerCase()) ||
         null;
 
-      const profileCollections = ['profiles', 'profilesPro', 'profilesElite'];
-
-      // Usamos Set para no repetir destinatarios (si aparece en varias colecciones)
+      // recolectar destinatarios únicos con Expo token válido
       const recipientEmails = new Set();
       const tokensByEmail = new Map();
 
-      for (const colName of profileCollections) {
+      for (const colName of PROFILE_COLLECTIONS) {
         const snapshot = await db.collection(colName).get();
 
         snapshot.forEach(doc => {
           const email = String(doc.id || '').toLowerCase();
           const user = doc.data();
 
-          // 🛑 Excluir SIEMPRE al creador
+          // excluir al creador
           if (creatorEmailLower && email === creatorEmailLower) return;
 
-          // Debe tener token
-          if (!user.expoPushToken) return;
+          const pushToken = user?.expoPushToken;
+          if (!pushToken || !Expo.isExpoPushToken(pushToken)) return;
 
-          // Filtros opcionales
-          const userAge = user.birthYear ? new Date().getFullYear() - user.birthYear : null;
+          // filtros opcionales
+          const userBirthYear = user?.birthYear;
+          const userAge = userBirthYear ? (new Date().getFullYear() - userBirthYear) : null;
+
           const matchGender = gender ? String(user.gender || '').toLowerCase() === String(gender).toLowerCase() : true;
           const matchEthnicity = ethnicity ? String(user.ethnicity || '').toLowerCase() === String(ethnicity).toLowerCase() : true;
           const matchAge = (userAge && minAge && maxAge) ? (userAge >= minAge && userAge <= maxAge) : true;
 
           if (matchGender && matchEthnicity && matchAge) {
             recipientEmails.add(email);
-            // último token conocido por email (si hay duplicado, se reemplaza; está bien)
-            tokensByEmail.set(email, user.expoPushToken);
+            tokensByEmail.set(email, pushToken);
           }
         });
       }
 
       if (recipientEmails.size === 0) {
-        console.log('🔕 Ningún perfil coincide con el casting (o solo el creador coincidía y fue excluido).');
-        return { success: false, message: 'No matching profiles found.' };
+        console.log('🔕 No hay destinatarios con Expo token válido (o filtros muy estrictos).');
+        return { success: false, message: 'No matching recipients' };
       }
 
-      // Construye el payload común
-      const notifTitle = `🎬 Nuevo casting: ${title}`;
+      const notifTitle = `🎬 Nuevo casting: ${title || 'Oportunidad'}`;
       const notifBody  = `Buscamos perfiles como el tuyo. ¡Revisa los detalles!`;
       const nowServerTs = admin.firestore.FieldValue.serverTimestamp();
 
-      // Enviar push 1 vez por destinatario
-      let successCount = 0;
+      // construir tarjetas + mensajes expo
+      const messages = [];
+      const batch = db.batch();
+
       for (const email of recipientEmails) {
         const token = tokensByEmail.get(email);
         if (!token) continue;
 
-        const message = {
-          token,
-          notification: {
-            title: notifTitle,
-            body: notifBody,
-          },
-          data: {
-            type: 'casting',
-            castingId,
-          },
-          android: {
-            priority: 'high',
-            notification: { sound: 'default', channelId: 'default' },
-          },
-          apns: {
-            payload: { aps: { sound: 'default', contentAvailable: true } },
-          },
-        };
-
-        try {
-          await messaging.send(message);
-          successCount++;
-        } catch (e) {
-          console.warn(`❌ Error enviando a ${email}:`, e.message);
-        }
-      }
-
-      console.log(`✅ Notificaciones enviadas (únicas): ${successCount}`);
-
-      // Guardar una notificación por destinatario (única)
-      const batch = db.batch();
-      for (const email of recipientEmails) {
+        // tarjeta Firestore
         const ref = db.collection('notifications').doc(email).collection('items').doc();
         batch.set(ref, {
+          id: ref.id,
           recipient: email,
           type: 'casting',
           title: notifTitle,
           body: notifBody,
           timestamp: nowServerTs,
-          castingId,
           read: false,
           sender: 'sistema',
-          creatorEmailLower, // útil para auditoría
+          castingId,
+          creatorEmailLower: creatorEmailLower || '',
+        });
+
+        // push Expo
+        messages.push({
+          to: token,
+          title: notifTitle,
+          body: notifBody,
+          data: { type: 'casting', castingId, largeIconUrl: ICON_URL },
+          sound: 'default',
+          priority: 'high',
+          channelId: 'messages',
+          icon: 'icon-noti',
+          image: ICON_URL,
         });
       }
-      await batch.commit();
-      console.log('📝 Notificaciones guardadas en Firestore');
 
-      return { success: true, sent: successCount };
+      await batch.commit();
+      console.log(`📝 Tarjetas guardadas en Firestore: ${recipientEmails.size}`);
+
+      // enviar por Expo (chunks + receipts)
+      let sentOk = 0;
+      try {
+        const chunks = expo.chunkPushNotifications(messages);
+        const tickets = [];
+        for (const chunk of chunks) {
+          const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+          tickets.push(...ticketChunk);
+        }
+        for (const t of tickets) if (t?.status === 'ok') sentOk++;
+
+        const receiptIds = tickets.filter(t => t?.id).map(t => t.id);
+        if (receiptIds.length) {
+          const rchunks = expo.chunkPushNotificationReceiptIds(receiptIds);
+          for (const rc of rchunks) {
+            const receipts = await expo.getPushNotificationReceiptsAsync(rc);
+            for (const [, r] of Object.entries(receipts)) {
+              if (r.status === 'error') {
+                functions.logger.error('PUSH_RECEIPT_ERROR', { message: r.message, details: r.details || null });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('❌ Error enviando notificaciones Expo (castings):', e);
+      }
+
+      console.log(`✅ Push de casting enviadas OK: ${sentOk}`);
+      return { success: true, sentOk, recipients: recipientEmails.size };
     } catch (error) {
       console.error('❌ Error en sendCastingPushNotifications:', error);
       return { success: false, error: error.message };

@@ -1,8 +1,16 @@
 {
   "expo": {
-    "name": "ElEnlaceApp",
+    "name": "El Enlace",
     "slug": "ElEnlaceApp",
-    "version": "1.0.0",
+    "version": "1.0.3",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "url": "https://u.expo.dev/fe8be4be-c9bd-403b-bb2a-20e32af9dc84"
+    },
+    "scheme": "elenlaceapp",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -11,9 +19,22 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "cl.elenlace.app",
+      "buildNumber": "1.0.8",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "NSCameraUsageDescription": "La app necesita la cámara para fotos y videos de perfil/castings.",
+        "NSMicrophoneUsageDescription": "La app necesita el micrófono para grabar videos/mensajes.",
+        "NSPhotoLibraryUsageDescription": "La app necesita acceder a tu galería para subir contenido.",
+        "NSPhotoLibraryAddUsageDescription": "La app guarda imágenes y videos generados por ti.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "icon": "./assets/icon-ios.png"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,17 +43,15 @@
       },
       "googleServicesFile": "./google-services.json",
       "permissions": [
-        "CAMERA",
-        "READ_MEDIA_IMAGES",
-        "READ_MEDIA_VIDEO",
-        "NOTIFICATIONS"
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
       ],
-      "notification": {
-        "icon": "./assets/icon-noti.png",
-        "color": "#D8A353",
-        "channelId": "default" 
-      },
-      "package": "com.elenlace.app"
+      "package": "com.elenlace.app",
+      "versionCode": 168
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,14 +59,31 @@
     "plugins": [
       "expo-font",
       "expo-image-picker",
+      "expo-notifications",
+      "expo-dev-client",
       [
-        "expo-notifications",
+        "expo-build-properties",
         {
-          "icon": "./assets/icon-noti.png",
-          "color": "#D8A353"
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "enableProguardInReleaseBuilds": true,
+            "extraProguardRules": "-keepattributes SourceFile,LineNumberTable\n-dontwarn okhttp3.**\n-dontwarn javax.annotation.**\n-keep class com.google.firebase.** { *; }\n-keep class com.google.android.gms.** { *; }"
+          },
+          "ios": {
+            "useFrameworks": "static"
+          }
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/crashlytics"
     ],
+    "notification": {
+      "icon": "./assets/icon-noti.png",
+      "color": "#D8A353",
+      "androidMode": "default",
+      "androidCollapsedTitle": "El Enlace"
+    },
     "extra": {
       "eas": {
         "projectId": "fe8be4be-c9bd-403b-bb2a-20e32af9dc84"

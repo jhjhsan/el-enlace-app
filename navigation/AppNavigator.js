@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import SplashScreen from '../screens/SplashScreen';
 import { useUser } from '../contexts/UserContext';
@@ -76,6 +77,11 @@ import SendMessageTestScreen from '../screens/SendMessageTestScreen';
 import PublishSuccessScreen from '../screens/PublishSuccessScreen';
 import ServiceDetailScreen from '../screens/ServiceDetailScreen';
 import PrivacySecurityScreen from '../screens/PrivacySecurityScreen';
+import DeleteAccountInfoScreen from '../screens/DeleteAccountInfoScreen';
+import ChildSafetyScreen from '../screens/ChildSafetyScreen';
+
+// 👇 añadido para usar tu botón y evitar doble flecha en DebugUserData
+import BackButton from '../components/BackButton';
 
 const Stack = createNativeStackNavigator();
 
@@ -94,6 +100,8 @@ export default function AppNavigator() {
         headerShown: false,
         animation: 'none',
         gestureEnabled: true,
+        // ✅ iOS maneja mejor el teclado con esto
+        keyboardHandlingEnabled: Platform.OS === 'ios',
       }}
     >
       <Stack.Screen name="InitialRedirect" component={InitialRedirectScreen} />
@@ -153,7 +161,12 @@ export default function AppNavigator() {
       <Stack.Screen
         name="DebugUserData"
         component={DebugUserDataScreen}
-        options={{ headerShown: true, title: 'Datos de usuario' }}
+        options={{
+          headerShown: true,
+          title: 'Datos de usuario',
+          headerBackVisible: false,          // oculta flecha nativa
+          headerLeft: () => <BackButton />,  // usa tu BackButton (globo en iOS)
+        }}
       />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
@@ -170,11 +183,13 @@ export default function AppNavigator() {
       <Stack.Screen name="SendMessageTest" component={SendMessageTestScreen} />
       <Stack.Screen name="ServiceDetailScreen" component={ServiceDetailScreen} />
       <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} options={{ headerShown: false }} />
-
+      <Stack.Screen name="DeleteAccountInfo" component={DeleteAccountInfoScreen} />
+      <Stack.Screen name="ChildSafety" component={ChildSafetyScreen} options={{ headerShown: false }} />
       <Stack.Screen
-      name="PublishSuccess"
-      component={PublishSuccessScreen}
-      options={{ headerShown: false }}/>
+        name="PublishSuccess"
+        component={PublishSuccessScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }

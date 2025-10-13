@@ -1,4 +1,4 @@
-// PromoteProfileScreen.js
+// screens/PromoteProfileScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -16,11 +16,12 @@ import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 
 export default function PromoteProfileScreen() {
   const navigation = useNavigation();
-  const { userData } = useUser();
+  const { userData, setUserData } = useUser();
   const [selectedDays, setSelectedDays] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [alreadyHighlighted, setAlreadyHighlighted] = useState(false);
   const [profileKey, setProfileKey] = useState(null);
+  const [confirmText, setConfirmText] = useState('');
 
   const precios = {
     '7': 3990,
@@ -28,16 +29,24 @@ export default function PromoteProfileScreen() {
     '30': 11990,
   };
 
+  // util: sanitize key como en saveUserProfile
+  const makeSanitizedKey = (email) =>
+    `userProfile_${String(email || '').trim().toLowerCase().replace(/[@.]/g, '_')}`;
+
   useEffect(() => {
     const checkHighlightStatus = async () => {
       try {
-        const email = userData.email;
-        const key = `userProfile_${email}`;
+        const email = userData?.email;
+        if (!email) return;
+
+        const keySan = makeSanitizedKey(email);
         const fallback = 'userProfilePro';
 
-        let stored = await AsyncStorage.getItem(key);
-        let finalKey = key;
+        // intenta primero con la clave sanitizada (la “canónica”)
+        let stored = await AsyncStorage.getItem(keySan);
+        let finalKey = keySan;
 
+        // si no está, intenta con el fallback histórico
         if (!stored) {
           stored = await AsyncStorage.getItem(fallback);
           finalKey = fallback;
@@ -61,38 +70,33 @@ export default function PromoteProfileScreen() {
     };
 
     checkHighlightStatus();
-  }, []);
+  }, [userData?.email]);
 
   const handlePromote = async () => {
     if (!selectedDays) return alert('Selecciona una duración.');
     try {
-      const stored = await AsyncStorage.getItem(profileKey);
-      if (!stored) return alert('Perfil no encontrado.');
-      const parsed = JSON.parse(stored);
-
-      const now = new Date();
-      const expiresAt = new Date(now.setDate(now.getDate() + parseInt(selectedDays)));
-
-      const updatedProfile = {
-        ...parsed,
-        isHighlighted: true,
-        highlightedUntil: expiresAt.toISOString(),
-        timestamp: Date.now(),
+      // ⚠️ Ya NO activamos destacado aquí.
+      // Guardamos una intención de compra y redirigimos al flujo de pago.
+      const email = userData?.email || '';
+      const pending = {
+        email,
+        days: parseInt(selectedDays, 10),
+        price: precios[selectedDays],
+        createdAt: new Date().toISOString(),
+        kind: 'featured', // marca de tipo de compra
       };
+      await AsyncStorage.setItem('pendingFeaturedPurchase', JSON.stringify(pending));
 
-      await AsyncStorage.setItem(profileKey, JSON.stringify(updatedProfile));
-
-      // actualizar también en allProfiles
-      const existing = await AsyncStorage.getItem('allProfiles');
-      const parsedAll = existing ? JSON.parse(existing) : [];
-      const filtered = parsedAll.filter(p => p.email?.toLowerCase() !== userData.email.toLowerCase());
-      const updatedList = [updatedProfile, ...filtered];
-      await guardarAllProfiles(updatedList);
-
-      setShowModal(true);
+      // Navegación a un checkout genérico existente en la app
+      // (usa PaymentScreen que ya aparece en tu Dashboard; pasa modo y params)
+      navigation.navigate('PaymentScreen', {
+        mode: 'featured',
+        days: pending.days,
+        amount: pending.price,
+      });
     } catch (error) {
-      console.error('Error al destacar perfil:', error);
-      alert('Error al guardar el destaque.');
+      console.error('Error preparando el pago de destaque:', error);
+      alert('No se pudo iniciar el proceso de pago.');
     }
   };
 
@@ -113,13 +117,15 @@ export default function PromoteProfileScreen() {
         <>
           <Text style={styles.label}>Selecciona la duración del destaque:</Text>
 
-          {["7", "14", "30"].map((dias) => (
+          {['7', '14', '30'].map((dias) => (
             <TouchableOpacity
               key={dias}
               style={[styles.optionButton, selectedDays === dias && styles.selectedOption]}
               onPress={() => setSelectedDays(dias)}
             >
-              <Text style={styles.optionText}>{dias} días – ${precios[dias].toLocaleString('es-CL')}</Text>
+              <Text style={styles.optionText}>
+                {dias} días – ${precios[dias].toLocaleString('es-CL')}
+              </Text>
             </TouchableOpacity>
           ))}
 
@@ -133,6 +139,11 @@ export default function PromoteProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalText}>✅ Tu perfil fue destacado correctamente.</Text>
+            {confirmText ? (
+              <Text style={[styles.modalText, { color: '#ccc', fontWeight: '400', marginTop: -8 }]}>
+                {confirmText}
+              </Text>
+            ) : null}
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => {

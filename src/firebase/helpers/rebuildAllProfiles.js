@@ -28,7 +28,7 @@ export const rebuildAllProfiles = async () => {
 
     console.log('🔁 Iniciando reconstrucción de allProfiles desde Firestore...');
     const db = getFirestore(getApp());
-    const collectionsToRead = ['profiles', 'profilesPro', 'profilesElite'];
+    const collectionsToRead = ['profilesFree', 'profilesPro', 'profilesElite'];
     const tempMap = new Map();
     const rank = { free: 1, pro: 2, elite: 3 };
 
@@ -43,14 +43,22 @@ export const rebuildAllProfiles = async () => {
       const snapshot = await getDocs(collection(db, col));
       snapshot.forEach((doc) => {
         const raw = doc.data();
-        const data = {
-          ...raw,
-          name: raw.name?.trim() || '',
-          profilePhoto: raw.profilePhoto || raw.profilePhotoUrl || '',
-          email: raw.email?.trim().toLowerCase() || '',
-          id: raw.id || raw.email?.trim().toLowerCase() || '',
-          membershipType: raw.membershipType || 'free',
-        };
+       const data = {
+  ...raw,
+  name: raw.name?.trim() || '',
+  profilePhoto: raw.profilePhoto || raw.profilePhotoUrl || '',
+  email: raw.email?.trim().toLowerCase() || '',
+  id: raw.id || raw.email?.trim().toLowerCase() || '',
+  membershipType:
+    raw.membershipType ||
+    (col === 'profilesElite'
+      ? 'elite'
+      : col === 'profilesPro'
+      ? 'pro'
+      : 'free'),
+  profileKind: raw.profileKind || raw.type || null,   // 👈 aquí agregas
+  profileLock: raw.profileLock ?? null,               // 👈 aquí agregas
+};
 
         const email = data.email;
         if (!isValidEmail(email)) return;
@@ -117,15 +125,17 @@ export const rebuildAllProfiles = async () => {
       const ownProfile = profiles.find(
         (p) => p.email?.toLowerCase() === currentUserEmail
       );
-      if (ownProfile) {
-        const key = {
-          free: 'userProfileFree',
-          pro: 'userProfilePro',
-          elite: 'userProfileElite',
-        }[ownProfile.membershipType || 'free'];
-        await AsyncStorage.setItem(key, JSON.stringify(ownProfile));
-        console.log(`🧠 Perfil propio restaurado localmente como ${key}`);
-      } else {
+ if (ownProfile) {
+  const key =
+    {
+      free: 'userProfileFree',
+      pro: 'userProfilePro',
+      elite: 'userProfileElite',
+    }[ownProfile.membershipType] || 'userProfileFree';  // 👈 fallback seguro
+
+  await AsyncStorage.setItem(key, JSON.stringify(ownProfile));
+  console.log(`🧠 Perfil propio restaurado localmente como ${key}`);
+} else {
         console.warn('⚠️ No se encontró un perfil con ese email en Firestore.');
       }
     } else {

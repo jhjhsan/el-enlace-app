@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
+  Platform, // ← añadido
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -140,23 +141,126 @@ if (!blacklist.find((b) => b.email === normalizedTarget)) {
           }
         }
 
-const json = await AsyncStorage.getItem('professionalMessages');
-  const parsed = json ? JSON.parse(json) : [];
-    console.log('🧪 Cantidad de bloques en professionalMessages:', parsed.length);
-    parsed.forEach((c, i) =>
-      console.log(`🔢 ${i + 1}. De: ${c.from} → ${c.to}, Mensajes: ${c.messages?.length || 0}`)
-    );
-    console.log('🧪 raw professionalMessages json:', json);
-if (!json) {
-  setConversations([]);
-  return;
+// 👉 util para timestamps
+const toMs = (ts) => {
+  try {
+    if (!ts) return 0;
+    if (typeof ts === 'string') {
+      const t = Date.parse(ts); return isNaN(t) ? 0 : t;
+    }
+    if (ts?.seconds) return ts.seconds * 1000;
+    if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+    if (ts instanceof Date) return ts.getTime();
+    return 0;
+  } catch { return 0; }
+};
+
+// 1) Carga lo local si existe
+let json = await AsyncStorage.getItem('professionalMessages');
+let local = json ? JSON.parse(json) : [];
+console.log('📦 Cargando Inbox desde AsyncStorage:', local.length);
+
+// 2) SIEMPRE consulta Firestore (enviados y recibidos) y fusiona
+const me = normalizeEmail(userData.email);
+const [sentSnap, recvSnap] = await Promise.all([
+  getDocs(query(collection(db, 'mensajes'), where('from', '==', me))),
+  getDocs(query(collection(db, 'mensajes'), where('to', '==', me))),
+]);
+
+const fsDocs = [...sentSnap.docs, ...recvSnap.docs];
+const fsMsgs = fsDocs.map((d) => ({ id: d.id, ...d.data() }));
+
+// 3) Conviértelo a estructura de conversaciones por "otro"
+const fsByOther = new Map();
+fsMsgs.forEach((m) => {
+  const from = normalizeEmail(m.from);
+  const to = normalizeEmail(m.to);
+  const other = from === me ? to : from;
+  if (!other) return;
+  const arr = fsByOther.get(other) || [];
+  arr.push(m);
+  fsByOther.set(other, arr);
+});
+
+// 4) Convierte cada grupo en el formato de tu storage
+const fsConvs = [];
+for (const [other, list] of fsByOther) {
+  const seen = new Set();
+  const sorted = list
+    .filter((msg) => {
+      const key = msg.id || `${normalizeEmail(msg.from)}_${toMs(msg.timestamp)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => toMs(a.timestamp) - toMs(b.timestamp));
+
+  const mapped = sorted.map((m) => ({
+    id: m.id,
+    sender: normalizeEmail(m.from),
+    text: m.text,
+    timestamp: m.timestamp,
+    read: !!m.read,
+  }));
+
+  fsConvs.push({
+    from: me,
+    to: other,
+    user: other,
+    messages: mapped,
+  });
 }
 
-const allMessages = JSON.parse(json);
+// 5) Fusiona Firestore + Local por “otro” (y dedupe mensajes)
+const byOther = new Map();
+
+// mete local
+(local || []).forEach((conv) => {
+  const fromN = normalizeEmail(conv.from);
+  const toN = normalizeEmail(conv.to);
+  const other = fromN === me ? toN : fromN;
+  if (!other) return;
+  byOther.set(other, {
+    from: me,
+    to: other,
+    user: conv.user || other,
+    messages: Array.isArray(conv.messages) ? [...conv.messages] : [],
+  });
+});
+
+// mete firestore
+fsConvs.forEach((conv) => {
+  const other = conv.to; // ya normalizado
+  const existing = byOther.get(other) || { from: me, to: other, user: other, messages: [] };
+  const existingMsgs = existing.messages || [];
+  const newMsgs = conv.messages || [];
+
+  const seen = new Set(existingMsgs.map(m => m.id || `${m.sender}_${toMs(m.timestamp)}_${m.text || ''}`));
+  const merged = [
+    ...existingMsgs,
+    ...newMsgs.filter(m => {
+      const k = m.id || `${m.sender}_${toMs(m.timestamp)}_${m.text || ''}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }),
+  ].sort((a,b) => toMs(a.timestamp) - toMs(b.timestamp));
+
+  byOther.set(other, { ...existing, messages: merged.slice(-50) });
+});
+
+// 6) Resultado final para seguir el flujo original
+const allMessages = Array.from(byOther.values());
+
+// 7) Persistir cache actualizado
+await AsyncStorage.setItem('professionalMessages', JSON.stringify(allMessages));
 
 const myConversations = allMessages.filter(
-  (msg) => msg.from === userData.email || msg.to === userData.email
+  (msg) =>
+    normalizeEmail(msg.from) === normalizeEmail(userData.email) ||
+    normalizeEmail(msg.to) === normalizeEmail(userData.email)
 );
+
 // 🚫 Cargar blacklist con timestamp
 const blacklistKey = `deletedConversations_${normalizeEmail(userData.email)}`;
 const blacklistRaw = await AsyncStorage.getItem(blacklistKey);
@@ -199,7 +303,6 @@ const filteredConversations = rebuiltConvs.filter((conv) => {
   const showConv = deletedAt === 0 || isAfterDeleted || conv.messages.length > 0;
 
   console.log(`🧪 ${otherUser} - deletedAt: ${deletedAt} - msgTime: ${msgTime} - isYouSender: ${isYouSender} - mostrar: ${showConv}`);
-
   return showConv;
 });
 
@@ -502,25 +605,29 @@ console.log('🕒 Timestamp visible:', conv.timestamp);
                     </View>
                   )}
 
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Text style={styles.user}>{displayName}</Text>
-                
-                    </View>
-                    <Text style={styles.preview}>✉️ {conv.lastMessage}</Text>
-<Text style={styles.timestamp}>
-  {conv.timestamp && !isNaN(new Date(conv.timestamp).getTime())
-    ? new Date(conv.timestamp).toLocaleDateString('es-CL', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : ''}
-</Text>
+<View style={{ flex: 1 }}>
+  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+    <Text style={styles.user} numberOfLines={1} ellipsizeMode="tail">
+      {displayName}
+    </Text>
+  </View>
 
-                  </View>
+  <Text style={styles.preview} numberOfLines={1} ellipsizeMode="tail">
+    ✉️ {conv.lastMessage || ''}
+  </Text>
+
+  <Text style={styles.timestamp}>
+    {conv.timestamp && !isNaN(new Date(conv.timestamp).getTime())
+      ? new Date(conv.timestamp).toLocaleDateString('es-CL', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : ''}
+  </Text>
+</View>
 
                   <TouchableOpacity
                     onPress={(e) => {
@@ -649,7 +756,8 @@ const styles = StyleSheet.create({
   container: {
     padding: 10,
     paddingBottom: 100,
-    marginTop: 25,
+    // ↓ Solo iOS: “bajar” un poco el contenido
+    marginTop: Platform.OS === 'ios' ? 48 : 25,
   },
   title: {
     fontSize: 22,
@@ -672,6 +780,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     elevation: 1,
+    height: 84,        // ← alto fijo de la tarjeta
+    overflow: 'hidden' // ← por si algo intenta desbordar
   },
   user: {
     color: '#fff',

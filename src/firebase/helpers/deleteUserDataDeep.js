@@ -76,10 +76,10 @@ async function deleteOnlyUserObjects(folder, nameStartsWith) {
  *   * Notificaciones en "notifications/{email}/items" + doc padre "notifications/{email}"
  *   * Castings/Servicios propios por owner/email
  * - Storage (según CompleteProfileScreen):
- *   * profile_photos/{email}_photo.jpg
- *   * book_photos/{email}_book*.jpg   (selectivo por prefijo)
- *   * profile_videos/{email}_video.mp4
- *   * temp_photos/{email}_temp_*.jpg  (selectivo por prefijo)
+ *   * profile_photos/{email}_*.*
+ *   * book_photos/{email}_book*.*
+ *   * profile_videos/{email}_*.*
+ *   * temp_photos/{email}_temp_*.*
  *
  * @param {string} uid    // (no usado aquí)
  * @param {string} email  // email normalizado (lowercase + trim)
@@ -118,13 +118,13 @@ export default async function deleteUserDataDeep(uid, email) {
   await deleteByQuery(query(collection(db, 'services'), where('email', '==', userEmail)));
 
   // ---------- STORAGE ----------
-  // Foto de perfil
-  await deleteStorageObject(`profile_photos/${userEmail}_photo.jpg`);
+  // Foto(s) de perfil y variantes (miniaturas, diferentes extensiones) por prefijo
+  await deleteOnlyUserObjects('profile_photos', `${userEmail}_`);
 
-  // Video de perfil
-  await deleteStorageObject(`profile_videos/${userEmail}_video.mp4`);
+  // Video(s) de perfil por prefijo (diferentes nombres/extensiones)
+  await deleteOnlyUserObjects('profile_videos', `${userEmail}_`);
 
-  // Temp profile
+  // Temp profile puntual (si usas un nombre fijo adicional)
   await deleteStorageObject(`temp_photos/${userEmail}_temp_profile.jpg`);
 
   // Book y temporales: eliminar SOLO archivos del usuario por prefijo

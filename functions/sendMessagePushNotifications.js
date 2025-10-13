@@ -9,6 +9,8 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const expo = new Expo();
 
+const ICON_URL = "https://firebasestorage.googleapis.com/v0/b/elenlaceapp.firebasestorage.app/o/logo-banner.png?alt=media&token=c5865b54-d7a4-4fce-a967-0e2d85d2149a";
+
 // Colecciones de perfiles (usadas para remitente y destinatario)
 const PROFILE_COLLECTIONS = ['profiles', 'profilesPro', 'profilesElite', 'profilesFree'];
 
@@ -134,28 +136,46 @@ if (!senderName) {
         return;
       }
 
-      // Ajustar cuerpo (seguro ante tipos no string)
-      const textStr = String(messageText || '');
-      const body = textStr.length > 60 ? textStr.substring(0, 57) + '...' : textStr;
+// Ajustar cuerpo (seguro ante tipos no string)
+const textStr = String(messageText || '');
+const body = textStr.length > 60 ? textStr.substring(0, 57) + '...' : textStr;
 
-      const messages = [
-        {
-          to: pushToken,
-          sound: 'default',
-          title: `📩 Nuevo mensaje de ${senderName}`,
-          body,
-          data: {
-            type: 'mensaje',
-            displayName: senderName,            // nombre para UI/listeners
-            sender: normalizedSender,           // email del remitente
-            chatId: context.params.messageId,
-            serviceId: '',
-            castingId: '',
-          },
-          priority: 'high',
-          channelId: 'default',
-        },
-      ];
+const messages = [
+  {
+    to: pushToken,
+    title: `📩 Nuevo mensaje de ${senderName}`,
+    body,
+    data: {
+      type: 'mensaje',
+      displayName: senderName,
+      sender: normalizedSender,
+      chatId: context.params.messageId,
+      serviceId: '',
+      castingId: '',
+      // útil si luego quieres manejarlo en el cliente
+      largeIconUrl: ICON_URL,
+    },
+
+    // —— Android / Expo ——
+    sound: 'default',
+    priority: 'high',
+    channelId: 'messages',
+
+    // Small icon (monocromo) DEBE existir en la app como recurso:
+    // app.json -> "notification": { "icon": "./assets/icon-noti.png" }
+    icon: 'icon-noti',
+
+    // Imagen grande (color) — aquí va tu logo dorado/negro
+    image: ICON_URL,
+  },
+];
+
+// Log opcional
+functions.logger.info('PUSH_PAYLOAD', {
+  title: messages[0].title,
+  image: messages[0].image,
+  icon: messages[0].icon,
+});
 
       // 🔍 LOG D: payload a enviar
       functions.logger.info('PUSH_PAYLOAD', {
@@ -201,6 +221,28 @@ if (!senderName) {
             }
           }
         }
+        // Receipts: limpia tokens inválidos detectados después del envío
+try {
+  const receiptIds = tickets.filter(t => t?.id).map(t => t.id);
+  if (receiptIds.length) {
+    const chunks = expo.chunkPushNotificationReceiptIds(receiptIds);
+    for (const chunk of chunks) {
+      const receipts = await expo.getPushNotificationReceiptsAsync(chunk);
+      for (const [id, r] of Object.entries(receipts)) {
+        if (r.status === 'error') {
+          functions.logger.error('PUSH_RECEIPT_ERROR', { id, message: r.message, details: r.details || null });
+          if (r.details?.error === 'DeviceNotRegistered' && recipientCollectionFound) {
+            await db.collection(recipientCollectionFound).doc(normalizedRecipient)
+              .update({ expoPushToken: admin.firestore.FieldValue.delete() });
+          }
+        }
+      }
+    }
+  }
+} catch (e) {
+  functions.logger.error('RECEIPTS_FETCH_ERROR', { error: e?.message || e });
+}
+
       } catch (pushError) {
         console.error('❌ Error al enviar notificación push:', pushError);
       }

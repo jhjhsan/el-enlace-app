@@ -132,12 +132,14 @@ const isBlocked = (requiredPlan) => {
 
   <Text style={styles.sectionTitle}>📣 Promocionar</Text>
 
-  {/* 💎 Promocionar perfil */}
+{/* 💎 Promocionar perfil — NO mostrar a Elite */}
+{membershipType !== 'elite' && (
   <TouchableOpacity
     style={[styles.button, isBlocked('pro') && styles.lockedButton]}
     onPress={() => {
       if (isBlocked('pro')) {
-        membershipType === 'elite' ? setShowUpgradeModal(true) : setShowProModal(true);
+        // Free → modal Pro
+        setShowProModal(true);
       } else {
         navigation.navigate('PromoteProfile');
       }
@@ -147,8 +149,9 @@ const isBlocked = (requiredPlan) => {
       {isBlocked('pro') ? '🔒 💎 Destacar perfil' : '💎 Destacar perfil'}
     </Text>
   </TouchableOpacity>
-
+)}
   {/* 📣 Promocionar publicación */}
+  {/*
   <TouchableOpacity
     style={[styles.button, isBlocked('pro') && styles.lockedButton]}
     onPress={() => {
@@ -163,6 +166,8 @@ const isBlocked = (requiredPlan) => {
       {isBlocked('pro') ? '🔒 📣 Promocionar publicación' : '📣 Promocionar publicación'}
     </Text>
   </TouchableOpacity>
+  */}
+
 </ScrollView>
 
 

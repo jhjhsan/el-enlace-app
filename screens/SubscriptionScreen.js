@@ -41,7 +41,6 @@ const plans = [
 {
   id: 'pro',
   title: '🏆 Plan Pro',
-  price: '1er mes GRATIS\n$3.490 CLP/mes\n$29.990 CLP/año',
     benefits: [
       '✅ Todo lo de Free',
       '✅ Postular a castings y servicios (ilimitado)',
@@ -62,7 +61,6 @@ const plans = [
   {
     id: 'elite',
     title: '👑 Plan Elite',
-    price: '1er mes GRATIS\n3 meses a $9.990 (50% dcto)\n$19.990 CLP/mes\n$149.900 CLP/año',
     benefits: [
       '✅ Todo lo de Pro',
       '✅ Publicar castings y servicios ilimitados',

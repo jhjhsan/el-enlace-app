@@ -1,3 +1,4 @@
+// screens/ViewPostsScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -15,8 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 // Helpers existentes
 import { fetchCastingsFromFirestore } from '../src/firebase/helpers/fetchCastingsFromFirestore';
 import { deleteCastingFromFirestore } from '../src/firebase/helpers/deleteCastingFromFirestore';
-
-// 🔹 Nuevo: servicios (para "ver todas" y para borrar servicios correctamente)
+// 🔹 Servicios (para "ver todas" y borrar servicios)
 import { fetchServicesFromFirestore } from '../src/firebase/helpers/fetchServicesFromFirestore';
 
 import {
@@ -29,6 +29,9 @@ import {
   getDocs,
 } from 'firebase/firestore';
 
+// normalizador simple
+const low = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+
 export default function ViewPostsScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
   const [showAllPosts, setShowAllPosts] = useState(false);
@@ -38,49 +41,116 @@ export default function ViewPostsScreen({ navigation }) {
   useEffect(() => {
     const loadPosts = async () => {
       try {
-        const localData = await AsyncStorage.getItem('posts');
-        const localParsed = localData ? JSON.parse(localData) : [];
+        // 1) Cargar LOCALES desde varias claves habituales
+        const [pPosts, pCastings, pAllCastings, pServices] = await Promise.all([
+          AsyncStorage.getItem('posts'),
+          AsyncStorage.getItem('castings'),
+          AsyncStorage.getItem('allCastings'),
+          AsyncStorage.getItem('services'),
+        ]);
+        const parse = (x) => {
+          try {
+            const j = x ? JSON.parse(x) : [];
+            return Array.isArray(j) ? j : [];
+          } catch {
+            return [];
+          }
+        };
+        const localPosts = [
+          ...parse(pPosts),
+          ...parse(pCastings),
+          ...parse(pAllCastings),
+          ...parse(pServices),
+        ];
+
+        const myEmail = low(userData?.email);
 
         if (showAllPosts) {
-          // 🌍 Mostrar todos (castings + servicios) desde Firestore
+          // 2) Remotos (castings + servicios)
           const [onlineCastings, onlineServices] = await Promise.all([
             fetchCastingsFromFirestore().catch(() => []),
             fetchServicesFromFirestore().catch(() => []),
           ]);
-
-          // normaliza por si falta type
           const norm = (arr, defType) =>
             (Array.isArray(arr) ? arr : []).map((p) => ({
-              type: p?.type || defType,
               ...p,
+              type: p?.type || defType,
             }));
 
-          const all = [
+          const remoteAll = [
             ...norm(onlineCastings, 'casting'),
             ...norm(onlineServices, 'servicio'),
-          ].reverse();
+          ];
 
-          setPosts(all);
+          // 3) Merge local+remoto por id/docId/k (sin duplicados)
+          const seen = new Set();
+          const merged = [...localPosts, ...remoteAll].filter((p) => {
+            const k = String(p?.id ?? p?.docId ?? p?.k ?? '');
+            if (!k) return false;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+
+          // 4) Orden por fecha si está disponible (createdAtMs/createdAt)
+          merged.sort((a, b) => {
+            const ta = Number(a?.createdAtMs ?? a?.createdAt ?? 0);
+            const tb = Number(b?.createdAtMs ?? b?.createdAt ?? 0);
+            return tb - ta;
+          });
+
+          setPosts(merged);
         } else {
-          // 🔒 Solo MIS publicaciones desde AsyncStorage
-          const filtered = (Array.isArray(localParsed) ? localParsed : []).filter(
-            (post) => post?.creatorEmail === userData?.email
-          );
-          setPosts(filtered.reverse());
+          // 🔒 Solo MIS publicaciones desde LOCALES
+          const mine = localPosts.filter((post) => low(post?.creatorEmail) === myEmail);
+
+          if (mine.length === 0 && myEmail) {
+            // Fallback: traer mis publicaciones online si no hay locales
+            const [onlineCastings, onlineServices] = await Promise.all([
+              fetchCastingsFromFirestore(myEmail).catch(() => []),
+              fetchServicesFromFirestore(myEmail).catch(() => []),
+            ]);
+            const norm = (arr, defType) =>
+              (Array.isArray(arr) ? arr : []).map((p) => ({
+                ...p,
+                type: p?.type || defType,
+              }));
+            const remoteMine = [
+              ...norm(onlineCastings, 'casting'),
+              ...norm(onlineServices, 'servicio'),
+            ].filter((p) => low(p?.creatorEmail) === myEmail);
+
+            remoteMine.sort(
+              (a, b) =>
+                Number(b?.createdAtMs ?? b?.createdAt ?? 0) -
+                Number(a?.createdAtMs ?? a?.createdAt ?? 0)
+            );
+            setPosts(remoteMine);
+          } else {
+            mine.sort(
+              (a, b) =>
+                Number(b?.createdAtMs ?? b?.createdAt ?? 0) -
+                Number(a?.createdAtMs ?? a?.createdAt ?? 0)
+            );
+            setPosts(mine);
+          }
         }
       } catch (error) {
         console.error('Error al cargar publicaciones:', error);
+        setPosts([]);
       }
     };
 
+    // cargar al montar y también en focus
     const unsubscribe = navigation.addListener('focus', loadPosts);
+    loadPosts();
     return unsubscribe;
   }, [navigation, showAllPosts, userData?.email]);
 
   // 🔹 Borrar un servicio en Firestore con varios intentos (id; id por query; email+createdAtMs)
   const deleteServiceFromFirestore = async (service) => {
     const id = String(service?.id || '');
-    const myEmail = (service?.creatorEmail || '').trim().toLowerCase();
+    const myEmail = low(service?.creatorEmail || '');
 
     let anyDeleted = false;
 
@@ -107,7 +177,7 @@ export default function ViewPostsScreen({ navigation }) {
     }
 
     // 3) por combo email+createdAtMs si existe
-    const createdAtMs = Number(service?.createdAt || service?.createdAtMs || 0) || 0;
+    const createdAtMs = Number(service?.createdAt ?? service?.createdAtMs ?? 0) || 0;
     if (myEmail && createdAtMs) {
       try {
         const qCombo = query(
@@ -146,15 +216,15 @@ export default function ViewPostsScreen({ navigation }) {
               if (isService) {
                 await deleteServiceFromFirestore(post);
               } else {
-                await deleteCastingFromFirestore(post.id, post.creatorEmail);
+                await deleteCastingFromFirestore(post?.id, post?.creatorEmail);
               }
 
-              // limpiar local
+              // limpiar local (clave 'posts')
               try {
                 const localData = await AsyncStorage.getItem('posts');
                 const localParsed = localData ? JSON.parse(localData) : [];
                 const filteredLocal = (Array.isArray(localParsed) ? localParsed : []).filter(
-                  (p) => String(p.id) !== String(post.id)
+                  (p) => String(p?.id) !== String(post?.id)
                 );
                 await AsyncStorage.setItem('posts', JSON.stringify(filteredLocal));
               } catch (e) {
@@ -164,7 +234,7 @@ export default function ViewPostsScreen({ navigation }) {
               // refrescar UI
               const updated = [...posts];
               updated.splice(index, 1);
-              setPosts([...updated]);
+              setPosts(updated);
             } catch (error) {
               console.error('Error al eliminar:', error);
               Alert.alert('Error', 'No se pudo eliminar.');
@@ -194,27 +264,24 @@ export default function ViewPostsScreen({ navigation }) {
         ) : (
           posts.map((post, index) => (
             <View
-              key={post.id || index}
-              style={[
-                styles.card,
-                post.isPromotional && styles.promotionalCard,
-              ]}
+              key={post?.id || post?.docId || post?.k || String(index)}
+              style={[styles.card, post?.isPromotional && styles.promotionalCard]}
             >
-              {post.image && (
+              {!!post?.image && typeof post.image === 'string' && (
                 <Image source={{ uri: post.image }} style={styles.image} />
               )}
 
-              <Text style={styles.cardTitle}>{post.title}</Text>
-              {!!post.description && <Text style={styles.cardText}>{post.description}</Text>}
-              {!!post.category && <Text style={styles.cardText}>📂 {post.category}</Text>}
-              {!!post.location && <Text style={styles.cardText}>📍 {post.location}</Text>}
-              {!!post.date && <Text style={styles.cardText}>📅 {post.date}</Text>}
-              {post.isPromotional && (
+              <Text style={styles.cardTitle}>{post?.title || 'Sin título'}</Text>
+              {!!post?.description && <Text style={styles.cardText}>{post.description}</Text>}
+              {!!post?.category && <Text style={styles.cardText}>📂 {post.category}</Text>}
+              {!!post?.location && <Text style={styles.cardText}>📍 {post.location}</Text>}
+              {!!post?.date && <Text style={styles.cardText}>📅 {post.date}</Text>}
+              {post?.isPromotional && (
                 <Text style={styles.promotionalText}>⭐ Publicación Promocional</Text>
               )}
 
               {/* Editar → pasa isService si corresponde */}
-              {!post.isPromotional && (
+              {!post?.isPromotional && (
                 <TouchableOpacity
                   onPress={() =>
                     navigation.navigate('EditPost', {
@@ -229,10 +296,7 @@ export default function ViewPostsScreen({ navigation }) {
               )}
 
               {/* Eliminar */}
-              <TouchableOpacity
-                onPress={() => deletePost(index)}
-                style={styles.deleteButton}
-              >
+              <TouchableOpacity onPress={() => deletePost(index)} style={styles.deleteButton}>
                 <Text style={styles.deleteText}>🗑️ Eliminar</Text>
               </TouchableOpacity>
             </View>

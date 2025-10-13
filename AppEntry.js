@@ -1,6 +1,6 @@
 // AppEntry.js
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Alert, Platform } from 'react-native';
+import { View, Alert, Platform, Linking } from 'react-native'; // ⬅️ AÑADIDO PASO 4: Linking
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import RootNavigator from './navigation/RootNavigator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,11 +14,55 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from './src/firebase/firebaseConfig';
-import { getFirestore, collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, query, where, orderBy, onSnapshot, getDoc } from 'firebase/firestore'; // ⬅️ getDoc ya viene aquí
 import { MessageProvider } from './contexts/MessageContext';
 import 'react-native-get-random-values';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import eventBus from './utils/eventBus';
+import * as Application from 'expo-application';
+
+// ⬇️ Crashlytics con carga condicional (funciona en Expo Go y en APK)
+// No usar import estático en Expo Go: usar require condicional
+
+let _rnfbCrash = null;
+try {
+  if (Constants.appOwnership !== 'expo') {
+    // Solo en Development Build/APK/AAB
+    _rnfbCrash = require('@react-native-firebase/crashlytics').default;
+  }
+} catch {}
+
+// Pequeño wrapper para no romper si _rnfbCrash no existe (Expo Go)
+const crashlytics = () => {
+  if (_rnfbCrash) return _rnfbCrash();
+  // shim no-op para Expo Go
+  return {
+    setCrashlyticsCollectionEnabled: () => {},
+    setAttribute: () => {},
+    recordError: () => {},
+    crash: () => {},
+  };
+};
+
+// Activa recolección (no-op en Expo Go)
+crashlytics().setCrashlyticsCollectionEnabled(true);
+
+// Helper para loguear errores controlados
+export const safeLogError = (e, context = {}) => {
+  try {
+    if (context && typeof context === 'object') {
+      Object.entries(context).forEach(([k, v]) => {
+        crashlytics().setAttribute(String(k), typeof v === 'string' ? v : JSON.stringify(v));
+      });
+    }
+  } catch {}
+  crashlytics().recordError(e);
+};
+
+// (SOLO PRUEBA EN APK/DEV CLIENT) — NO hará nada en Expo Go
+// setTimeout(() => { crashlytics().crash(); }, 5000);
+
 
 // Helper para normalizar email a ID de documento
 const normalizeEmail = (e) =>
@@ -62,8 +106,45 @@ async function limpiarTodoEmailCorrupto() {
   }
 }
 
-// Mantén el splash hasta que marquemos listo
-SplashScreen.preventAutoHideAsync().catch(() => {});
+async function enforceMinVersion() {
+  try {
+    // versionCode seguro: si no existe, usamos 0
+    let versionCode = 0;
+    try {
+      const raw = Application && Application.nativeBuildVersion;
+      versionCode = Number(raw ?? 0);
+    } catch (_) {
+      versionCode = 0;
+    }
+
+    const ref = doc(getFirestore(), 'app_config', 'android');
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      console.log('[version] No existe /app_config/android');
+      return;
+    }
+
+    const data = snap.data() || {};
+    const min = Number(data.min_version_code ?? 0);
+    const url = data.latest_url;
+    const msg = data.message || 'Hay una nueva versión obligatoria para continuar.';
+
+    console.log('[version] comparando', { versionCode, min });
+
+    if (versionCode < min) {
+      Alert.alert(
+        'Actualización requerida',
+        msg,
+        [{ text: 'Actualizar', onPress: () => url && Linking.openURL(url) }],
+        { cancelable: false }
+      );
+    }
+  } catch (e) {
+    console.log('[version] ERROR enforceMinVersion:', e?.message || e);
+  }
+}
+
+// ⬆️⬆️⬆️  FIN AÑADIDO PASO 4  ⬆️⬆️⬆️
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -85,61 +166,84 @@ export default function AppEntry() {
   const [isAppReady, setIsAppReady] = useState(false);
   const [initialUserData, setInitialUserData] = useState(null);
 
-  // Registrar/actualizar token push en Firestore
+  // ✅ Reemplazar TODO el bloque por esta función
   const registerForPushNotificationsAsync = async (email, membershipType) => {
-    if (Constants.appOwnership === 'expo') {
-      console.log('⚠️ Saltando push: ejecutando en Expo Go (usa Development Build o apk/ipa).');
-      return;
-    }
-    if (!Device.isDevice) {
-      console.log('🔒 Las notificaciones solo funcionan en dispositivos físicos');
-      return;
-    }
+    try {
+      // No registrar en Expo Go
+      if (Constants.appOwnership === 'expo') {
+        console.log('⚠️ Saltando push: Expo Go. Usa Development Build o APK/AAB.');
+        return;
+      } else {
+        console.log('✅ Entorno válido para push (no Expo Go).');
+      }
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+      if (!Device.isDevice) {
+        console.log('🔒 Push requiere dispositivo físico');
+        return;
+      }
 
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
+      // Leer projectId desde app.json (fallback al UUID por si acaso)
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ||
+        Constants?.easConfig?.projectId ||
+        'fe8be4be-c9bd-403b-bb2a-20e32af9dc84';
 
-    if (finalStatus !== 'granted') {
-      Alert.alert(
-        'Permisos requeridos',
-        'Las notificaciones son necesarias para recibir mensajes y actualizaciones.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('messages', {
+          name: 'Mensajes',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: 'default',
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#D8A353',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        });
+      }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'fe8be4be-c9bd-403b-bb2a-20e32af9dc84',
-    });
-    const expoPushToken = tokenData.data;
-    await AsyncStorage.setItem('expoPushToken', expoPushToken);
+      // Permisos (Android 13+ y iOS)
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        Alert.alert('Permisos requeridos', 'Activa las notificaciones para recibir avisos.');
+        return;
+      }
 
-    if (email && membershipType) {
-      const collectionName =
-        membershipType === 'elite'
-          ? 'profilesElite'
-          : membershipType === 'pro'
-          ? 'profilesPro'
-          : membershipType === 'free'
-          ? 'profilesFree'
+      // Obtener token de Expo push
+      const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({ projectId });
+      
+      console.log('🔑 ExpoPushToken:', expoPushToken);
+      if (!expoPushToken) {
+        console.log('❌ No se obtuvo ExpoPushToken');
+        return;
+      }
+      await AsyncStorage.setItem('expoPushToken', expoPushToken);
+
+      // Guardar token en Firestore (colección según plan) + espejo en "profiles"
+      if (email && membershipType) {
+        const collectionName =
+          membershipType === 'elite' ? 'profilesElite'
+          : membershipType === 'pro' ? 'profilesPro'
+          : membershipType === 'free' ? 'profilesFree'
           : 'profiles';
 
-      const id = normalizeEmail(email);
-
-      try {
-        const userDocRef = doc(db, collectionName, id);
-        await setDoc(userDocRef, { expoPushToken }, { merge: true });
-        // Espejo opcional en 'profiles' para resiliencia entre planes
-        await setDoc(doc(db, 'profiles', id), { expoPushToken }, { merge: true });
-        console.log('✅ Token push registrado/refrescado para', id, 'en', collectionName);
-      } catch (e) {
-        console.log('⚠️ Error guardando token:', e?.message || e);
+        const id = normalizeEmail(email);
+        try {
+          await setDoc(doc(db, collectionName, id), { expoPushToken }, { merge: true });
+          await setDoc(doc(db, 'profiles', id), { expoPushToken }, { merge: true });
+          console.log(`✅ Token guardado para ${id} en ${collectionName}`);
+        } catch (e) {
+          console.log('⚠️ Error guardando token en Firestore:', e?.message || e);
+        }
+      } else {
+        console.log('ℹ️ No hay email/membershipType para guardar token en Firestore');
       }
+    } catch (err) {
+      console.log('💥 Error registrando push:', err?.message || err);
+      // Registrar también en Crashlytics
+      safeLogError(err, { where: 'registerForPushNotificationsAsync' });
     }
   };
 
@@ -148,10 +252,18 @@ export default function AppEntry() {
     (async () => {
       try {
         await limpiarTodoEmailCorrupto();
-      } catch {}
+      } catch (e) {
+        safeLogError(e, { where: 'limpiarTodoEmailCorrupto' });
+      }
       setIsAppReady(true);
     })();
   }, []);
+// ⬇️ Desactivar guard remoto por ahora (evita alerta doble)
+ // useEffect(() => {
+ //   enforceMinVersion();
+ // }, []);
+
+  // ⬆️⬆️⬆️  FIN AÑADIDO PASO 4  ⬆️⬆️⬆️
 
   // 📲 2) Registrar token push automáticamente al abrir la app leyendo userProfile
   useEffect(() => {
@@ -166,6 +278,7 @@ export default function AppEntry() {
         }
       } catch (err) {
         console.warn('⚠️ Error registrando token push:', err?.message || err);
+        safeLogError(err, { where: 'initPush' });
       }
     };
     initPush();
@@ -262,6 +375,7 @@ export default function AppEntry() {
           console.log('🔁 professionalMessages actualizado (from/to listeners)');
         } catch (err) {
           console.warn('Error procesando mensajes en tiempo real:', err?.message || err);
+          safeLogError(err, { where: 'applyChanges' });
         }
       };
 
@@ -281,17 +395,104 @@ export default function AppEntry() {
     };
   }, []);
 
+  // 🛎️ Sincroniza notificaciones al abrir la app (Firestore → AsyncStorage) para que el badge se actualice sin abrir la pantalla
+  useEffect(() => {
+    let unsub = null;
+
+    (async () => {
+      try {
+        const profileJson = await AsyncStorage.getItem('userProfile');
+        const user = profileJson ? JSON.parse(profileJson) : null;
+        if (!user?.email) return;
+
+        const emailN = normalizeEmail(user.email);
+        const fs = getFirestore();
+
+        const storageKeyById = user?.id ? `notifications_${user.id}` : null;
+        const storageKeyByEmail = `notifications_${emailN}`;
+
+        unsub = onSnapshot(collection(fs, 'notifications', emailN, 'items'), async (snap) => {
+          try {
+            console.log('[AppEntry][SYNC] emailN:', emailN, 'docs:', snap.size);
+
+            const nowMs = Date.now();
+            const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+
+            // 1) Parsear snapshot (read SOLO desde Firestore)
+            const parsed = snap.docs.map(d => {
+              const data = d.data() || {};
+              const tsMs =
+                data.timestamp?.toDate ? data.timestamp.toDate().getTime() :
+                data.createdAt?.toDate ? data.createdAt.toDate().getTime() :
+                (data.createdAtMs ? Number(data.createdAtMs) : 0);
+
+              return {
+                id: String(data.id || d.id),
+                type: data.type,
+                title: data.title,
+                body: data.body ?? data.message ?? '',
+                read: data.read === true, // ← SOLO servidor
+                timestampMs: tsMs || 0,
+              };
+            });
+
+            // 2) Orden + tope 60
+            const sorted = parsed
+              .sort((a, b) => b.timestampMs - a.timestampMs)
+              .slice(0, 60);
+
+            // 3) Alinear con UI: contar solo últimas 2 semanas (ajusta si quieres 10 días)
+            const recent = sorted.filter(n => (nowMs - (n.timestampMs || 0)) <= TEN_DAYS_MS || !n.timestampMs);
+
+            // 4) Persistir listas locales
+            if (storageKeyById) {
+              await AsyncStorage.setItem(storageKeyById, JSON.stringify(sorted));
+            }
+            await AsyncStorage.setItem(storageKeyByEmail, JSON.stringify(sorted));
+
+            // 5) Guardar contador unificado desde estado REAL del servidor
+            const unread = recent.filter(n => n.read !== true).length;
+            await AsyncStorage.setItem('notifications_unread', String(unread));
+
+            // 6) Marcar hidratado ANTES de emitir
+            await AsyncStorage.setItem('notifications_hydrated', '1');
+
+            // 7) Avisar a toda la app
+            eventBus.emit('notificationsUpdated');
+
+            console.log('[AppEntry][SYNC] wrote EMAIL key:', storageKeyByEmail, 'count:', sorted.length, 'unread:', unread);
+          } catch (e) {
+            console.log('[AppEntry][SYNC][ERROR]:', e?.message || e);
+            safeLogError(e, { where: 'notificationsSnapshot' });
+          }
+        });
+      } catch {}
+    })();
+
+    return () => { 
+      try { 
+        if (unsub) { console.log('[AppEntry][SYNC] unsubscribing'); unsub(); } 
+      } catch (e) { 
+        console.log('[AppEntry][SYNC][UNSUB][ERROR]:', e?.message || e); 
+      } 
+    };
+
+  }, []);
+
   // 🔔 4) Notificaciones: canal Android + guardar locales + navegación por toque
   useEffect(() => {
     let notificationListener, responseListener;
 
     const initNotifications = async () => {
+
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.HIGH,
+          name: 'Notificaciones',
+          importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FFA726',
+          lightColor: '#D8A353', // color corporativo, coincide con app.json
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: false
         });
       }
 
@@ -299,11 +500,11 @@ export default function AppEntry() {
       notificationListener = Notifications.addNotificationReceivedListener(async (notification) => {
         const content = notification.request.content;
         const data = content?.data || {};
-          console.log('📲 NOTIF CONTENT:', content.title, content.body, data);
+        console.log('📲 NOTIF CONTENT:', content.title, content.body, data);
 
         const userDataJson = await AsyncStorage.getItem('userData');
         const userData = userDataJson ? JSON.parse(userDataJson) : null;
-        if (!userData?.id) return;
+        if (!userData?.email) return;
 
         const norm = (e) => (e || '').toLowerCase().trim();
         const me = norm(userData.email);
@@ -312,12 +513,11 @@ export default function AppEntry() {
         // Evitar autospam si yo mismo envié el mensaje
         if (data?.type === 'mensaje' && sender === me) return;
 
-        const key = `notifications_${userData.id}`;
-        const storedJson = await AsyncStorage.getItem(key);
-        const existing = storedJson ? JSON.parse(storedJson) : [];
+        // Claves de guardado (por id si existe, y SIEMPRE por email normalizado)
+        const keyById = userData?.id ? `notifications_${userData.id}` : null;
+        const keyByEmail = `notifications_${normalizeEmail(userData.email)}`;
 
         const notificationId = data.id || `${data.type}_${data.sender || 'anon'}_${Date.now()}`;
-
         const newNotif = {
           id: notificationId,
           icon: data.type || 'mensaje',
@@ -331,10 +531,25 @@ export default function AppEntry() {
           read: false,
         };
 
-        if (!existing.some((n) => n.id === newNotif.id)) {
-          const updated = [newNotif, ...existing].slice(0, 60);
-          await AsyncStorage.setItem(key, JSON.stringify(updated));
+        // 1) Cargar/barrer por ID
+        if (keyById) {
+          const rawId = await AsyncStorage.getItem(keyById);
+          const listId = rawId ? JSON.parse(rawId) : [];
+          if (!listId.some(n => n.id === newNotif.id)) {
+            const updatedId = [newNotif, ...listId].slice(0, 60);
+            await AsyncStorage.setItem(keyById, JSON.stringify(updatedId));
+          }
         }
+
+        // 2) Cargar/barrer por email (fallback — SIEMPRE)
+        const rawEmail = await AsyncStorage.getItem(keyByEmail);
+        const listEmail = rawEmail ? JSON.parse(rawEmail) : [];
+        if (!listEmail.some(n => n.id === newNotif.id)) {
+          const updatedEmail = [newNotif, ...listEmail].slice(0, 60);
+          await AsyncStorage.setItem(keyByEmail, JSON.stringify(updatedEmail));
+        }
+
+        eventBus.emit('notificationsUpdated'); // ← actualiza el badge al instante
       });
 
       // Usuario toca la notificación
@@ -362,7 +577,7 @@ export default function AppEntry() {
         }
       }
     };
-
+    
     initNotifications();
 
     return () => {
@@ -378,7 +593,12 @@ export default function AppEntry() {
   }, [isAppReady]);
 
   if (!isAppReady) {
-    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+    return (
+      <View
+        style={{ flex: 1, backgroundColor: '#000' }}
+        onLayout={onLayoutRootView}
+      />
+    ); 
   }
 
   return (

@@ -60,23 +60,117 @@ export default function RegisterScreen({ navigation }) {
   const [legalConsent, setLegalConsent] = useState(false);
   const [representativeEmail, setRepresentativeEmail] = useState('');
 
-  const talentCategories = [
-    "Actor", "Actriz", "Animador / presentador", "Artista urbano", "Bailarín / bailarina",
-    "Camarógrafo", "Caracterizador (maquillaje FX)", "Colorista", "Community manager",
-    "Continuista", "Creador de contenido digital", "Decorador de set", "Diseñador de arte",
-    "Diseñador gráfico", "Doble de acción", "Editor de video", "Escenógrafo",
-    "Extra", "Fotógrafo de backstage", "Iluminador", "Ilustrador / storyboarder",
-    "Maquillista", "Microfonista", "Modelo", "Modelo publicitario", "Niño actor",
-    "Operador de drone", "Peluquero / estilista", "Postproductor", "Productor",
-    "Promotoras", "Servicios de catering", "Sonidista", "Stage manager",
-    "Técnico de efectos especiales", "Técnico de grúa", "Vestuarista",
-    "Ambientador", "Asistente de cámara", "Asistente de dirección",
-    "Asistente de producción", "Asistente de vestuario",
-    "Transporte de talentos", "Autos personales", "Motos o bicicletas para escenas",
-    "Grúas para filmación", "Camiones de arte para rodajes", "Casas rodantes para producción",
-    "Estudio fotográfico", "Transporte de producción", "Vans de producción",
-    "Coffee break / snacks", "Otros / No especificado"
-  ];
+// ==== TALENTOS / PROFESIONALES (perfiles personales) ====
+const CATEGORIES_TALENT = [
+  // Interpretación / Frente a cámara
+  "Actor", "Actriz", "Niño actor", "Doble de acción / Stunt", "Extra",
+  "Animador / Presentador", "Host / Maestro de ceremonias", "Modelo", "Modelo publicitario",
+  "Influencer / Creador de contenido", "Locutor / Voz en off",
+
+  // Dirección / Producción
+  "Director/a", "Asistente de dirección 1º AD", "Asistente de dirección 2º AD", "Script / Continuista",
+  "Productor/a general", "Productor/a ejecutivo/a", "Jefe/a de producción", "Asistente de producción",
+  "Coordinador/a de producción", "Location manager", "Location assistant",
+
+  // Cámara / Imagen
+  "Director/a de fotografía", "Camarógrafo / Operador de cámara", "1º Asistente de cámara (1AC)",
+  "2º Asistente de cámara (2AC)", "Data wrangler", "DIT (Técnico de imagen digital)",
+  "Operador de steadicam", "Operador de gimbal", "Operador de drone",
+
+  // Iluminación / Grip
+  "Gaffer / Jefe de eléctricos", "Best boy eléctricos", "Eléctrico",
+  "Key grip / Jefe de grip", "Best boy grip", "Grip", "Dolly grip",
+
+  // Sonido
+  "Jefe/a de sonido directo", "Microfonista / Boom operator", "Utility de sonido",
+
+  // Arte / Vestuario / Maquillaje
+  "Director/a de arte", "Escenógrafo/a", "Ambientador/a", "Utilero/a (Props)",
+  "Carpintero/a de arte", "Troquelador/a / Constructor/a de set",
+  "Vestuarista / Diseñador/a de vestuario", "Asistente de vestuario", "Sastre / Modista",
+  "Maquillista", "Peluquero / Estilista", "Caracterizador (FX Makeup)",
+
+  // Foto fija
+  "Fotógrafo/a de still", "Fotógrafo/a de backstage",
+
+  // Postproducción
+  "Editor/a de video", "Asistente de edición", "Colorista", "VFX Artist / Compositor",
+  "Motion graphics", "Roto / Clean-up", "Doblaje / ADR (actor/actriz de voz)", "Foley artist",
+  "Diseñador/a de sonido", "Mezclador/a de sonido (re-recording mixer)",
+
+  // Guion / Coordinación creativa
+  "Guionista", "Script doctor", "Story editor", "Supervisor/a de guion",
+  "Ilustrador / Storyboarder", "Concept artist",
+
+  // Dirección de casting / Coordinación de talentos
+  "Director/a de casting (persona)", "Asistente de casting",
+
+  // Coreografías / Especialidades
+  "Coreógrafo/a", "Bailarín / Bailarina", "Coordinador/a de stunts",
+  "Entrenador/a actoral / Coach", "Coordinador/a de intimidad",
+  "Coordinador/a de animales", "Músico / Compositor/a",
+
+  // Digital / Social
+  "Community manager (freelance)", "Content strategist (freelance)",
+
+  // Otros
+  "Ilustrador/a", "Diseñador/a gráfico/a", "Fotógrafo/a", "Realizador/a",
+  "Periodista / Redactor/a", "Traductor/a / Subtitulador/a",
+  "Otros / No especificado",
+];
+
+// ==== RECURSOS / SERVICIOS / INFRAESTRUCTURA (no personales) ====
+const CATEGORIES_RESOURCE = [
+  // Locaciones y espacios
+  "Estudio fotográfico", "Estudio de filmación / plató", "Foro / Escenario",
+  "Locaciones (catálogo/servicio)", "Casas / Departamentos para rodaje",
+  "Oficinas / Comercios para rodaje", "Bodegas / Galpones", "Espacios públicos (gestión de permisos)",
+
+  // Transporte y móviles
+  "Transporte de producción", "Vans de producción", "Camiones de arte",
+  "Camión de iluminación / grip", "Motorhome / Casa rodante", "Camerino móvil",
+  "Transporte de talentos / chofer", "Autos personales para escena",
+  "Autos de época", "Autos deportivos / especiales", "Motos / Bicicletas para escenas",
+
+  // Equipos (renta)
+  "Renta de cámaras", "Renta de lentes", "Renta de video assist / DIT",
+  "Renta de iluminación", "Renta de grip / rigging", "Renta de sonido",
+  "Renta de drones", "Renta de steady / gimbal", "Renta de monitoreo inalámbrico",
+  "Renta de generadores", "Renta de data storage / DIT carts",
+
+  // Arte / Construcción / Props
+  "Renta de utilería (props)", "Taller de arte / maestranza", "Construcción de sets",
+  "Greens / Vegetación para set", "Renta de mobiliario / ambientación",
+  "Renta de vestuario / guardarropía", "Sastrería / Ajustes de vestuario",
+
+  // Efectos y seguridad
+  "Efectos especiales mecánicos", "Efectos de lluvia / viento / nieve",
+  "Pirotecnia (con permisos)", "Coordinación de stunts (empresa)",
+  "Seguridad para rodaje", "Paramédico / Unidad médica",
+
+  // Servicios de producción
+  "Catering para rodaje", "Coffee break / Snacks", "Craft service",
+  "Baños químicos", "Carpas / Toldo / Sombras", "Vallas / Control de público",
+  "Aseo / Limpieza set", "Gestión de permisos / Trámites", "Seguros de producción",
+
+  // Post / Audio / Salas
+  "Casa de postproducción", "Sala de edición", "Sala de color / grading",
+  "Estudio de sonido / mezcla", "Estudio de doblaje / locución",
+
+  // Almacenaje y logística
+  "Bodega / Storage de producción", "Mensajería / Courier de producción",
+
+  // Animales / Especiales
+  "Animales para rodaje (con handler)", "Armería escénica (con permisos)",
+
+  // Otros recursos
+  "Plataformas / Casting software", "Plataformas de streaming / media",
+  "Otros / No especificado"
+];
+
+// 👉 Compatibilidad con la UI actual de este archivo (un único selector para FREE):
+const talentCategories = [...CATEGORIES_TALENT, ...CATEGORIES_RESOURCE];
+
 
   const eliteCategories = [
     "Agencia de casting", "Agencia de modelos", "Agencia de talentos", "Agencia de publicidad",

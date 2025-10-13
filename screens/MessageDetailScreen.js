@@ -9,6 +9,8 @@ import {
   Modal,
   FlatList,
   ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -19,11 +21,15 @@ import { db } from '../src/firebase/firebaseConfig';
 import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 import eventBus from '../utils/eventBus';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MessageDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const flatListRef = useRef(null);
+  const insets = useSafeAreaInsets();
+  // ✅ Offset para iPhone: safe-area top + ~50px de tu header custom
+  const keyboardOffset = insets.top + 50;
 
   const {
     contactEmail = '',
@@ -416,7 +422,6 @@ export default function MessageDetailScreen() {
   const confirmReport = async () => {
     setShowReportModal(false);
     Alert.alert('Reporte enviado', `Revisaremos a ${contactName || targetEmail}.`);
-    // TODO: write en Firestore (colección "reports") si quieres
   };
 
   const openBlockToggle = () => {
@@ -598,220 +603,231 @@ export default function MessageDetailScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#D8A353" />
-        </View>
-      ) : !targetEmail ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>No se puede iniciar conversación (sin destinatario).</Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backButtonText}>Volver</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          <BackButton color="#fff" size={28} top={45} left={20} />
-
-          {/* HEADER */}
-          <View style={styles.header}>
-            {/* Fila con nombre y botón de acciones (⋮) */}
-            <View style={styles.headerBottomRow}>
-              <Text style={styles.contactName} numberOfLines={1}>
-                {contactName}
-              </Text>
-
-              {normalizeEmail(userData.email) !== normalizeEmail(targetEmail) && (
-                <TouchableOpacity
-                  onPress={() => setShowActions(true)}
-                  style={styles.menuTrigger}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="ellipsis-vertical" size={20} color="#D8A353" />
-                </TouchableOpacity>
-              )}
-            </View>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardOffset : 0}
+    >
+      <View style={styles.container}>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#D8A353" />
           </View>
+        ) : !targetEmail ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>No se puede iniciar conversación (sin destinatario).</Text>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Text style={styles.backButtonText}>Volver</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <BackButton color="#fff" size={28} top={45} left={20} />
 
-          {/* MENÚ DE ACCIONES (modal pequeño, arriba a la derecha) */}
-          <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
-            <TouchableOpacity style={styles.actionsOverlay} activeOpacity={1} onPress={() => setShowActions(false)}>
-              <View style={styles.actionsCard}>
-                <TouchableOpacity style={styles.actionItem} onPress={handleViewProfile}>
-                  <Ionicons name="search" size={16} color="#D8A353" />
-                  <Text style={styles.actionText}>Ver perfil</Text>
-                </TouchableOpacity>
+            {/* HEADER */}
+            <View style={styles.header}>
+              {/* Fila con nombre y botón de acciones (⋮) */}
+              <View style={styles.headerBottomRow}>
+                <Text style={styles.contactName} numberOfLines={1}>
+                  {contactName}
+                </Text>
 
-                <View style={styles.separator} />
-
-                <TouchableOpacity style={[styles.actionItem, styles.actionDanger]} onPress={openReport}>
-                  <Ionicons name="alert-circle" size={16} color="#fff" />
-                  <Text style={[styles.actionText, styles.actionDangerText]}>Reportar</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.actionItem,
-                    isBlocked ? styles.actionSuccess : styles.actionNeutral,
-                  ]}
-                  onPress={openBlockToggle}
-                >
-                  <Ionicons
-                    name={isBlocked ? 'checkmark-circle' : 'remove-circle'}
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text
-                    style={[
-                      styles.actionText,
-                      isBlocked ? styles.actionSuccessText : styles.actionNeutralText,
-                    ]}
+                {normalizeEmail(userData.email) !== normalizeEmail(targetEmail) && (
+                  <TouchableOpacity
+                    onPress={() => setShowActions(true)}
+                    style={styles.menuTrigger}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    {isBlocked ? 'Desbloquear' : 'Bloquear'}
+                    <Ionicons name="ellipsis-vertical" size={20} color="#D8A353" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* MENÚ DE ACCIONES */}
+            <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
+              <TouchableOpacity style={styles.actionsOverlay} activeOpacity={1} onPress={() => setShowActions(false)}>
+                <View style={styles.actionsCard}>
+                  <TouchableOpacity style={styles.actionItem} onPress={handleViewProfile}>
+                    <Ionicons name="search" size={16} color="#D8A353" />
+                    <Text style={styles.actionText}>Ver perfil</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.separator} />
+
+                  <TouchableOpacity style={[styles.actionItem, styles.actionDanger]} onPress={openReport}>
+                    <Ionicons name="alert-circle" size={16} color="#fff" />
+                    <Text style={[styles.actionText, styles.actionDangerText]}>Reportar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.actionItem,
+                      isBlocked ? styles.actionSuccess : styles.actionNeutral,
+                    ]}
+                    onPress={openBlockToggle}
+                  >
+                    <Ionicons
+                      name={isBlocked ? 'checkmark-circle' : 'remove-circle'}
+                      size={16}
+                      color="#fff"
+                    />
+                    <Text
+                      style={[
+                        styles.actionText,
+                        isBlocked ? styles.actionSuccessText : styles.actionNeutralText,
+                      ]}
+                    >
+                      {isBlocked ? 'Desbloquear' : 'Bloquear'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            </Modal>
+
+            {/* CHAT */}
+            {shouldShowConversation ? (
+              <FlatList
+                ref={flatListRef}
+                data={conversation.messages}
+                keyExtractor={(item, index) =>
+                  `${item.sender}_${typeof item.timestamp === 'string' ? item.timestamp : item.timestamp?.seconds || Date.now()}_${index}`
+                }
+                contentContainerStyle={styles.chatContainer}
+                initialNumToRender={10}
+                windowSize={5}
+                maxToRenderPerBatch={10}
+                inverted={false}
+                keyboardShouldPersistTaps="handled"
+                onContentSizeChange={() => {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }}
+                renderItem={({ item }) => {
+                  const isMine = item.sender === normalizeEmail(userData.email);
+                  return (
+                    <View style={[styles.messageBubble, isMine ? styles.myMessage : styles.theirMessage]}>
+                      <Text style={styles.messageText}>{item.text}</Text>
+                    </View>
+                  );
+                }}
+              />
+            ) : (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}></Text>
+              </View>
+            )}
+
+            {/* INPUT */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Escribe un mensaje..."
+                placeholderTextColor="#aaa"
+                value={newMessage}
+                onChangeText={setNewMessage}
+                returnKeyType="send"
+                onSubmitEditing={handleSendMessage}
+                blurOnSubmit={false}
+              />
+              <TouchableOpacity
+                onPress={handleSendMessage}
+                style={[styles.sendButton, isSending && { opacity: 0.6 }]}
+                disabled={isSending}
+              >
+                <Text style={styles.sendButtonText}>
+                  {isSending ? 'Enviando...' : 'Enviar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Upgrade Plan */}
+            <Modal visible={showUpgradeModal} transparent animationType="slide">
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>🔒 Solo con Plan Pro</Text>
+                  <Text style={styles.modalText}>
+                    Ya tienes una conversación activa. Suscríbete a Pro para contactar a más talentos o agencias.
                   </Text>
-                </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.modalButton}
+                    onPress={() => {
+                      setShowUpgradeModal(false);
+                      navigation.navigate('Subscription');
+                    }}
+                  >
+                    <Text style={styles.modalButtonText}>💳 Ver Planes Pro</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setShowUpgradeModal(false)}
+                    style={[styles.modalButton, { backgroundColor: '#333', marginTop: 10 }]}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </TouchableOpacity>
-          </Modal>
+            </Modal>
 
-          {/* CHAT */}
-          {shouldShowConversation ? (
-            <FlatList
-              ref={flatListRef}
-              data={conversation.messages}
-              keyExtractor={(item, index) =>
-                `${item.sender}_${typeof item.timestamp === 'string' ? item.timestamp : item.timestamp?.seconds || Date.now()}_${index}`
-              }
-              contentContainerStyle={styles.chatContainer}
-              initialNumToRender={10}
-              windowSize={5}
-              maxToRenderPerBatch={10}
-              inverted={false}
-              onContentSizeChange={() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-              }}
-              renderItem={({ item }) => {
-                const isMine = item.sender === normalizeEmail(userData.email);
-                return (
-                  <View style={[styles.messageBubble, isMine ? styles.myMessage : styles.theirMessage]}>
-                    <Text style={styles.messageText}>{item.text}</Text>
-                  </View>
-                );
-              }}
-            />
-          ) : (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}></Text>
-            </View>
-          )}
-
-          {/* INPUT */}
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Escribe un mensaje..."
-              placeholderTextColor="#aaa"
-              value={newMessage}
-              onChangeText={setNewMessage}
-            />
-            <TouchableOpacity
-              onPress={handleSendMessage}
-              style={[styles.sendButton, isSending && { opacity: 0.6 }]}
-              disabled={isSending}
-            >
-              <Text style={styles.sendButtonText}>
-                {isSending ? 'Enviando...' : 'Enviar'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Modal Upgrade Plan */}
-          <Modal visible={showUpgradeModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>🔒 Solo con Plan Pro</Text>
-                <Text style={styles.modalText}>
-                  Ya tienes una conversación activa. Suscríbete a Pro para contactar a más talentos o agencias.
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.modalButton}
-                  onPress={() => {
-                    setShowUpgradeModal(false);
-                    navigation.navigate('Subscription');
-                  }}
-                >
-                  <Text style={styles.modalButtonText}>💳 Ver Planes Pro</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setShowUpgradeModal(false)}
-                  style={[styles.modalButton, { backgroundColor: '#333', marginTop: 10 }]}
-                >
-                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Cancelar</Text>
-                </TouchableOpacity>
+            {/* Modal Límite */}
+            <Modal visible={showLimitModal} transparent animationType="slide">
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>📨 Límite de mensajes alcanzado</Text>
+                  <Text style={styles.modalText}>
+                    Has enviado 20 mensajes en esta conversación. Te recomendamos continuar por WhatsApp, correo u otro medio directo.
+                  </Text>
+                  <TouchableOpacity style={styles.modalButton} onPress={() => setShowLimitModal(false)}>
+                    <Text style={styles.modalButtonText}>Entendido</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </Modal>
+            </Modal>
 
-          {/* Modal Límite */}
-          <Modal visible={showLimitModal} transparent animationType="slide">
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>📨 Límite de mensajes alcanzado</Text>
-                <Text style={styles.modalText}>
-                  Has enviado 20 mensajes en esta conversación. Te recomendamos continuar por WhatsApp, correo u otro medio directo.
-                </Text>
-                <TouchableOpacity style={styles.modalButton} onPress={() => setShowLimitModal(false)}>
-                  <Text style={styles.modalButtonText}>Entendido</Text>
-                </TouchableOpacity>
+            {/* Modal Reportar */}
+            <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Reportar usuario</Text>
+                  <Text style={styles.modalText}>¿Seguro que deseas reportar a {contactName || targetEmail}?</Text>
+
+                  <TouchableOpacity style={styles.modalButton} onPress={confirmReport}>
+                    <Text style={styles.modalButtonText}>Sí, reportar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#333', marginTop: 10 }]} onPress={() => setShowReportModal(false)}>
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </Modal>
+            </Modal>
 
-          {/* Modal Reportar */}
-          <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Reportar usuario</Text>
-                <Text style={styles.modalText}>¿Seguro que deseas reportar a {contactName || targetEmail}?</Text>
+            {/* Modal Bloquear/Desbloquear */}
+            <Modal visible={showBlockModal} transparent animationType="fade" onRequestClose={() => setShowBlockModal(false)}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>{isBlocked ? 'Desbloquear usuario' : 'Bloquear usuario'}</Text>
+                  <Text style={styles.modalText}>
+                    {isBlocked
+                      ? `¿Deseas desbloquear a ${contactName || targetEmail}?`
+                      : `¿Seguro que deseas bloquear a ${contactName || targetEmail}? No verás más sus mensajes.`
+                    }
+                  </Text>
 
-                <TouchableOpacity style={styles.modalButton} onPress={confirmReport}>
-                  <Text style={styles.modalButtonText}>Sí, reportar</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalButton} onPress={isBlocked ? confirmUnblock : confirmBlock}>
+                    <Text style={styles.modalButtonText}>{isBlocked ? 'Sí, desbloquear' : 'Sí, bloquear'}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#333', marginTop: 10 }]} onPress={() => setShowReportModal(false)}>
-                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Cancelar</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#333', marginTop: 10 }]} onPress={() => setShowBlockModal(false)}>
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </Modal>
-
-          {/* Modal Bloquear/Desbloquear */}
-          <Modal visible={showBlockModal} transparent animationType="fade" onRequestClose={() => setShowBlockModal(false)}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>{isBlocked ? 'Desbloquear usuario' : 'Bloquear usuario'}</Text>
-                <Text style={styles.modalText}>
-                  {isBlocked
-                    ? `¿Deseas desbloquear a ${contactName || targetEmail}?`
-                    : `¿Seguro que deseas bloquear a ${contactName || targetEmail}? No verás más sus mensajes.`}
-                </Text>
-
-                <TouchableOpacity style={styles.modalButton} onPress={isBlocked ? confirmUnblock : confirmBlock}>
-                  <Text style={styles.modalButtonText}>{isBlocked ? 'Sí, desbloquear' : 'Sí, bloquear'}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#333', marginTop: 10 }]} onPress={() => setShowBlockModal(false)}>
-                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Cancelar</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        </>
-      )}
-    </View>
+            </Modal>
+          </>
+        )}
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -853,8 +869,8 @@ const styles = StyleSheet.create({
   /* HEADER */
   header: {
     backgroundColor: '#1A1A1A',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 5,
+    paddingHorizontal: 25,
     borderBottomColor: '#D8A353',
     borderBottomWidth: 1,
   },
@@ -884,8 +900,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.25)',
     justifyContent: 'flex-start',
     alignItems: 'flex-end',
-    paddingTop: 90,      // posiciona debajo del header
-    paddingRight: 12,    // margen derecho
+    paddingTop: 90,
+    paddingRight: 12,
   },
   actionsCard: {
     backgroundColor: '#121212',

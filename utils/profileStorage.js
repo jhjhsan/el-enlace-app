@@ -5,6 +5,34 @@ import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { guardarAllProfiles } from '../src/firebase/helpers/profileHelpers';
 
+// ✅ Helper: Solo perfiles PRO pueden llevar destacado (opt-in)
+const buildProHighlightPayload = (profile, { activate = false, days = 30 } = {}) => {
+  const out = { ...profile };
+
+  // Normalizamos campos por si vienen undefined
+  if (!Object.prototype.hasOwnProperty.call(out, 'isHighlighted')) out.isHighlighted = false;
+  if (!Object.prototype.hasOwnProperty.call(out, 'highlightedUntil')) out.highlightedUntil = null;
+
+  // Activar solo si es PRO y se solicita explícitamente
+  if (out.membershipType === 'pro' && activate === true) {
+    out.isHighlighted = true;
+
+    // Extiende a partir del mayor entre "ahora" o "vigente"
+    const now = Date.now();
+    const prevUntil = out.highlightedUntil ? new Date(out.highlightedUntil).getTime() : 0;
+    const base = prevUntil > now ? prevUntil : now;
+    const until = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+
+    out.highlightedUntil = until;
+  } else {
+    // Desactivar si no corresponde
+    out.isHighlighted = false;
+    out.highlightedUntil = null;
+  }
+
+  return out;
+};
+
 export const saveUserProfile = async (
   data,
   membershipType,
@@ -61,13 +89,27 @@ export const saveUserProfile = async (
       mergedData.visibleInExplorer = true;
     }
 
+    // 💡 Inferimos accountType correctamente según el tipo real de perfil (REEMPLAZO)
+    const inferredAccountType =
+      mergedData.profileKind === 'resource' ||
+      mergedData.profileLock === 'resource' ||
+      mergedData.accountType === 'resource'
+        ? 'resource'
+        : (mergedData.accountType || existingData.accountType || 'talent');
+
     const normalizedData = {
       ...mergedData,
       email: mergedData.email.trim().toLowerCase(),
       membershipType: membershipType || 'free',
       timestamp: mergedData.timestamp || Date.now(),
       visibleInExplorer: mergedData.visibleInExplorer,
+      // Tipos de perfil
+      profileKind: mergedData.profileKind ?? existingData.profileKind ?? null,   // 'talent' | 'resource'
+      profileLock: mergedData.profileLock ?? existingData.profileLock ?? null,   // 'talent' | 'resource' | null
+      // 🔧 Persistimos el tipo de cuenta correcto
+      accountType: inferredAccountType,
     };
+
     // ⬇️ Forzar que userData tenga los campos esenciales
     if (!normalizedData.hasOwnProperty('hasPaid')) {
       normalizedData.hasPaid = false;
@@ -89,8 +131,29 @@ export const saveUserProfile = async (
     });
     console.log('✅ Perfil guardado en AsyncStorage para:', emailKey);
 
+    // ⬅️⬅️⬅️ ARREGLO MÍNIMO: espejo canonical que AppEntry/RootNavigator leen al iniciar
+    const canonical = {
+      ...normalizedData,
+      profileStatus:
+        membershipType === 'free' ? 'free_completed' :
+        membershipType === 'pro' ? 'pro_completed' :
+        membershipType === 'elite' ? 'elite_completed' :
+        'completed',
+      freeCompleted: membershipType === 'free' ? true : !!normalizedData.freeCompleted,
+    };
+
+    await AsyncStorage.setItem('userProfile', JSON.stringify(canonical)).catch((error) => {
+      console.error('❌ Error al guardar userProfile (canonical):', error.message || error);
+      throw error;
+    });
+    // ⬅️⬅️⬅️ FIN ARREGLO
+
     // Guardar perfil según tipo
     if (membershipType === 'free') {
+      // ❌ FREE no puede ser destacado
+      delete normalizedData.isHighlighted;
+      delete normalizedData.highlightedUntil;
+
       await AsyncStorage.setItem('userProfileFree', JSON.stringify(normalizedData)).catch((error) => {
         console.error('❌ Error al guardar userProfileFree:', error.message || error);
         throw error;
@@ -104,32 +167,38 @@ export const saveUserProfile = async (
       const parsed = existing ? JSON.parse(existing) : [];
       console.log('📦 allProfiles existente:', parsed);
       const filtered = parsed.filter(p => p.email?.toLowerCase() !== normalizedData.email.toLowerCase());
- const updated = [normalizedData, ...filtered];
+      const updated = [normalizedData, ...filtered];
 
-// 🛡️ DEBUG para detectar si algún perfil está corrupto
-updated.forEach(p => {
-  if (p.email?.includes('@@')) {
-    console.warn('🐛 PERFIL CORRUPTO detectado antes de guardarAllProfiles (ELITE):', p.email);
-  }
-});
+      // 🛡️ DEBUG para detectar si algún perfil está corrupto
+      updated.forEach(p => {
+        if (p.email?.includes('@@')) {
+          console.warn('🐛 PERFIL CORRUPTO detectado antes de guardarAllProfiles (ELITE):', p.email);
+        }
+      });
 
-console.log('📦 allProfiles actualizado:', updated);
-await guardarAllProfiles(updated).catch(error => {
-  console.error('❌ Error al guardar allProfiles:', error.message || error);
-});
-
+      console.log('📦 allProfiles actualizado:', updated);
+      await guardarAllProfiles(updated).catch(error => {
+        console.error('❌ Error al guardar allProfiles:', error.message || error);
+      });
 
     } else if (membershipType === 'pro') {
-      await AsyncStorage.setItem('userProfilePro', JSON.stringify(normalizedData)).catch((error) => {
+      // ✅ PRO: único que puede ser destacado (NO activar en upgrade normal)
+      const proPayload = buildProHighlightPayload({ ...normalizedData }, { activate: false, days: 0 });
+
+      await AsyncStorage.setItem('userProfilePro', JSON.stringify(proPayload)).catch((error) => {
         console.error('❌ Error al guardar userProfilePro:', error.message || error);
         throw error;
+      });
+
+      // 🔁 Espejo canónico DEBE reflejar el payload PRO
+      await AsyncStorage.setItem('userProfile', JSON.stringify(proPayload)).catch((error) => {
+        console.error('❌ Error al actualizar userProfile espejo (PRO):', error.message || error);
       });
 
       // 🧹 Eliminar perfil Free si existe
       await AsyncStorage.removeItem('userProfileFree');
       console.log('🧹 Eliminado userProfileFree al cambiar a cuenta Pro');
 
-      const highlightedProfile = { ...normalizedData, isHighlighted: true };
       const existing = await AsyncStorage.getItem('allProfiles').catch((error) => {
         console.error('❌ Error al obtener allProfiles:', error.message || error);
         return null;
@@ -137,11 +206,11 @@ await guardarAllProfiles(updated).catch(error => {
       const parsed = existing ? JSON.parse(existing) : [];
       console.log('📦 allProfiles existente:', parsed);
       const filtered = parsed.filter(
-        p => p.email?.toLowerCase() !== normalizedData.email.toLowerCase()
+        p => p.email?.toLowerCase() !== proPayload.email.toLowerCase()
       );
       const withoutDupes = [...filtered];
 
-      // ⬇️ Asegura que el perfil Pro también se conserve
+      // ⬇️ Asegura que el perfil Pro también se conserve (ya con flags correctos)
       const existingPro = await AsyncStorage.getItem('userProfilePro').catch(() => null);
       if (existingPro) {
         const parsedPro = JSON.parse(existingPro);
@@ -149,8 +218,8 @@ await guardarAllProfiles(updated).catch(error => {
         if (!exists) withoutDupes.push(parsedPro);
       }
 
-      // ⬇️ Añadir el perfil Pro al principio
-      const updated = [normalizedData, ...withoutDupes];
+      // ⬇️ Añadir el perfil Pro al principio (IMPORTANTE: usamos proPayload, no normalizedData)
+      const updated = [proPayload, ...withoutDupes];
       console.log('📦 allProfiles actualizado:', updated);
       await guardarAllProfiles(updated).catch(error => {
 
@@ -159,6 +228,10 @@ await guardarAllProfiles(updated).catch(error => {
       });
 
     } else if (membershipType === 'elite') {
+      // ❌ ELITE no puede ser destacado → limpiar flags
+      delete normalizedData.isHighlighted;
+      delete normalizedData.highlightedUntil;
+
       await AsyncStorage.setItem('userProfileElite', JSON.stringify(normalizedData)).catch((error) => {
         console.error('❌ Error al guardar userProfileElite:', error.message || error);
         throw error;
@@ -228,12 +301,23 @@ await guardarAllProfiles(updated).catch(error => {
 
     // Guardar datos mínimos o completos para sesión
     if (setUserData) {
-      await AsyncStorage.setItem('userData', JSON.stringify(normalizedData)).catch((error) => {
+      // ⬅️ Usar payload PRO si aplica, para no perder flags en contexto
+      const dataForContext =
+        membershipType === 'pro'
+          ? (await (async () => {
+              try {
+                const storedPro = await AsyncStorage.getItem('userProfilePro');
+                return storedPro ? JSON.parse(storedPro) : normalizedData;
+              } catch { return normalizedData; }
+            })())
+          : normalizedData;
+
+      await AsyncStorage.setItem('userData', JSON.stringify(dataForContext)).catch((error) => {
         console.error('❌ Error al guardar userData:', error.message || error);
         throw error;
       });
-      setUserData(normalizedData);
-      console.log('🔁 Guardando perfil con whatsapp:', normalizedData.whatsapp);
+      setUserData(dataForContext);
+      console.log('🔁 Guardando perfil con whatsapp:', dataForContext.whatsapp);
 
       if (explicitlyTriggerSession && setIsLoggedIn) {
         setIsLoggedIn(true);
@@ -255,25 +339,36 @@ await guardarAllProfiles(updated).catch(error => {
 
       // 🧠 Asegura que el tipo de cuenta esté actualizado en Firestore principal
       try {
-       const db = getFirestore(getApp());
-const userId = normalizedData.email.trim().toLowerCase(); // ✅ Usar el email limpio como ID
+        const db = getFirestore(getApp());
+        const userId = normalizedData.email.trim().toLowerCase(); // ✅ Usar el email limpio como ID
 
-const targetCollection = normalizedData.membershipType === 'elite'
-  ? 'profilesElite'
-  : normalizedData.membershipType === 'pro'
-    ? 'profilesPro'
-    : 'profiles';
+        const targetCollection = normalizedData.membershipType === 'elite'
+          ? 'profilesElite'
+          : normalizedData.membershipType === 'pro'
+            ? 'profilesPro'
+            : 'profilesFree'; // 👈 antes decía 'profiles'
 
-await setDoc(doc(db, targetCollection, userId), {
-  ...normalizedData, // ✅ Subir todos los datos reales, no solo el tipo
-  updatedAt: new Date().toISOString()
-}, { merge: true });
+        // 🔒 Mismo criterio: solo PRO puede llevar flags de destacado
+        // ⬇️ Importante: NO activar destacado en guardados normales
+        const firestorePayload =
+          normalizedData.membershipType === 'pro'
+            ? buildProHighlightPayload({ ...normalizedData }, { activate: false, days: 0 })
+            : (() => {
+                const x = { ...normalizedData };
+                x.isHighlighted = false;
+                x.highlightedUntil = null;
+                return x;
+              })();
 
-console.log(`✅ Perfil guardado correctamente en '${targetCollection}' con ID '${userId}'`);
+        await setDoc(doc(db, targetCollection, userId), {
+          ...firestorePayload, // ✅ Subir todos los datos reales con flags solo si es PRO
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        console.log(`✅ Perfil guardado correctamente en '${targetCollection}' con ID '${userId}'`);
 
         console.log(`🔁 membershipType actualizado en ${targetCollection}: ${normalizedData.membershipType}`);
 
-        // 🔥 Eliminar de Firebase el perfil anterior si hubo cambio de tipo de cuenta
         const collections = {
           free: ['profilesPro', 'profilesElite'],
           pro: ['profilesFree', 'profilesElite'],

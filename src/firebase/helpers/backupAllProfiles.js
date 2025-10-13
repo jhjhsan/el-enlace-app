@@ -5,67 +5,53 @@ import { guardarAllProfiles } from './profileHelpers';
 
 export const backupAllProfiles = async () => {
   try {
-    const isValidEmail = (email) => {
-      if (!email || typeof email !== 'string') {
-        return false;
-      }
+    const isValidEmail = (email) =>
+      typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase());
 
-      // Normalizar el correo
-      const cleaned = email
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '')
-        .replace(/[^a-z0-9@._\-+]/gi, '')
-        .replace(/@{2,}/g, '@');
-
-      const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned);
-
-      if (!isValid) {
-        console.warn('Correo normalizado no válido:', cleaned);
-      }
-
-      return isValid;
+    // Helper para mapear y filtrar una colección
+    const fetchProfiles = async (colName, fixedType) => {
+      const snap = await getDocs(collection(db, colName));
+      return snap.docs
+        .map((d) => {
+          const data = d.data() || {};
+          const email = (data.email || '').toString().trim().toLowerCase();
+          if (!isValidEmail(email)) return null;
+          return {
+            ...data,
+            email,
+            membershipType: fixedType,     // free | pro | elite
+            profileKind: data.profileKind ?? null, // talent | resource (solo informativo)
+            profileLock: data.profileLock ?? null, // talent | resource | null
+          };
+        })
+        .filter(Boolean);
     };
 
-    const freeSnapshot = await getDocs(collection(db, 'profilesFree'));
-    const allProfilesFree = freeSnapshot.docs
-      .map((doc) => {
-        // Usar el campo 'email' del documento si existe, o reconstruir desde doc.id
-        const data = doc.data();
-        const email = data.email || doc.id.replace(/_/g, '@');
-        return { ...data, email, membershipType: 'free' };
-      })
-      .filter((profile) => isValidEmail(profile.email));
+    const allProfilesFree  = await fetchProfiles('profilesFree',  'free');
+    const allProfilesPro   = await fetchProfiles('profilesPro',   'pro');
+    const allProfilesElite = await fetchProfiles('profilesElite', 'elite');
 
-    const proSnapshot = await getDocs(collection(db, 'profilesPro'));
-    const allProfilesPro = proSnapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        const email = data.email || doc.id.replace(/_/g, '@');
-        return { ...data, email, membershipType: 'pro' };
-      })
-      .filter((profile) => isValidEmail(profile.email));
+    // allProfiles = Free + Pro (Elite se maneja aparte como ya hacías)
+    const allProfiles = [
+      ...allProfilesFree,
+      ...allProfilesPro,
+    ];
 
-    const eliteSnapshot = await getDocs(collection(db, 'profilesElite'));
-    const allProfilesElite = eliteSnapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        const email = data.email || doc.id.replace(/_/g, '@');
-        return { ...data, email, membershipType: 'elite' };
-      })
-      .filter((profile) => isValidEmail(profile.email));
+    console.log('🧹 allProfiles (free+pro):', allProfiles.length);
+    console.log('🧹 allProfilesElite:', allProfilesElite.length);
 
-    const allProfiles = [...allProfilesFree, ...allProfilesPro];
-
-    console.log('🧹 Limpiando allProfiles, entradas válidas:', allProfiles);
-    console.log('🧹 Limpiando allProfilesElite, entradas válidas:', allProfilesElite);
-
-    await AsyncStorage.setItem('allProfilesFree', JSON.stringify(allProfilesFree));
-    await guardarAllProfiles(allProfiles);
+    // Guardados individuales (útiles para vistas filtradas)
+    await AsyncStorage.setItem('allProfilesFree',  JSON.stringify(allProfilesFree));
+    await AsyncStorage.setItem('allProfilesPro',   JSON.stringify(allProfilesPro));
     await AsyncStorage.setItem('allProfilesElite', JSON.stringify(allProfilesElite));
 
-    console.log('✅ Perfiles descargados y guardados localmente');
+    // Guardado “maestro” limpio
+    await guardarAllProfiles(allProfiles);
+
+    console.log('✅ Perfiles descargados y guardados localmente (sin profilesResource)');
+    return true;
   } catch (error) {
     console.error('❌ Error al respaldar perfiles:', error);
+    return false;
   }
 };

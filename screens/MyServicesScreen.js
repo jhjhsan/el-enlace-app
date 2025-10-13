@@ -1,3 +1,4 @@
+// screens/MyServicesScreen.js
 import React, { useEffect, useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -29,6 +30,10 @@ export default function MyServicesScreen() {
   const [services, setServices] = useState([]);
   const [loadingDelete, setLoadingDelete] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // ⬇️ Nuevo: estado para el modal de confirmación
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   useEffect(() => {
     syncAndLoad();
@@ -254,6 +259,22 @@ export default function MyServicesScreen() {
     }
   };
 
+  // ⬇️ Nuevo: abrir modal de confirmación
+  const onDeletePress = (item) => {
+    setPendingDelete(item);
+    setConfirmVisible(true);
+  };
+
+  // ⬇️ Nuevo: ejecutar borrado confirmado
+  const doDeleteConfirmed = async () => {
+    const id = pendingDelete?.id;
+    setConfirmVisible(false);
+    if (id) {
+      await handleDelete(id);
+    }
+    setPendingDelete(null);
+  };
+
   const renderCard = (item, index) => {
     const img = item?.image || item?.photoUri || null;
     const isPromotional = item?.isPromotional === true;
@@ -288,9 +309,9 @@ export default function MyServicesScreen() {
           <Text style={styles.editText}>✏️ Editar</Text>
         </TouchableOpacity>
 
-        {/* Botón de eliminar */}
+        {/* Botón de eliminar → ahora abre modal de confirmación */}
         <TouchableOpacity
-          onPress={() => handleDelete(item.id)}
+          onPress={() => onDeletePress(item)}
           style={styles.deleteButton}
         >
           <Text style={styles.deleteText}>🗑️ Eliminar</Text>
@@ -304,6 +325,38 @@ export default function MyServicesScreen() {
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
         <Ionicons name="arrow-back" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* ⬇️ Modal de confirmación (nuevo) */}
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setConfirmVisible(false); setPendingDelete(null); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmBox}>
+            <Ionicons name="warning-outline" size={40} color="#D8A353" style={{ marginBottom: 8 }} />
+            <Text style={styles.confirmTitle}>¿Borrar servicio?</Text>
+            <Text style={styles.confirmMsg}>
+              {`Vas a borrar "${pendingDelete?.title || 'este servicio'}". Esta acción no se puede deshacer.`}
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, styles.cancelBtn]}
+                onPress={() => { setConfirmVisible(false); setPendingDelete(null); }}
+              >
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, styles.deleteBtn]}
+                onPress={doDeleteConfirmed}
+              >
+                <Text style={styles.deleteBtnText}>Eliminar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal Cargando */}
       <Modal visible={loadingDelete} transparent animationType="fade">
@@ -348,7 +401,7 @@ export default function MyServicesScreen() {
 }
 
 const styles = StyleSheet.create({
-  // contenedor y encabezado (mantengo tus nombres pero adapto el look al del otro screen)
+  // contenedor y encabezado
   screen: { flex: 1, backgroundColor: '#000' },
   backBtn: { position: 'absolute', top: 40, left: 20, zIndex: 2000 },
   container: { padding: 10, paddingBottom: 120, marginTop: 40 },
@@ -361,11 +414,10 @@ const styles = StyleSheet.create({
   },
   empty: { color: '#999', textAlign: 'center', marginTop: 50 },
 
-  // tarjeta estilo ViewPostsScreen
+  // tarjeta
   card: {
     backgroundColor: '#1B1B1B',
     borderColor: '#D8A353',
-    
     borderRadius: 10,
     padding: 10,
     marginBottom: 5,
@@ -401,11 +453,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
     borderRadius: 5,
   },
-  editText: {
-    color: '#D8A353',
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
+  editText: { color: '#D8A353', textAlign: 'center', fontWeight: 'bold' },
+
   deleteButton: {
     marginTop: 10,
     paddingVertical: 6,
@@ -414,7 +463,7 @@ const styles = StyleSheet.create({
   },
   deleteText: { color: '#fff', textAlign: 'center' },
 
-  // modales (igual que antes)
+  // modales base
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -438,12 +487,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textAlign: 'center',
   },
-  modalMsg: {
-    color: '#ccc',
-    fontSize: 14,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
+  modalMsg: { color: '#ccc', fontSize: 14, marginBottom: 12, textAlign: 'center' },
   modalBtn: {
     alignSelf: 'center',
     paddingVertical: 8,
@@ -452,8 +496,24 @@ const styles = StyleSheet.create({
     borderWidth: 0.6,
     borderColor: '#D8A353',
   },
-  modalBtnTxt: {
-    color: '#D8A353',
-    fontWeight: '600',
+  modalBtnTxt: { color: '#D8A353', fontWeight: '600' },
+
+  // modal de confirmación (nuevo)
+  confirmBox: {
+    width: '86%',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    padding: 18,
+    borderWidth: 0.8,
+    borderColor: '#D8A353',
+    alignItems: 'center',
   },
+  confirmTitle: { color: '#D8A353', fontWeight: 'bold', fontSize: 18, marginBottom: 4, textAlign: 'center' },
+  confirmMsg: { color: '#ddd', fontSize: 14, textAlign: 'center', marginBottom: 14 },
+  confirmActions: { flexDirection: 'row', gap: 10, width: '100%' },
+  confirmBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+  cancelBtn: { backgroundColor: '#000', borderWidth: 1, borderColor: '#D8A353' },
+  cancelText: { color: '#D8A353', fontWeight: 'bold' },
+  deleteBtn: { backgroundColor: '#550000' }, // rojo
+  deleteBtnText: { color: '#fff', fontWeight: 'bold' }, // texto blanco
 });

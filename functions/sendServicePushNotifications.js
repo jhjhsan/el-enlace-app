@@ -1,27 +1,24 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const { Expo } = require('expo-server-sdk');
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
 const db = admin.firestore();
-const messaging = admin.messaging();
+const expo = new Expo();
 
-// 👇 MARCADOR PARA LOGS (debe aparecer sí o sí si esta versión despliega)
-console.log('=== SERVICE FN vFINAL-aug10 ===');
-
-// normaliza la clave donde el cliente escucha notifications/{email}/items
+const ICON_URL = "https://firebasestorage.googleapis.com/v0/b/elenlaceapp.firebasestorage.app/o/logo-banner.png?alt=media&token=c5865b54-d7a4-4fce-a967-0e2d85d2149a";
 const normalizeEmail = (e) =>
   (e || '')
     .toLowerCase()
     .trim()
     .replace(/\s+/g, '')
-    //         ↓↓↓ guion escapado correctamente (o podrías dejar el guion al final)
     .replace(/[^a-z0-9@._+\-]/gi, '')
     .replace(/@{2,}/g, '@');
 
-// chunk para no superar 500 escrituras
+// hace chunks para no superar 500 escrituras en batch
 const chunk = (arr, size = 450) => {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -38,7 +35,7 @@ exports.sendServicePushNotifications = functions.firestore
       const title = (serviceData.title || 'Sin título').toString();
       const description = (serviceData.description || '').toString();
 
-      // excluir al creador (normalizado)
+      // excluir al creador
       const creatorEmailLower =
         normalizeEmail(
           serviceData?.creatorEmailLower ||
@@ -46,40 +43,39 @@ exports.sendServicePushNotifications = functions.firestore
           ''
         ) || null;
 
-      // 👈 incluye profilesFree
       const profileCollections = ['profiles', 'profilesFree', 'profilesPro', 'profilesElite'];
 
-      // fanout a TODOS (sin filtros)
       const recipientKeys = new Set();
       const tokensByKey = new Map();
 
       for (const colName of profileCollections) {
         const snapshot = await db.collection(colName).get();
-snapshot.forEach((docSnap) => {
-  const user = docSnap.data() || {};
-  // SIEMPRE por email, jamás por docId
-  const raw =
-    user.emailLower ||
-    user.email ||
-    user.mail ||
-    user.contactEmail ||
-    '';
 
-  const key = normalizeEmail(raw);
+        snapshot.forEach((docSnap) => {
+          const user = docSnap.data() || {};
+          const raw =
+            user.emailLower ||
+            user.email ||
+            user.mail ||
+            user.contactEmail ||
+            '';
 
-  // Si no parece email (sin @), NO lo uses
-  if (!key || !key.includes('@')) return;
+          const key = normalizeEmail(raw);
+          if (!key || !key.includes('@')) return;
 
-  // (opcional) excluir al creador:
-  // if (creatorEmailLower && key === creatorEmailLower) return;
+          // EXCLUIR SIEMPRE al creador del servicio
+          if (creatorEmailLower && key === creatorEmailLower) return;
 
-  recipientKeys.add(key);
-  if (user.expoPushToken) tokensByKey.set(key, user.expoPushToken);
-});
+          const token = user.expoPushToken;
+          if (!token || !Expo.isExpoPushToken(token)) return;
+
+          recipientKeys.add(key);
+          tokensByKey.set(key, token);
+        });
       }
 
       if (recipientKeys.size === 0) {
-        console.log('🔕 No hay destinatarios.');
+        console.log('🔕 No hay destinatarios con Expo token válido.');
         return { success: false, message: 'No recipients' };
       }
 
@@ -87,62 +83,85 @@ snapshot.forEach((docSnap) => {
       const bodyText = description.length > 60 ? description.substring(0, 57) + '…' : description;
       const nowServerTs = admin.firestore.FieldValue.serverTimestamp();
 
-      // PUSH opcional (solo a quien tenga token)
-      let pushSent = 0;
-      for (const key of recipientKeys) {
-        const token = tokensByKey.get(key);
-        if (!token) continue;
-
-        const message = {
-          token,
-          notification: { title: notifTitle, body: bodyText },
-          data: { type: 'servicio', serviceId },
-          android: { priority: 'high', notification: { sound: 'default', channelId: 'default' } },
-          apns: { payload: { aps: { sound: 'default', contentAvailable: true } } },
-        };
-
-        try {
-          await messaging.send(message);
-          pushSent++;
-        } catch (e) {
-          console.warn(`❌ Error enviando a ${key}:`, e.message);
-        }
-      }
-      console.log(`📤 Push enviados: ${pushSent} / ${recipientKeys.size}`);
-
-      // TARJETAS en Firestore (chunks)
-      const recipients = Array.from(recipientKeys);
-      const chunks = chunk(recipients, 450);
+      // construir tarjetas + mensajes expo
+      const expoMessages = [];
+      const batchChunks = chunk(Array.from(recipientKeys), 450);
       let written = 0;
 
-for (const slice of chunks) {
-  const batch = db.batch();
-  const createdAtMs = Date.now(); // para orden estable en el cliente
+      for (const slice of batchChunks) {
+        const batch = db.batch();
+        const createdAtMs = Date.now();
 
-  slice.forEach((key) => {
-    const ref = db.collection('notifications').doc(key).collection('items').doc();
-    batch.set(ref, {
-      id: ref.id,                 // <-- tu UI lo espera
-      recipient: key,
-      type: 'servicio',
-      title: notifTitle,
-      body: bodyText,             // como casting
-      message: bodyText,          // <-- espejo (tu UI a veces lee 'message')
-      timestamp: nowServerTs,     // serverTimestamp
-      createdAtMs,                // <-- ms plano para ordenar en cliente
-      serviceId,
-      read: false,
-      sender: 'sistema',
-      creatorEmailLower,
-    });
-  });
+        slice.forEach((key) => {
+          // tarjeta
+          const ref = db.collection('notifications').doc(key).collection('items').doc();
+          batch.set(ref, {
+            id: ref.id,
+            recipient: key,
+            type: 'servicio',
+            title: notifTitle,
+            body: bodyText,
+            message: bodyText,     // espejo por compatibilidad
+            timestamp: nowServerTs,
+            createdAtMs,
+            serviceId,
+            read: false,
+            sender: 'sistema',
+            creatorEmailLower,
+          });
 
-  await batch.commit();
-  written += slice.length;
-}
+          // push Expo
+          const token = tokensByKey.get(key);
+          if (token) {
+            expoMessages.push({
+              to: token,
+              title: notifTitle,
+              body: bodyText,
+              data: { type: 'servicio', serviceId },
+              sound: 'default',
+              priority: 'high',
+              channelId: 'messages',
+              icon: 'icon-noti',
+              image: ICON_URL,
+            });
+          }
+        });
+
+        await batch.commit();
+        written += slice.length;
+      }
 
       console.log('📝 Notificaciones guardadas en Firestore:', written);
-      return { success: true, sentPush: pushSent, savedDocs: written };
+
+      // envío Expo
+      let sentOk = 0;
+      try {
+        const chunks = expo.chunkPushNotifications(expoMessages);
+        const tickets = [];
+        for (const chunk of chunks) {
+          const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+          tickets.push(...ticketChunk);
+        }
+        for (const t of tickets) if (t?.status === 'ok') sentOk++;
+
+        const receiptIds = tickets.filter(t => t?.id).map(t => t.id);
+        if (receiptIds.length) {
+          const rchunks = expo.chunkPushNotificationReceiptIds(receiptIds);
+          for (const rc of rchunks) {
+            const receipts = await expo.getPushNotificationReceiptsAsync(rc);
+            for (const [, r] of Object.entries(receipts)) {
+              if (r.status === 'error') {
+                functions.logger.error('PUSH_RECEIPT_ERROR', { message: r.message, details: r.details || null });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('❌ Error enviando notificaciones Expo (servicios):', e);
+      }
+
+      console.log(`✅ Push de servicio enviadas OK: ${sentOk}`);
+      return { success: true, sentOk, savedDocs: written, recipients: recipientKeys.size };
     } catch (error) {
       console.error('❌ Error en sendServicePushNotifications:', error);
       return { success: false, error: error.message };

@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
-  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -25,18 +24,17 @@ import {
   collection,
   query,
   where,
-  orderBy,
-  limit,
   onSnapshot,
   doc,
   updateDoc,
   deleteDoc,
   getDocs,
   getDoc,
-  writeBatch, // ✅ batch para marcar leídas
+  writeBatch,
 } from 'firebase/firestore';
 import { CommonActions } from '@react-navigation/native';
 import eventBus from '../utils/eventBus';
+import { useNotification } from '../contexts/NotificationContext';
 
 // 🔒 Cache de conversación a nivel módulo (persiste entre renders)
 // Clave no direccional: 'a@b.com|b@c.com'
@@ -49,6 +47,7 @@ const icons = {
   reseña: '⭐',
   terminos: '⚙️',
   servicio: '🛠️',
+  focus: '🎯',
 };
 
 export default function NotificationScreen() {
@@ -58,11 +57,16 @@ export default function NotificationScreen() {
   const [errorNotificationId, setErrorNotificationId] = useState(null);
   const [modalMessage, setModalMessage] = useState('');
   const [nameByEmail, setNameByEmail] = useState({});
+  const { recalculateUnreadCount } = useNotification();
 
   const navigation = useNavigation();
   const db = getFirestore(getApp());
 
-  // ── Guardado local con debounce para no bloquear la UI ───────────────
+  // 🧠 IDs de mis propios focus (para filtrar self-notifs aunque no traigan email)
+  const myFocusIdsRef = React.useRef(new Set());
+  const [myFocusReady, setMyFocusReady] = useState(false);
+
+  // ── Guardado local con debounce
   let __saveTimer;
   const queueSaveNotifications = (userId, getList) => {
     try { clearTimeout(__saveTimer); } catch {}
@@ -111,7 +115,7 @@ export default function NotificationScreen() {
       const jsonUser = await AsyncStorage.getItem('userProfile');
       const user = jsonUser ? JSON.parse(jsonUser) : null;
       if (user?.id) queueSaveNotifications(user.id, () => notifications);
-
+      try { await recalculateUnreadCount?.(user.id); } catch {}
     } catch (error) {
       console.error('❌ Error marcando todas como leídas:', error);
     }
@@ -126,14 +130,67 @@ export default function NotificationScreen() {
       .replace(/@{2,}/g, '@');
   };
 
+  // ⛔️ Detecta si la notificación de FOCUS fue creada por el mismo usuario (autor)
+  const isSelfFocus = (data, currentNormalized) => {
+    if (!data || data.type !== 'focus') return false;
+    const candidates = [
+      data.sender,
+      data.ownerEmail,
+      data.creatorEmail,
+      data.createdBy,
+      data.publishedBy,
+      data.userEmail,
+      data.authorEmail,
+      data.publisherEmail,
+      data.focusOwnerEmail,
+    ]
+      .filter(Boolean)
+      .map((e) => normalizeEmail(e));
+    return candidates.includes(currentNormalized);
+  };
+
+  // 👀 Listener en vivo de mis propios Focus para tener sus IDs
+  const listenMyFocus = (userEmail) => {
+    const normalized = normalizeEmail(userEmail);
+    const ref = collection(db, 'focus');
+    const unsubs = [];
+
+    const queries = [
+      query(ref, where('ownerEmail', '==', normalized)),
+      query(ref, where('creatorEmail', '==', normalized)),
+      query(ref, where('createdBy', '==', normalized)),
+      query(ref, where('publishedBy', '==', normalized)),
+      query(ref, where('userEmail', '==', normalized)),
+      query(ref, where('authorEmail', '==', normalized)),
+      query(ref, where('publisherEmail', '==', normalized)),
+      query(ref, where('focusOwnerEmail', '==', normalized)),
+    ];
+
+    for (const qy of queries) {
+      try {
+        const unsub = onSnapshot(qy, (snap) => {
+          const current = new Set(myFocusIdsRef.current);
+          snap.docChanges().forEach((chg) => {
+            const id = chg.doc.id;
+            if (chg.type === 'removed') current.delete(id);
+            else current.add(id);
+          });
+          myFocusIdsRef.current = current;
+          setMyFocusReady(true);
+        });
+        unsubs.push(unsub);
+      } catch {}
+    }
+
+    return () => {
+      unsubs.forEach((u) => { try { u(); } catch {} });
+    };
+  };
+
   const toStr = (v) => {
     if (typeof v === 'string') return v;
     if (v == null) return '';
-    try {
-      return String(v);
-    } catch {
-      return '';
-    }
+    try { return String(v); } catch { return ''; }
   };
 
   const loadNameIndex = async () => {
@@ -160,7 +217,7 @@ export default function NotificationScreen() {
         }
       }
       setNameByEmail(map);
-    } catch (_) { /* silencioso */ }
+    } catch (_) {}
   };
 
   const checkConversationExists = async (senderEmail, userEmail) => {
@@ -168,14 +225,14 @@ export default function NotificationScreen() {
       const normalizedUser = normalizeEmail(userEmail);
       const normalizedSender = normalizeEmail(senderEmail);
 
-      // Cache no direccional: el par A-B es igual a B-A
+      // Cache no direccional
       const [a, b] = [normalizedUser, normalizedSender].sort();
       const cacheKey = `${a}|${b}`;
       if (__convExistCache.has(cacheKey)) {
         return __convExistCache.get(cacheKey);
       }
 
-      // 🔁 Si está en blacklist, lo quitamos (recibió nuevo mensaje)
+      // 🔁 Si está en blacklist, lo quitamos
       const blacklistKey = `deletedConversations_${normalizedUser}`;
       const blacklistJson = await AsyncStorage.getItem(blacklistKey);
       let blacklist = blacklistJson ? JSON.parse(blacklistJson) : [];
@@ -186,15 +243,14 @@ export default function NotificationScreen() {
         await AsyncStorage.setItem(blacklistKey, JSON.stringify(blacklist));
       }
 
-      const q = query(
+      const qy = query(
         collection(db, 'mensajes'),
         where('from', 'in', [normalizedUser, normalizedSender]),
         where('to', 'in', [normalizedUser, normalizedSender])
       );
-      const snapshot = await getDocs(q);
+      const snapshot = await getDocs(qy);
       const existsInFirestore = !snapshot.empty;
 
-      // guarda en cache
       __convExistCache.set(cacheKey, existsInFirestore);
 
       if (existsInFirestore) {
@@ -207,11 +263,11 @@ export default function NotificationScreen() {
         );
 
         if (!conversationExists) {
-          const firestoreMessages = snapshot.docs.map((doc) => ({
-            sender: doc.data().from,
-            text: doc.data().text,
-            timestamp: doc.data().timestamp,
-            read: doc.data().read || false,
+          const firestoreMessages = snapshot.docs.map((docx) => ({
+            sender: docx.data().from,
+            text: docx.data().text,
+            timestamp: docx.data().timestamp,
+            read: docx.data().read || false,
           }));
           allMessages.push({
             id: `${normalizedUser}_${normalizedSender}`,
@@ -272,20 +328,28 @@ export default function NotificationScreen() {
 
   const cleanObsoleteNotifications = async (userEmail) => {
     try {
-      if (cleaningRef.current) return; // ya hay una limpieza corriendo
+      if (cleaningRef.current) return;
       cleaningRef.current = true;
 
       const normalizedEmail = normalizeEmail(userEmail);
       const notiRef = collection(db, `notifications/${normalizedEmail}/items`);
       const snapshot = await getDocs(notiRef);
 
-      // Procesa en tandas para no congelar la UI
       const batchSize = 8;
-      const docs = snapshot.docs.slice(0, batchSize);
+      const docsToCheck = snapshot.docs.slice(0, batchSize);
       const deletions = [];
 
-      for (const docSnap of docs) {
-        const data = docSnap.data();
+      for (const docSnap of docsToCheck) {
+        const data = docSnap.data() || {};
+
+        // ⛔️ Borra notificaciones de focus creadas por el mismo usuario
+        const isMineByEmail = isSelfFocus(data, normalizedEmail);
+        const isMineById = data.type === 'focus' && data.focusId && myFocusIdsRef.current.has(data.focusId);
+        if (isMineByEmail || isMineById) {
+          deletions.push(deleteDoc(docSnap.ref));
+          continue;
+        }
+
         if (data.type === 'mensaje' && data.sender) {
           const conversationExists = await checkConversationExists(data.sender, userEmail);
           if (!conversationExists) {
@@ -295,14 +359,20 @@ export default function NotificationScreen() {
       }
       await Promise.all(deletions);
 
-      // Limpia notificaciones locales obsoletas (usando el snapshot completo)
+      // Limpia notificaciones locales obsoletas
       let local = await AsyncStorage.getItem(`notifications_${userEmail}`);
       let localNotis = local ? JSON.parse(local) : [];
       const remaining = snapshot.docs.map(d => (d.data() || {}).id);
-      localNotis = localNotis.filter(n => remaining.includes(n.id));
+      localNotis = localNotis
+        .filter(n => remaining.includes(n.id))
+        .filter(n => {
+          if (n.type !== 'focus') return true;
+          const byEmail = normalizeEmail(n.sender) === normalizedEmail;
+          const byId = n.focusId && myFocusIdsRef.current.has(n.focusId);
+          return !(byEmail || byId);
+        });
       await AsyncStorage.setItem(`notifications_${userEmail}`, JSON.stringify(localNotis));
 
-      // Si quedan más por procesar, agenda una sola siguiente tanda
       if (snapshot.docs.length > batchSize) {
         if (cleanTimerRef.current) clearTimeout(cleanTimerRef.current);
         cleanTimerRef.current = setTimeout(() => cleanObsoleteNotifications(userEmail), 500);
@@ -316,14 +386,144 @@ export default function NotificationScreen() {
 
   const debugAsyncStorage = async () => {
     try {
-      const json = await AsyncStorage.getItem('professionalMessages');
+      await AsyncStorage.getItem('professionalMessages');
       const userJson = await AsyncStorage.getItem('userProfile');
       const user = userJson ? JSON.parse(userJson) : null;
       if (user) {
-        await AsyncStorage.getItem(`notifications_${user.id}`); // lectura para inspección manual si la necesitas
+        await AsyncStorage.getItem(`notifications_${user.id}`);
       }
     } catch (error) {
       console.error('❌ Error inspeccionando AsyncStorage:', error);
+    }
+  };
+
+  // === helper de fecha fija (incluye createdAt para focus)
+  const stableDateForNotif = ({ data, prev, firstSeen, notifId }) => {
+    const tsServer    = (data?.timestamp && typeof data.timestamp.toDate === 'function') ? data.timestamp.toDate() : null;
+    const tsCreatedAt = (data?.createdAt && typeof data.createdAt.toDate === 'function') ? data.createdAt.toDate() : null;
+    const tsMs        = data?.createdAtMs ? new Date(Number(data.createdAtMs)) : null;
+
+    const primary = tsServer || tsCreatedAt || tsMs || null;
+
+    let dateIso = prev?.date || (primary ? primary.toISOString() : null);
+    if (!dateIso) {
+      if (!firstSeen[notifId]) {
+        firstSeen[notifId] = new Date().toISOString();
+      }
+      dateIso = firstSeen[notifId];
+    }
+
+    return { primary, dateIso };
+  };
+
+  // 🆕 ✅ Verifica si un focus existe; si hay "permission-denied" o error de red, asumimos que existe
+  const focusExists = async (fid) => {
+    if (!fid) return false;
+    const COLS = ['focus', 'focuses'];
+    // 1) intento directo por docId
+    for (const col of COLS) {
+      try {
+        const s = await getDoc(doc(db, col, String(fid)));
+        if (s.exists()) return true;
+      } catch (e) {
+        const code = e?.code || '';
+        if (code === 'permission-denied' || code === 'unavailable' || code === 'deadline-exceeded') {
+          return true;
+        }
+      }
+    }
+    // 2) búsqueda por campo id
+    for (const col of COLS) {
+      try {
+        const s1 = await getDocs(query(collection(db, col), where('id', '==', String(fid))));
+        if (!s1.empty) return true;
+      } catch (e) {
+        const code = e?.code || '';
+        if (code === 'permission-denied' || code === 'unavailable' || code === 'deadline-exceeded') {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // 🔧🔧 BACKFILL requerido: marcar en Firestore como leídas las notificaciones viejas (no toca UI)
+  async function backfillMarkOldAsRead(userEmail, days = 7) {
+    try {
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      const colRef = collection(db, `notifications/${normalizeEmail(userEmail)}/items`);
+      const snap = await getDocs(colRef);
+      const batch = writeBatch(db);
+      let count = 0;
+      snap.forEach(docSnap => {
+        const d = docSnap.data() || {};
+        const ts =
+          (d.timestamp && typeof d.timestamp.toDate === 'function' && d.timestamp.toDate()) ||
+          (d.createdAt && typeof d.createdAt.toDate === 'function' && d.createdAt.toDate()) ||
+          (d.createdAtMs ? new Date(Number(d.createdAtMs)) : null);
+        const ms = ts ? ts.getTime() : 0;
+        if (ms && ms < cutoff && d.read !== true) {
+          batch.update(docSnap.ref, { read: true });
+          count++;
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+      }
+    } catch (e) {
+      console.warn('backfillMarkOldAsRead failed', e);
+    }
+  }
+
+  // 🆕 Solo añade/actualiza el TEXTO de tarjetas "casting" usando el casting actual
+  const hydrateCastingNotifs = async (list) => {
+    try {
+      const ids = Array.from(
+        new Set(
+          list.filter(n => n.type === 'casting' && n.castingId).map(n => String(n.castingId))
+        )
+      );
+      if (ids.length === 0) return list;
+
+      const byId = new Map();
+      for (const id of ids) {
+        try {
+          const snap = await getDoc(doc(db, 'castings', id)); // ← colección común: 'castings'
+          if (snap.exists()) {
+            const c = snap.data() || {};
+            const title =
+              toStr(c.title) ||
+              toStr(c.titulo) ||
+              toStr(c.projectTitle) ||
+              toStr(c.castingTitle);
+            const desc =
+              toStr(c.shortDescription) ||
+              toStr(c.description) ||
+              toStr(c.descripcion);
+            byId.set(id, { title, desc });
+          }
+        } catch {
+          // Silencioso: si falla, dejamos lo que vino en la notificación
+        }
+      }
+
+      if (byId.size === 0) return list;
+
+      return list.map(n => {
+        if (n.type !== 'casting' || !n.castingId) return n;
+        const fresh = byId.get(String(n.castingId));
+        if (!fresh) return n;
+
+        const msgTitle = 'Nuevo Casting';
+        const body = fresh.title || fresh.desc || '';
+        return {
+          ...n,
+          title: msgTitle,                               // línea 1
+          message: body ? `${msgTitle}: ${body}` : msgTitle, // línea 2 toma el body de message
+        };
+      });
+    } catch {
+      return list;
     }
   };
 
@@ -341,18 +541,15 @@ export default function NotificationScreen() {
       await debugAsyncStorage();
 
       const normalizedEmail = normalizeEmail(user.email);
-
-      const notifKey = `notifications_${user.id}`;
       const pendingKey = `pendingNotifications_${normalizedEmail}`;
 
-      const pendingJson = await AsyncStorage.getItem(pendingKey);
-      const pending = pendingJson ? JSON.parse(pendingJson) : [];
-      const enrichedPending = pending.map((p, i) => ({
-        id: p.id || `pend_${i}_${p.timestamp}`,
-        icon: 'chat',
-        date: p.timestamp,
-        message: p.message,
-      }));
+      // 🔔 Escuchar mis propios Focus
+      const stopListenMyFocus = listenMyFocus(user.email);
+
+      // 🔧 backfill
+      await backfillMarkOldAsRead(user.email, 7);
+
+      await AsyncStorage.getItem(pendingKey); // lectura por si la necesitas
 
       const itemsRef = collection(db, `notifications/${normalizedEmail}/items`);
 
@@ -361,67 +558,95 @@ export default function NotificationScreen() {
         const blacklistJson = await AsyncStorage.getItem(blacklistKey);
         const blacklist = blacklistJson ? JSON.parse(blacklistJson) : [];
 
+        // previo/firstSeen
+        const prevJson = await AsyncStorage.getItem(`notifications_${user.id}`);
+        const prevNotis = prevJson ? JSON.parse(prevJson) : [];
+
+        const firstSeenKey = `notifFirstSeen_${user.id}`;
+        const firstSeenJson = await AsyncStorage.getItem(firstSeenKey);
+        const firstSeen = firstSeenJson ? JSON.parse(firstSeenJson) : {};
+
+        const mineIds = myFocusIdsRef.current;
+        const myEmailN = normalizeEmail(user.email);
+
         const fireDocs = snapshot.docs
-          .map((doc) => {
-            const data = doc.data() || {};
-            const ts =
-              (data.timestamp && typeof data.timestamp.toDate === 'function'
-                ? data.timestamp.toDate()
-                : null) ||
-              (data.createdAtMs ? new Date(Number(data.createdAtMs)) : null) ||
-              new Date(); // fallback si no hay timestamp
+          // ⛔️ filtra self-focus
+          .filter((docSnap) => {
+            const data = docSnap.data() || {};
+            if (data.type !== 'focus') return true;
+            const selfByEmail = isSelfFocus(data, myEmailN);
+            const fid = data.focusId || null;
+            const selfById = fid && mineIds.has(fid);
+            return !(selfByEmail || selfById);
+          })
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+            const notifId = data.id || `fire_${docSnap.id}`;
+            const prev = prevNotis.find(p => p.id === notifId);
+
+            const { primary, dateIso } = stableDateForNotif({ data, prev, firstSeen, notifId });
 
             const msgTitle = toStr(data.title || '🔔');
             const msgBody  = toStr(data.body ?? data.message ?? '');
 
             return {
-              id: data.id || `fire_${doc.id}`,      // ID estable
-              firebaseId: doc.id,
+              id: notifId,
+              firebaseId: docSnap.id,
               icon: data.type || 'terminos',
               type: data.type,
               chatId: data.chatId,
               castingId: data.castingId,
+              focusId: data.focusId || null,
               serviceId: data.serviceId,
               sender: data.sender || null,
-              date: ts.toISOString(),
-              timestamp: ts,
+              title: toStr(data.title || ''),
+
+              // referencia no visible
+              timestamp: primary ? primary.toISOString() : (prev?.timestamp || null),
+
+              // fecha visible fija
+              date: dateIso,
+
               message: `${msgTitle}${msgBody ? ': ' + msgBody : ''}`,
-              read: data.read === true,
+              read: (prev?.read === true) || (data.read === true),
             };
           })
-          // Últimos 10 días
+          // últimos 10 días si hay timestamp
           .filter((notif) => {
+            if (!notif.timestamp) return true;
             const now = new Date();
-            const diffMs = now - notif.timestamp;
+            const ref = new Date(notif.timestamp);
+            const diffMs = now - ref;
             const diffDays = diffMs / (1000 * 60 * 60 * 24);
             return diffDays <= 10;
           })
-          // Respeta blacklist
+          // respeta blacklist
           .filter((notif) => !blacklist.includes(notif.id));
 
-        // Preserva "read" local
-        const prevJson = await AsyncStorage.getItem(`notifications_${user.id}`);
-        const prevNotis = prevJson ? JSON.parse(prevJson) : [];
-        const mergedFireDocs = fireDocs.map((n) => {
-          const old = prevNotis.find((p) => p.id === n.id);
-          return old ? { ...n, read: old.read === true } : n;
-        });
-
-        // Ordena por fecha desc y limita
-        const top = mergedFireDocs
-          .sort((a, b) => new Date(b.date) - new Date(a.date))
+        const top = fireDocs
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
           .slice(0, 60);
 
-        await AsyncStorage.setItem(`notifications_${user.id}`, JSON.stringify(top));
+        const topNoSelf = top.filter(n => {
+          if (n.type !== 'focus') return true;
+          const byEmail = normalizeEmail(n.sender) === myEmailN;
+          const byId = n.focusId && mineIds.has(n.focusId);
+          return !(byEmail || byId);
+        });
 
-        // (opcional) mezclar enrichedPending si lo usas
-        setNotifications(top);
+        // 🆕 Rehidratar SOLO el texto de castings (manteniendo layout)
+        const finalList = await hydrateCastingNotifs(topNoSelf);
+
+        await AsyncStorage.setItem(`notifications_${user.id}`, JSON.stringify(finalList));
+        await AsyncStorage.setItem(firstSeenKey, JSON.stringify(firstSeen));
+        setNotifications(finalList);
         eventBus.emit('notificationsUpdated');
+        try { await recalculateUnreadCount?.(user.id); } catch {}
       }, (error) => {
         console.error('❌ Error en onSnapshot:', error);
       });
 
-      // ⚡ Limpieza asíncrona (single timer)
+      // Limpieza asíncrona
       if (cleanTimerRef.current) clearTimeout(cleanTimerRef.current);
       cleanTimerRef.current = setTimeout(() => {
         cleanObsoleteNotifications(user.email).catch((e) =>
@@ -429,52 +654,15 @@ export default function NotificationScreen() {
         );
       }, 0);
 
-      if (user.trialEndsAt && !user.hasPaid) {
-        const trialEndDate = new Date(user.trialEndsAt);
-        const now = new Date();
-        const diffDays = Math.ceil((trialEndDate - now) / (1000 * 60 * 60 * 24));
-
-        if (diffDays <= 3 && diffDays >= 0) {
-          const trialAlert = {
-            id: 'trial_alert',
-            icon: 'terminos',
-            date: now.toISOString(),
-            message: `⚠️ Tu prueba gratuita termina en ${diffDays} día(s). Activa tu plan Elite para mantener los beneficios.`,
-          };
-
-          const merged = [...notifications, trialAlert].filter(n => {
-            const seen = new Set();
-            return !seen.has(n.id) && seen.add(n.id);
-          });
-
-          setNotifications(merged.sort((a, b) => new Date(b.date) - new Date(a.date)));
-
-          const sentKey = `emailAlertSent_${normalizedEmail}`;
-          const sent = await AsyncStorage.getItem(sentKey);
-          if (!sent) {
-            try {
-              const functions = getFunctions(getApp());
-              const sendEmail = httpsCallable(functions, 'sendTrialAlertEmail');
-              await sendEmail({ email: user.email });
-              await AsyncStorage.setItem(sentKey, 'true');
-            } catch (error) {
-              console.error('❌ Error al enviar correo:', error);
-            }
-          }
-        }
-      }
-
-      return unsubscribe;
+      // devolver ambos unsubscribers
+      return () => {
+        try { unsubscribe && unsubscribe(); } catch {}
+        try { stopListenMyFocus && stopListenMyFocus(); } catch {}
+      };
     } catch (error) {
       console.error('❌ Error en fetchUser:', error);
     }
   };
-
-  useFocusEffect(
-    useCallback(() => {
-      eventBus.emit('notificationsUpdated'); // 🔥 Fuerza la recarga del contador
-    }, [])
-  );
 
   useFocusEffect(
     useCallback(() => {
@@ -523,8 +711,15 @@ export default function NotificationScreen() {
         ).catch((e) => console.warn('updateDoc(read) failed', e));
       }
 
-      // 3) Persistencia local (debounced)
-      if (user?.id) queueSaveNotifications(user.id, () => notifications);
+      // 3) Persistencia local inmediata
+      if (user?.id) {
+        const updated = notifications.map(n =>
+          n.id === item.id ? { ...n, read: true } : n
+        );
+        await AsyncStorage.setItem(`notifications_${user.id}`, JSON.stringify(updated));
+        queueSaveNotifications(user.id, () => updated);
+        try { await recalculateUnreadCount?.(user.id); } catch {}
+      }
 
     } catch (e) {
       console.warn('markNotificationRead error', e);
@@ -553,19 +748,19 @@ export default function NotificationScreen() {
         ? toStr(item.message.split(':').slice(1).join(':')).trim()
         : toStr(item?.message));
 
+    // ⏱️ Fecha/hora fija
     let safeDate = '';
     try {
-      safeDate = new Date(item?.date || Date.now()).toLocaleString('es-CL');
+      if (item?.date) safeDate = new Date(item.date).toLocaleString('es-CL');
     } catch {
       safeDate = '';
     }
 
     const tipoLabel =
-      item?.type === 'casting'
-        ? 'Casting'
-        : item?.type === 'servicio'
-        ? 'Servicio'
-        : 'Mensaje';
+      item?.type === 'casting' ? 'Nuevo Casting'
+      : item?.type === 'servicio' ? 'Nuevo Servicio'
+      : item?.type === 'focus' ? `Nuevo focus de: ${displayName || 'Usuario'}`
+      : 'Mensaje';
 
     return (
       <TouchableOpacity
@@ -613,6 +808,38 @@ export default function NotificationScreen() {
             navigation.navigate('CastingDetail', { castingId: item.castingId });
             return;
           }
+
+          // FOCUS
+          if (item?.type === 'focus') {
+            const fid = item?.focusId;
+            if (!fid) {
+              setModalMessage('Este focus ya no está disponible.');
+              setShowErrorModal(true);
+              setErrorNotificationId(item?.firebaseId || null);
+              return;
+            }
+
+            const exists = await focusExists(fid);
+            if (!exists) {
+              setModalMessage('Este focus fue eliminado y ya no está disponible.');
+              setShowErrorModal(true);
+              setErrorNotificationId(item?.firebaseId || null);
+              return;
+            }
+
+            await markNotificationRead(item, { optimisticName: displayName });
+
+            const safeTitle =
+              (typeof item?.title === 'string' && item.title.trim()) ? item.title.trim()
+              : (typeof item?.message === 'string' && item.message.split(':')[0]?.trim()) || 'Focus';
+
+            navigation.navigate('FocusDetailScreen', {
+              focusId: fid,
+              focus: { id: fid, title: safeTitle },
+              fromNotification: true,
+            });
+            return;
+          }
         }}
       >
         <Text style={{ fontSize: 22, marginRight: 12 }}>
@@ -632,8 +859,8 @@ export default function NotificationScreen() {
             {bodyText}
           </Text>
 
-          {/* Fecha */}
-          <Text style={styles.time}>{safeDate}</Text>
+          {/* Fecha (fija) */}
+          {!!safeDate && <Text style={styles.time}>{safeDate}</Text>}
         </View>
 
         {!isRead && (
@@ -658,12 +885,11 @@ export default function NotificationScreen() {
           renderItem={renderItem}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
-          // 🔧 Optimización de rendimiento para listas grandes
           initialNumToRender={12}
           maxToRenderPerBatch={10}
           windowSize={5}
           removeClippedSubviews
-          getItemLayout={(_, index) => ({ length: 74, offset: 74 * index, index })} // alto aprox de la card
+          getItemLayout={(_, index) => ({ length: 74, offset: 74 * index, index })}
         />
       )}
       <Modal visible={showErrorModal} transparent animationType="slide">
@@ -682,7 +908,6 @@ export default function NotificationScreen() {
                   const user = json ? JSON.parse(json) : null;
                   if (!user) return;
 
-                  // Si tenemos un firebaseId, elimina ese doc (no el id "fire_*")
                   if (errorNotificationId) {
                     const docRef = doc(
                       db,
@@ -693,9 +918,7 @@ export default function NotificationScreen() {
                     );
                     try {
                       await deleteDoc(docRef);
-                    } catch (e) {
-                      // Puede no existir, no rompemos el flujo
-                    }
+                    } catch (e) {}
                   }
                 } catch (error) {
                   console.error('❌ Error al eliminar notificación:', error);

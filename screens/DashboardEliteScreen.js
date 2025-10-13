@@ -1,3 +1,4 @@
+// screens/DashboardEliteScreen.js
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
@@ -12,12 +13,14 @@ import {
   RefreshControl,
   Modal,
   Alert,
+  Platform, 
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '../contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as RNImage } from 'react-native';
+
 import img1 from '../assets/placeholders_ads1.png';
 import img2 from '../assets/placeholders_ads2.png';
 import img3 from '../assets/placeholders_ads3.png';
@@ -26,29 +29,42 @@ import img5 from '../assets/placeholders_ads5.png';
 import img6 from '../assets/placeholders_ads6.png';
 import img7 from '../assets/placeholders_ads7.png';
 
-const formatDate = (isoDate) => {
-  const d = new Date(isoDate);
-  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
-};
 const { width } = Dimensions.get('window');
 
+const formatDate = (isoDate) => {
+  const d = new Date(isoDate);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+};
+
 export default function DashboardEliteScreen({ navigation }) {
+  // ---------- Estado base ----------
   const scrollRef = useRef(null);
   const currentIndexRef = useRef(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [carouselImages, setCarouselImages] = useState([]);
+
   const [highlightedProfiles, setHighlightedProfiles] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const { userData } = useUser();
-  const userName = userData?.agencyName || 'Agencia';
-  const [showText, setShowText] = useState(true);
+  const userName = userData?.agencyName || userData?.displayName || 'Agencia';
 
+  const [showText, setShowText] = useState(true);
   const [localUserData, setLocalUserData] = useState(null);
   const [loadingUserData, setLoadingUserData] = useState(true);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const insets = useSafeAreaInsets();
 
-  const hasPaid = localUserData?.hasPaid === true;
+  // KPIs
+  const [favoritesCount, setFavoritesCount] = useState(0);
+  const [profileViewsCount, setProfileViewsCount] = useState(0);
+  const [newThisWeekCount, setNewThisWeekCount] = useState(0);
+
+  // 🎯 Sugeridos (máx 9)
+  const [suggestedProfiles, setSuggestedProfiles] = useState([]);
 
   // ---------- Helpers para contacto/perfil ----------
   const WHATSAPP_MSG = 'Hola, vi tu publicidad en El Enlace';
@@ -79,11 +95,11 @@ export default function DashboardEliteScreen({ navigation }) {
     if (!email) return null;
     const atCount = (email.match(/@/g) || []).length;
     if (atCount > 1) {
-      const matches = email.match(/@[^@]+$/);
-      const domain = matches ? matches[0].slice(1) : 'gmail.com';
-      const beforeAt = email.split('@').slice(0, -1).join('.');
-      email = `${beforeAt}@${domain}`;
-      console.warn(`🧽 Email corregido dinámicamente: ${emailRaw} → ${email}`);
+      const parts = email.split('@');
+      const domain = parts.pop();
+      const local = parts.join('.');
+      email = `${local}@${domain}`;
+      console.warn('🧽 Email corregido dinámicamente:', emailRaw, '→', email);
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email) ? email : null;
@@ -161,25 +177,24 @@ export default function DashboardEliteScreen({ navigation }) {
       openProfile(creatorEmail);
     }
   };
-  // --------------------------------------------------
 
-  // Modal de opciones del carrusel
+  // ---------- Modal de publicidad ----------
   const [showContactModal, setShowContactModal] = useState(false);
   const [selectedAd, setSelectedAd] = useState(null);
 
+  // ---------- Carga de datos ----------
   const loadAds = async () => {
     try {
       const json = await AsyncStorage.getItem('adsList');
       const parsed = json ? JSON.parse(json) : [];
       const now = Date.now();
 
-      // ✅ Incluimos creatorEmail y NO clickeamos placeholders
       const dynamicImages = parsed
         .filter(ad => ad.aprobado && ad.expiresAt > now && ad.destacado)
         .map(ad => ({
           uri: ad.imageUri,
           link: ad.link,
-          creatorEmail: ad.creatorEmail, // 👈 necesario para abrir perfil
+          creatorEmail: ad.creatorEmail,
           isPlaceholder: false,
         }));
 
@@ -201,25 +216,75 @@ export default function DashboardEliteScreen({ navigation }) {
     }
   };
 
+  // ✅ SOLO PRO destacados vigentes — SIN fallback a "recientes"
   const loadHighlightedProfiles = async () => {
     try {
-      const stored = await AsyncStorage.getItem('allProfiles');
-      const parsed = stored ? JSON.parse(stored) : [];
+      const storedPro = await AsyncStorage.getItem('allProfiles');        // free + pro (puede traer elites si se mezcló)
+      const storedElite = await AsyncStorage.getItem('allProfilesElite'); // elite
+      const parsedPro = storedPro ? JSON.parse(storedPro) : [];
+      const parsedElite = storedElite ? JSON.parse(storedElite) : [];
+
+      // Unir evitando duplicados por email; conservar el más reciente por timestamp
+      const byEmail = {};
+      [...parsedPro, ...parsedElite].forEach(p => {
+        const key = (p.email || p.id || '').toLowerCase();
+        if (!key) return;
+        const prev = byEmail[key];
+        if (!prev || (p.timestamp || 0) > (prev.timestamp || 0)) byEmail[key] = p;
+      });
+      const parsed = Object.values(byEmail);
+
       const now = new Date();
+      const onlyPro = parsed.filter(p => (p.membershipType || '').toLowerCase() === 'pro');
 
-      const highlighted = parsed
-        .filter(p =>
-          p.membershipType === 'pro' &&
-          p.isHighlighted &&
-          p.highlightedUntil &&
-          new Date(p.highlightedUntil) > now
-        )
-        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-        .slice(0, 20);
+      const proHighlighted = onlyPro.filter(p =>
+        p.isHighlighted === true &&
+        p.highlightedUntil &&
+        new Date(p.highlightedUntil) > now
+      );
 
-      setHighlightedProfiles(highlighted);
+      const sortByRecent = arr => [...arr].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      const finalList = sortByRecent(proHighlighted).slice(0, 50);
+      setHighlightedProfiles(finalList);
+
+      // KPIs (sobre todo el universo unido)
+      const thisWeekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const newWeek = parsed.filter(p => p.createdAt && new Date(p.createdAt) > thisWeekStart).length;
+      setNewThisWeekCount(newWeek);
+
+      const favJson = await AsyncStorage.getItem('favoritesProfiles');
+      const favs = favJson ? JSON.parse(favJson) : [];
+      setFavoritesCount(Array.isArray(favs) ? favs.length : 0);
+
+      const viewsJson = await AsyncStorage.getItem('profileViewsCount');
+      const views = viewsJson ? Number(JSON.parse(viewsJson)) : 0;
+      setProfileViewsCount(Number.isFinite(views) ? views : 0);
+
+      // 🎯 Sugeridos para ti — máx 9
+      try {
+        const favProfiles = parsed.filter(p => (favs || []).includes(p.id || p.email));
+        const freq = {};
+        favProfiles.forEach(p => {
+          const cats = Array.isArray(p.category) ? p.category : (p.category ? [p.category] : []);
+          cats.forEach(c => { if (c) freq[c] = (freq[c] || 0) + 1; });
+        });
+        const topCat = Object.entries(freq).sort((a,b)=>b[1]-a[1])[0]?.[0];
+
+        const suggested = topCat
+          ? parsed.filter(p => {
+              const cats = Array.isArray(p.category) ? p.category : (p.category ? [p.category] : []);
+              return cats.includes(topCat);
+            }).slice(0, 9)
+          : parsed.slice(0, 9);
+
+        setSuggestedProfiles(suggested);
+      } catch (e) {
+        console.log('❌ Error calculando sugeridos:', e);
+        setSuggestedProfiles(parsed.slice(0, 9));
+      }
     } catch (error) {
-      console.error('Error cargando perfiles destacados desde allProfiles:', error);
+      console.error('❌ Error preparando datos Elite:', error);
     }
   };
 
@@ -230,20 +295,14 @@ export default function DashboardEliteScreen({ navigation }) {
     setRefreshing(false);
   };
 
+  // ---------- Ciclos ----------
   useEffect(() => {
-    const interval = setInterval(() => {
-      setShowText(prev => !prev);
-    }, 1500);
-    return () => clearInterval(interval);
+    const ticker = setInterval(() => setShowText(prev => !prev), 1500);
+    return () => clearInterval(ticker);
   }, []);
 
   useEffect(() => {
-    loadAds();
-    loadHighlightedProfiles();
-  }, []);
-
-  useEffect(() => {
-    const fetchUserData = async () => {
+    (async () => {
       try {
         const json = await AsyncStorage.getItem('userData');
         const parsed = json ? JSON.parse(json) : null;
@@ -253,8 +312,12 @@ export default function DashboardEliteScreen({ navigation }) {
       } finally {
         setLoadingUserData(false);
       }
-    };
-    fetchUserData();
+    })();
+  }, []);
+
+  useEffect(() => {
+    loadAds();
+    loadHighlightedProfiles();
   }, []);
 
   useEffect(() => {
@@ -276,25 +339,59 @@ export default function DashboardEliteScreen({ navigation }) {
     );
   }
 
+  // ---------- UI ----------
+  const renderSuggestedBlock = () => (
+    suggestedProfiles.length > 0 ? (
+      <>
+        <Text style={[styles.sectionTitle, { marginTop: 6 }]}>🎯 Sugeridos para ti</Text>
+        <FlatList
+          data={suggestedProfiles}
+          keyExtractor={(item, i) => (item.id || item.email || `sug_${i}`).toString()}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 10 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.suggestCard}
+              onPress={() => openProfile(item?.email)}
+            >
+              <Image
+                source={{ uri: item.profilePhoto || 'https://via.placeholder.com/100' }}
+                style={styles.suggestAvatar}
+              />
+              <Text numberOfLines={1} style={styles.suggestName}>{item.name || 'Talento'}</Text>
+              <Text numberOfLines={1} style={styles.suggestCat}>
+                {Array.isArray(item.category) ? item.category[0] : (item.category || '—')}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </>
+    ) : (
+      <Text style={styles.noProfiles}>No hay sugerencias por ahora.</Text>
+    )
+  );
+
   return (
     <SafeAreaView style={styles.screen}>
       {/* 🔍 Lupa */}
-      <TouchableOpacity
-        onPress={() => navigation.navigate('ExploreProfiles')}
-        style={{
-          position: 'absolute',
-          top: 45,
-          right: 20,
-          backgroundColor: '#1a1a1a',
-          padding: 10,
-          borderRadius: 30,
-          zIndex: 20,
-          elevation: 5,
-        }}
-      >
-        <Ionicons name="search" size={24} color="#D8A353" />
-      </TouchableOpacity>
+   <TouchableOpacity
+  onPress={() => navigation.navigate('ExploreProfiles')}
+  style={[
+    styles.searchFab,
+    { top: Platform.OS === 'ios' ? insets.top + 8 : 45 } // 👈 iOS respeta notch; Android queda igual
+  ]}
+  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+>
+  <Ionicons
+    name="search"
+    size={24}
+    color="#D8A353"
+    style={Platform.select({ ios: { marginTop: 1 }, android: null })}
+  />
+</TouchableOpacity>
 
+      {/* Avisos de cuenta */}
       {localUserData?.trialEndsAt && !localUserData?.hasPaid && (
         <View style={styles.trialBanner}>
           <Text style={styles.trialText}>
@@ -316,7 +413,8 @@ export default function DashboardEliteScreen({ navigation }) {
         </View>
       )}
 
-      <View style={styles.fixedHeader}>
+      {/* Encabezado */}
+      <View style={styles.header}>
         <View style={styles.logoRow}>
           <Image source={require('../assets/logo.png')} style={styles.logo} />
           <View style={styles.greetingBox}>
@@ -326,47 +424,9 @@ export default function DashboardEliteScreen({ navigation }) {
             </Text>
           </View>
         </View>
-
-        <View style={styles.carouselWrapper}>
-          <FlatList
-            ref={scrollRef}
-            data={carouselImages}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(_, index) => index.toString()}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (item.isPlaceholder) return;
-                  setSelectedAd(item);
-                  setShowContactModal(true);
-                }}
-              >
-                <View style={styles.carouselImageWrapper}>
-                  <Image
-                    source={{ uri: item.uri }}
-                    style={[styles.carouselImage, item.isPlaceholder && { opacity: 0.4 }]}
-                    resizeMode="cover"
-                  />
-                  {item.isPlaceholder && (
-                    <Text style={styles.adWatermark}>ESPACIO PUBLICITARIO</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-
-        <TouchableOpacity
-          onPress={() => navigation.navigate('AllAdsScreen')}
-          style={styles.promoButton}
-        >
-          <Text style={styles.promoButtonText}>📢 Ver anuncios promocionados</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* Modal de opciones para el carrusel */}
+      {/* MODAL de opciones de publicidad */}
       <Modal visible={showContactModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -406,44 +466,105 @@ export default function DashboardEliteScreen({ navigation }) {
         </View>
       </Modal>
 
+      {/* CONTENIDO SCROLL — publicidad + KPIs + destacados/sugeridos */}
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        <Text style={styles.sectionTitle}>🌟 Perfiles destacados</Text>
-
-        <View style={styles.profilesWrapper}>
-          {highlightedProfiles.length === 0 ? (
-            <Text style={styles.noProfiles}>Aún no hay perfiles destacados.</Text>
-          ) : (
-            highlightedProfiles.map((profile, index) => (
+        {/* Publicidad DENTRO del scroll */}
+        <View style={styles.carouselWrapper}>
+          <FlatList
+            ref={scrollRef}
+            data={carouselImages}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(_, index) => index.toString()}
+            renderItem={({ item }) => (
               <TouchableOpacity
-                key={index}
-                style={styles.card}
-                onPress={() =>
-                  navigation.navigate('ProfileDetail', {
-                    profileData: profile,
-                    returnTo: 'DashboardElite',
-                  })
-                }
+                onPress={() => {
+                  if (item.isPlaceholder) return;
+                  setSelectedAd(item);
+                  setShowContactModal(true);
+                }}
               >
-                <Image
-                  source={{ uri: profile.profilePhoto || 'https://via.placeholder.com/100' }}
-                  style={styles.avatar}
-                />
-                <View style={styles.cardInfo}>
-                  <Text style={styles.name}>{profile.name}</Text>
-                  <Text style={styles.category}>{Array.isArray(profile.category) ? profile.category.join(', ') : profile.category}</Text>
-                  <Text style={styles.location}>{profile.region || 'Región'}</Text>
+                <View style={styles.carouselImageWrapper}>
+                  <Image
+                    source={{ uri: item.uri }}
+                    style={[styles.carouselImage, item.isPlaceholder && { opacity: 0.4 }]}
+                    resizeMode="cover"
+                  />
+                  {item.isPlaceholder && (
+                    <Text style={styles.adWatermark}>ESPACIO PUBLICITARIO</Text>
+                  )}
                 </View>
               </TouchableOpacity>
-            ))
-          )}
+            )}
+          />
         </View>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate('AllAdsScreen')}
+          style={styles.promoButton}
+        >
+          <Text style={styles.promoButtonText}>📢 Ver anuncios promocionados</Text>
+        </TouchableOpacity>
+
+        {/* BLOQUE PRINCIPAL: si hay destacados, muéstralos; si no, muestra SUGERIDOS aquí */}
+        {highlightedProfiles.length > 0 ? (
+          <>
+            {/* Perfiles destacados */}
+            <Text style={styles.sectionTitle}>🌟 Perfiles destacados</Text>
+
+            <View style={styles.profilesWrapper}>
+              {highlightedProfiles.length === 0 ? (
+                <Text style={styles.noProfiles}>Aún no hay perfiles destacados.</Text>
+              ) : (
+                highlightedProfiles.map((profile, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.card}
+                    onPress={() => openProfile(profile?.email)}
+                  >
+                    <Image
+                      source={{ uri: profile.profilePhoto || 'https://via.placeholder.com/100' }}
+                      style={styles.avatar}
+                    />
+
+                    {/* Info de perfil */}
+                    <View style={styles.cardInfo}>
+                      <Text style={styles.name}>{profile.name}</Text>
+                      <Text style={styles.category}>
+                        {Array.isArray(profile.category)
+                          ? profile.category.join(', ')
+                          : profile.category}
+                      </Text>
+                      {profile.region && (
+                        <Text style={styles.location}>{profile.region}</Text>
+                      )}
+                    </View>
+
+                    {/* Estrella destacada */}
+                    <View style={styles.starWrapper}>
+                      <Text style={styles.starEmoji}>🌟</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+
+            {/* Si hay destacados, también mostramos sugeridos MÁS ABAJO (extra) */}
+            {renderSuggestedBlock()}
+          </>
+        ) : (
+          // Si no hay destacados, mostramos aquí arriba los sugeridos y NO más abajo.
+          renderSuggestedBlock()
+        )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
 
+      {/* Botón IA (pequeño) */}
       {userData?.membershipType !== 'free' && (
         <TouchableOpacity
           style={{
@@ -500,6 +621,7 @@ export default function DashboardEliteScreen({ navigation }) {
         </View>
       )}
 
+      {/* CTA de estadísticas */}
       <View style={styles.floatingButtonContainer}>
         <TouchableOpacity
           style={styles.floatingButtonSingle}
@@ -513,22 +635,40 @@ export default function DashboardEliteScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  // Base
   screen: { flex: 1, backgroundColor: '#000' },
-  fixedHeader: { paddingHorizontal: 0, paddingTop: 10 },
+  header: { paddingHorizontal: 0, paddingTop: 10 },
   logoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   logo: { width: 50, height: 50, marginRight: 10, marginLeft: 20 },
-  greetingBox: {
-    flex: 1,
-    marginLeft: 20,
-    alignItems: 'flex-start',
-  },
+  greetingBox: { flex: 1, marginLeft: 20, alignItems: 'flex-start' },
   greeting: { color: '#D8A353', fontSize: 18, fontWeight: 'bold' },
   subtitle: { color: '#ccc', fontSize: 12 },
+
+  // Publicidad
   carouselWrapper: { alignItems: 'flex-start', marginBottom: 10 },
+  carouselImageWrapper: {
+    position: 'relative',
+    width: width,
+    height: (width - 40) * 9 / 16,
+    borderRadius: 10,
+    marginBottom: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
   carouselImage: {
     width: width,
     height: (width - 40) * 9 / 16,
     borderRadius: 10,
+  },
+  adWatermark: {
+    position: 'absolute',
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    backgroundColor: 'transparent',
+    padding: 6,
   },
   promoButton: {
     backgroundColor: '#D8A353',
@@ -539,34 +679,43 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   promoButtonText: { color: '#000', fontWeight: 'bold', fontSize: 14 },
+
+  // Scroll container
   scrollContainer: {
     paddingHorizontal: 0,
     paddingBottom: 40,
-    backgroundColor: '#121212',
+    backgroundColor: '#000000',
   },
+
+  // Perfiles destacados
   sectionTitle: {
     color: '#D8A353',
     fontSize: 14,
     fontWeight: 'bold',
-    marginTop: 0,
+    marginTop: 6,
     marginBottom: 10,
     alignSelf: 'center',
   },
-  profilesWrapper: { gap: 5 },
+  profilesWrapper: { gap: 5, paddingHorizontal: 0 },
   card: {
     flexDirection: 'row',
     backgroundColor: '#121212',
-    borderRadius: 12,
-    borderWidth: 0.2,
+    borderRadius: 0,       // sin esquinas redondeadas para que se funda con el borde
     borderColor: '#D8A353',
     padding: 10,
     alignItems: 'center',
+    marginBottom: 0,
+
+    // 👇 clave
+    width: '100%',
+    alignSelf: 'stretch',
+    marginHorizontal: 0,   // nada de margen lateral
   },
   avatar: {
     width: 60,
     height: 60,
     borderRadius: 40,
-    marginRight: 12,
+    marginRight: 10,
     borderWidth: 0.2,
     borderColor: '#D8A353',
   },
@@ -580,21 +729,51 @@ const styles = StyleSheet.create({
     paddingVertical: 30,
     fontStyle: 'italic',
   },
-  blockedButton: {
-    backgroundColor: '#1E1E1E',
-    padding: 14,
-    marginBottom: 12,
+
+  // 🎯 Sugeridos
+  suggestCard: {
+    width: 120,
+    backgroundColor: '#1A1A1A',
     borderRadius: 10,
-    borderWidth: 1,
+    padding: 10,
+    marginRight: 10,
+    borderWidth: 0.5,
+    borderColor: '#2A2A2A',
+  },
+  suggestAvatar: { width: '100%', height: 90, borderRadius: 8, marginBottom: 8 },
+  suggestName: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  suggestCat: { color: '#D8A353', fontSize: 11 },
+
+  // Banners/avisos
+  trialBanner: {
+    backgroundColor: '#222',
     borderColor: '#D8A353',
+    borderWidth: 0.5,
+    borderRadius: 8,
+    padding: 5,
+    marginTop: 5,
+    marginBottom: -5,
+    marginRight: 70,
+    marginLeft: 10,
   },
-  blocked: { opacity: 0.5 },
-  blockedText: {
-    color: '#D8A353',
-    fontWeight: 'bold',
-    fontSize: 14,
-    textAlign: 'center',
+  trialText: { color: '#D8A353', fontSize: 10, fontWeight: 'bold', textAlign: 'left' },
+  flaggedCard: {
+    backgroundColor: '#C62828',
+    padding: 10,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 6,
+    borderColor: '#fff',
+    borderWidth: 0.4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
+  flaggedText: { color: '#fff', fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
+
+  // Modal genérico
   modalOverlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
@@ -612,12 +791,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D8A353',
   },
-  modalTitle: {
-    color: '#D8A353',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
+  modalTitle: { color: '#D8A353', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   modalText: { color: '#ccc', fontSize: 14, textAlign: 'center', marginBottom: 15 },
   modalButton: {
     backgroundColor: '#D8A353',
@@ -626,28 +800,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modalButtonText: { color: '#000', fontWeight: 'bold' },
-  floatingButton: {
+
+  // Floating
+  searchFab: {
     position: 'absolute',
-    bottom: 10,
+    top: 45,
     right: 20,
-    backgroundColor: '#D8A353',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  floatingButtonText: { fontSize: 11, fontWeight: '600', color: '#000' },
-  floatingButtonRow: {
-    position: 'absolute',
-    bottom: 10,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#1a1a1a',
+    padding: 10,
+    borderRadius: 30,
+    zIndex: 20,
+    elevation: 5,
   },
   floatingButtonContainer: {
     position: 'absolute',
@@ -672,50 +835,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
   },
-  trialBanner: {
-    backgroundColor: '#222',
-    borderColor: '#D8A353',
-    borderWidth: 0.5,
-    borderRadius: 8,
-    padding: 5,
-    marginTop: 5,
-    marginBottom: -5,
-    marginRight: 70,
-    marginLeft: 10,
+  floatingButtonText: { fontSize: 11, fontWeight: '600', color: '#000' },
+  cardInfo: {
+    flex: 1,
+    marginLeft: 15, // 👉 desplaza más a la derecha nombre/categoría
   },
-  trialText: { color: '#D8A353', fontSize: 10, fontWeight: 'bold', textAlign: 'left' },
-  carouselImageWrapper: {
-    position: 'relative',
-    width: width,
-    height: (width - 40) * 9 / 16,
-    borderRadius: 10,
-    marginBottom: 5,
+  starWrapper: {
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
+    marginLeft: 10, // un pequeño espacio desde la info
   },
-  adWatermark: {
-    position: 'absolute',
-    color: 'rgba(255, 255, 255, 0.4)',
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    backgroundColor: 'transparent',
-    padding: 6,
-  },
-  flaggedCard: {
-    backgroundColor: '#C62828',
-    padding: 10,
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginBottom: 6,
-    borderColor: '#fff',
-    borderWidth: 0.4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  flaggedText: { color: '#fff', fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
 });

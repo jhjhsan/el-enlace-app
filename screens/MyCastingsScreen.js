@@ -1,17 +1,28 @@
 // screens/MyCastingsScreen.js
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Fragment } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../contexts/UserContext';
-import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+} from 'firebase/firestore';
 
 const GOLD = '#D8A353', BG = '#000', CARD = '#1B1B1B';
 const low = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : null);
 const parseArr = (raw) => { try { const j = raw ? JSON.parse(raw) : []; return Array.isArray(j) ? j : []; } catch { return []; } };
 
-// ---- helpers de fecha (mismo criterio que tu StatsElite) ----
+// ---- helpers de fecha ----
 const toDateOrNull = (v) => {
   if (!v) return null;
   if (typeof v === 'number') { const d = new Date(v); return isNaN(d) ? null : d; }
@@ -38,8 +49,8 @@ const getCastingDate = (c) =>
   toDateOrNull(c?.deadline) ||
   toDateOrNull(c?.tsMs) ||
   (extractMsFromAny(c?.id) ? new Date(extractMsFromAny(c?.id)) : null);
-// -------------------------------------------------------------
 
+// ---- owner / tipo ----
 const deriveOwner = (post) => {
   const email =
     low(post?.creatorEmail) || low(post?.ownerEmail) || low(post?.authorEmail) ||
@@ -49,6 +60,17 @@ const deriveOwner = (post) => {
   return { email, id };
 };
 const isCasting = (post) => { const t = low(post?.type); return t === 'casting' || t == null; };
+
+// ---- helpers firestore ----
+const getCastingIdAny = (item) =>
+  item?.docId ||
+  item?.id ||
+  (typeof item?.k === 'string' && item.k.includes('_') ? item.k.split('_')[1] : null);
+
+const getCastingDocRef = (db, item) => {
+  const anyId = getCastingIdAny(item);
+  return anyId ? doc(db, 'castings', String(anyId)) : null;
+};
 
 const fetchCastingsFromFirestore = async (email, uid) => {
   const db = getFirestore(); if (!db) return [];
@@ -86,12 +108,12 @@ export default function MyCastingsScreen() {
   const loadCastings = useCallback(async () => {
     setLoading(true);
     try {
-      // 1) LOCAL
+      // LOCAL
       const raw1 = await AsyncStorage.getItem('castings');
       const raw2 = await AsyncStorage.getItem('allCastings');
       const local = [...parseArr(raw1), ...parseArr(raw2)];
 
-      // 2) FIRESTORE (siempre) y merge
+      // REMOTO
       const remote = uemail ? await fetchCastingsFromFirestore(uemail, uid) : [];
       const seen = new Set();
       const merged = [...local, ...remote].filter(p => {
@@ -102,14 +124,14 @@ export default function MyCastingsScreen() {
         return true;
       });
 
-      // 3) SOLO CASTINGS + SOLO MÍOS
+      // SOLO MÍOS
       const onlyCastings = merged.filter(isCasting);
       const mine = onlyCastings.filter(p => {
         const o = deriveOwner(p);
         return (uemail && o.email === uemail) || (uid && o.id === uid);
       });
 
-      // 4) ORDENAR por fecha DESC (nuevos arriba)
+      // ORDEN
       mine.sort((a, b) => {
         const da = getCastingDate(a);
         const db = getCastingDate(b);
@@ -118,7 +140,7 @@ export default function MyCastingsScreen() {
 
       setCastings(mine);
 
-      // 5) cache opcional (merged ya ordenado no imprescindible)
+      // cache opcional
       if (remote.length) {
         await AsyncStorage.setItem('castings', JSON.stringify(merged));
       }
@@ -142,6 +164,79 @@ export default function MyCastingsScreen() {
     navigation.navigate('ViewApplications', { castingId });
   };
 
+  // --- Acciones funcionales (sin mover tu botón principal) ---
+  const onEdit = (item) => {
+    const castingId = getCastingIdAny(item);
+    if (!castingId) { Alert.alert('Casting sin ID', 'No se puede abrir el editor.'); return; }
+    // Navega al nombre REAL de la pantalla (registrada como PublishCastingScreen)
+    navigation.navigate('PublishCastingScreen', { mode: 'edit', castingId, original: item });
+  };
+
+  const onToggleClosed = async (item) => {
+    try {
+      const db = getFirestore();
+      const ref = getCastingDocRef(db, item);
+      if (!ref) { Alert.alert('Error', 'No se pudo resolver el ID del casting.'); return; }
+
+      const nextClosed = !Boolean(item?.closed);
+      const nextStatus = nextClosed ? 'closed' : 'open';
+
+      // Optimista UI
+      setCastings(prev => prev.map(c =>
+        getCastingIdAny(c) === getCastingIdAny(item) ? { ...c, closed: nextClosed, status: nextStatus } : c
+      ));
+
+      // Remoto
+      await updateDoc(ref, { closed: nextClosed, status: nextStatus });
+
+      // Cache local básica
+      try {
+        const raw = await AsyncStorage.getItem('castings');
+        const arr = parseArr(raw);
+        const updated = arr.map(c =>
+          getCastingIdAny(c) === getCastingIdAny(item) ? { ...c, closed: nextClosed, status: nextStatus } : c
+        );
+        await AsyncStorage.setItem('castings', JSON.stringify(updated));
+      } catch {}
+    } catch (e) {
+      console.error('Toggle closed error:', e);
+      Alert.alert('Error', 'No se pudo actualizar el estado.');
+      loadCastings();
+    }
+  };
+
+  const onDelete = (item) => {
+    Alert.alert('Eliminar casting', `¿Seguro que deseas eliminar "${item?.title || 'este casting'}"?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar', style: 'destructive', onPress: async () => {
+          try {
+            const db = getFirestore();
+            const ref = getCastingDocRef(db, item);
+            if (!ref) { Alert.alert('Error', 'No se pudo resolver el ID del casting.'); return; }
+
+            // optimista
+            setCastings(prev => prev.filter(c => getCastingIdAny(c) !== getCastingIdAny(item)));
+
+            await deleteDoc(ref);
+
+            // limpiar cache local básica
+            try {
+              const raw = await AsyncStorage.getItem('castings');
+              const arr = parseArr(raw);
+              const filtered = arr.filter(c => getCastingIdAny(c) !== getCastingIdAny(item));
+              await AsyncStorage.setItem('castings', JSON.stringify(filtered));
+            } catch {}
+          } catch (e) {
+            console.error('Delete error', e);
+            Alert.alert('Error', 'No se pudo eliminar.');
+            loadCastings();
+          }
+        }
+      }
+    ]);
+  };
+
   return (
     <View style={styles.screen}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back}>
@@ -154,23 +249,42 @@ export default function MyCastingsScreen() {
         {loading && <Text style={styles.hint}>Cargando…</Text>}
 
         {castings.length === 0 && !loading ? (
-          <Text style={styles.empty}>
-            No hay castings tuyos.
-          </Text>
+          <Text style={styles.empty}>No hay castings tuyos.</Text>
         ) : (
-          castings.map((c, i) => (
-            <View key={c.id || c.docId || c.k || `i-${i}`} style={styles.card}>
-              <View style={{flex:1, paddingRight:10}}>
-                <Text style={styles.cardTitle}>{c.title || 'Sin título'}</Text>
-                <Text style={styles.cardMeta}>📅 {getCastingDate(c)?.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'}) || 'Sin fecha'}</Text>
-                <Text style={styles.cardMeta}>🎭 {c.category || 'Casting'}</Text>
+          castings.map((c, i) => {
+            const isClosed = Boolean(c?.closed) || c?.status === 'closed';
+            return (
+              <View key={c.id || c.docId || c.k || `i-${i}`} style={styles.card}>
+                {/* --- TU LAYOUT ORIGINAL (sin mover el botón) --- */}
+                <View style={{flex:1, paddingRight:10}}>
+                  <Text style={styles.cardTitle}>{c.title || 'Sin título'}</Text>
+                  <Text style={styles.cardMeta}>
+                    📅 {getCastingDate(c)?.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'}) || 'Sin fecha'}
+                  </Text>
+                  <Text style={styles.cardMeta}>🎭 {c.category || 'Casting'}</Text>
+                </View>
+                <TouchableOpacity style={styles.btn} onPress={() => openApplications(c)}>
+                  <Ionicons name="eye-outline" size={16} color="#000" />
+                  <Text style={styles.btnTxt}>Ver postulaciones</Text>
+                </TouchableOpacity>
+
+                {/* --- Fila sutil de acciones, DENTRO y DEBAJO --- */}
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity onPress={() => onToggleClosed(c)}>
+                    <Text style={styles.actionLink}>{isClosed ? 'Reabrir' : 'Cerrar'}</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.dot}>•</Text>
+                  <TouchableOpacity onPress={() => onEdit(c)}>
+                    <Text style={styles.actionLink}>Editar</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.dot}>•</Text>
+                  <TouchableOpacity onPress={() => onDelete(c)}>
+                    <Text style={[styles.actionLink, styles.actionDanger]}>Borrar</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <TouchableOpacity style={styles.btn} onPress={() => openApplications(c)}>
-                <Ionicons name="eye-outline" size={16} color="#000" />
-                <Text style={styles.btnTxt}>Ver postulaciones</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -184,10 +298,18 @@ const styles = StyleSheet.create({
   title:{fontSize:22, color:GOLD, fontWeight:'bold', marginBottom:12},
   empty:{color:'#bbb', textAlign:'center', lineHeight:20, marginTop:20},
   hint:{color:'#777', fontSize:12, textAlign:'center', marginBottom:10},
-  card:{width:'100%', flexDirection:'row', justifyContent:'space-between', alignItems:'center', backgroundColor:CARD, borderColor:GOLD, borderRadius:10, padding: 10, marginBottom:4},
-  cardTitle:{fontSize:16, color:'#fff', fontWeight:'bold', marginBottom:5},
-  cardMeta:{color:'#ccc', marginBottom:4},
-  btn:{backgroundColor:GOLD, borderRadius:8, paddingVertical:6, paddingHorizontal:12, flexDirection:'row', alignItems:'center'},
-  btnTxt:{color:'#000', fontWeight:'bold', marginLeft:6},
-});
 
+  // tarjeta original
+  card:{width:'100%', flexDirection:'row', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap',
+        backgroundColor:CARD, borderColor:GOLD, borderRadius:10, padding: 10, marginBottom:4},
+  cardTitle:{fontSize:16, color:'#fff', fontWeight:'bold', marginBottom:2},
+  cardMeta:{color:'#ccc', marginBottom:2},
+  btn:{backgroundColor:GOLD, borderRadius:8, paddingVertical:6, paddingHorizontal:6, flexDirection:'row', alignItems:'center'},
+  btnTxt:{color:'#000', fontWeight:'bold', marginLeft:6},
+
+  // acciones sutiles
+  actionsRow:{ width:'100%', marginTop:2, flexDirection:'row', justifyContent:'flex-end' },
+  actionLink:{ color:'#B9B9B9', fontSize:12, textDecorationLine:'underline' },
+  actionDanger:{ color:'#FF9A9A' },
+  dot:{ color:'#666', marginHorizontal:8 },
+});

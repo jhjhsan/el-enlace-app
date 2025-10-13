@@ -23,63 +23,64 @@ export default function MenuScreen({ navigation }) {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const hasPaid = String(userData?.hasPaid) === 'true';
-const [loadingUserData, setLoadingUserData] = useState(true);
+  const [loadingUserData, setLoadingUserData] = useState(true);
 
-// ✅ AHORA sí puedes definir esto correctamente
-const membership = userData?.membershipType || 'free';
+  // ✅ AHORA sí puedes definir esto correctamente
+  const membership = userData?.membershipType || 'free';
 
   // Define isEliteBlocked and isFreeBlocked constants
   const isEliteBlocked = membership === 'elite' && !hasPaid;
   const isFreeBlocked = membership === 'free';
- const isProBlocked = membership === 'pro';
+  const isProBlocked = membership === 'pro';
 
-console.log('🔎 membership:', membership);
-console.log('🔎 hasPaid:', hasPaid);
+  console.log('🔎 membership:', membership);
+  console.log('🔎 hasPaid:', hasPaid);
   return (
     <View style={styles.container}>
-<TouchableOpacity
-  onPress={() => {
-    goToDashboardTab(navigation);
-  }}
-  style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
->
-  <Ionicons name="arrow-back" size={28} color="#fff" />
-</TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => {
+          goToDashboardTab(navigation);
+        }}
+        style={{ position: 'absolute', top: 40, left: 20, zIndex: 10 }}
+      >
+        <Ionicons name="arrow-back" size={28} color="#fff" />
+      </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Menú de usuario</Text>
-{/* 🔍 Explorar servicios */}
-<TouchableOpacity
-  style={[styles.menuButton, isFreeBlocked && styles.disabledButton]}
-  onPress={() => {
-    if (isFreeBlocked) {
-      setShowUpgradeModal(true);
-    } else {
-      navigation.navigate('ExplorePosts');
-    }
-  }}
->
-  <Text style={styles.menuButtonText}>
-    {isFreeBlocked ? '🔒 🔍 Explorar servicios' : '🔍 Explorar servicios'}
-  </Text>
-</TouchableOpacity>
 
-      {membership === 'elite' && (
-  <TouchableOpacity
-    style={[styles.menuButton, isEliteBlocked && styles.disabledButton]}
-    onPress={() => {
-      if (isEliteBlocked) {
-        setShowUpgradeModal(true);
-      } else {
-        navigation.navigate('MyCastings');
-      }
-    }}
-  >
-    <Text style={styles.menuButtonText}>
-      {isEliteBlocked ? '🔒 📋 Mis castings' : '📋 Mis castings'}
-    </Text>
-  </TouchableOpacity>
-)}
+        {/* 🔍 Explorar servicios */}
+        <TouchableOpacity
+          style={[styles.menuButton, isFreeBlocked && styles.disabledButton]}
+          onPress={() => {
+            if (isFreeBlocked) {
+              setShowUpgradeModal(true);
+            } else {
+              navigation.navigate('ExplorePosts');
+            }
+          }}
+        >
+          <Text style={styles.menuButtonText}>
+            {isFreeBlocked ? '🔒 🔍 Explorar servicios' : '🔍 Explorar servicios'}
+          </Text>
+        </TouchableOpacity>
+
+        {membership === 'elite' && (
+          <TouchableOpacity
+            style={[styles.menuButton, isEliteBlocked && styles.disabledButton]}
+            onPress={() => {
+              if (isEliteBlocked) {
+                setShowUpgradeModal(true);
+              } else {
+                navigation.navigate('MyCastings');
+              }
+            }}
+          >
+            <Text style={styles.menuButtonText}>
+              {isEliteBlocked ? '🔒 📋 Mis castings' : '📋 Mis castings'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* 📋 Mis servicios */}
         <TouchableOpacity
@@ -97,35 +98,22 @@ console.log('🔎 hasPaid:', hasPaid);
           </Text>
         </TouchableOpacity>
 
-        {/* 📢 Ver publicaciones guardadas */}
+        {/* 📢 Ver publicaciones guardadas — ELIMINADO */}
+
         <TouchableOpacity
           style={[styles.menuButton, (isEliteBlocked || isFreeBlocked) && styles.disabledButton]}
           onPress={() => {
             if (isEliteBlocked || isFreeBlocked) {
               setShowUpgradeModal(true);
             } else {
-              navigation.navigate('ViewPosts');
+              navigation.navigate('MyFocusScreen');
             }
           }}
         >
           <Text style={styles.menuButtonText}>
-            {(isEliteBlocked || isFreeBlocked) ? '🔒 📢 Ver publicaciones guardadas' : '📢 Ver publicaciones guardadas'}
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 🧠 Mis Focus publicados' : '🧠 Mis Focus publicados'}
           </Text>
         </TouchableOpacity>
-       <TouchableOpacity
-  style={[styles.menuButton, (isEliteBlocked || isFreeBlocked) && styles.disabledButton]}
-  onPress={() => {
-    if (isEliteBlocked || isFreeBlocked) {
-      setShowUpgradeModal(true);
-    } else {
-      navigation.navigate('MyFocusScreen');
-    }
-  }}
->
-  <Text style={styles.menuButtonText}>
-    {(isEliteBlocked || isFreeBlocked) ? '🔒 🧠 Mis Focus publicados' : '🧠 Mis Focus publicados'}
-  </Text>
-</TouchableOpacity>
 
         {/* 🎯 Publicar Focus */}
         <TouchableOpacity
@@ -138,43 +126,42 @@ console.log('🔎 hasPaid:', hasPaid);
             }
           }}
         >
-       <Text style={styles.menuButtonText}>
-  {(isEliteBlocked || isFreeBlocked) ? '🔒 🗣️ Ver Focus Group' : '🗣️ Ver Focus Group'}
-</Text>
+          <Text style={styles.menuButtonText}>
+            {(isEliteBlocked || isFreeBlocked) ? '🔒 🎯 Explorar Focus' : '🎯 Explorar Focus'}
+          </Text>
         </TouchableOpacity>
 
-{/* 📦 Historial de postulaciones (solo para talentos Free y Pro) */}
-{membership !== 'elite' && (
-  <TouchableOpacity
-    style={[
-      styles.menuButton,
-      membership === 'free' && styles.disabledButton
-    ]}
-    onPress={() => {
-      if (membership === 'free') {
-        setShowUpgradeModal(true);
-      } else {
-        navigation.navigate('PostulationHistory');
-      }
-    }}
-  >
-    <Text style={styles.menuButtonText}>
-      {membership === 'free'
-        ? '🔒 📦 Historial de postulaciones'
-        : '📦 Historial de postulaciones'}
-    </Text>
-  </TouchableOpacity>
-)}
+        {/* 📦 Historial de postulaciones (solo para talentos Free y Pro) */}
+        {membership !== 'elite' && (
+          <TouchableOpacity
+            style={[
+              styles.menuButton,
+              membership === 'free' && styles.disabledButton
+            ]}
+            onPress={() => {
+              if (membership === 'free') {
+                setShowUpgradeModal(true);
+              } else {
+                navigation.navigate('PostulationHistory');
+              }
+            }}
+          >
+            <Text style={styles.menuButtonText}>
+              {membership === 'free'
+                ? '🔒 📦 Historial de postulaciones'
+                : '📦 Historial de postulaciones'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* 📥 Ver mensajes */}
-<TouchableOpacity
- key="inbox"
-  style={styles.menuButton}
-  onPress={() => navigation.navigate('Inbox')}
->
-<Text style={styles.menuButtonText}>📥 Ver mensajes</Text>
-
-</TouchableOpacity>
+        <TouchableOpacity
+          key="inbox"
+          style={styles.menuButton}
+          onPress={() => navigation.navigate('Inbox')}
+        >
+          <Text style={styles.menuButtonText}>📥 Ver mensajes</Text>
+        </TouchableOpacity>
 
         {/* 📊 Ver mis anuncios */}
         <TouchableOpacity
@@ -223,7 +210,7 @@ console.log('🔎 hasPaid:', hasPaid);
         >
           <Text style={[styles.menuButtonText, { color: '#FFDADA' }]}>🚪 Cerrar sesión</Text>
         </TouchableOpacity>
-          </ScrollView>
+      </ScrollView>
 
       {/* Modal de membresía */}
       <Modal
@@ -387,5 +374,5 @@ const styles = StyleSheet.create({
     color: '#D8A353',
     fontSize: 16,
     fontWeight: '500',
-  },  
+  },
 });
