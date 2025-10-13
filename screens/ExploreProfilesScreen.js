@@ -760,7 +760,7 @@ const styles = StyleSheet.create({
     container: {
     flex: 1,
     backgroundColor: '#000',
-    paddingTop: Platform.OS === 'ios' ? 20 : 40,
+    paddingTop: Platform.OS === 'ios' ? 15 : 40,
   },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
 

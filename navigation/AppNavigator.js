@@ -80,9 +80,6 @@ import PrivacySecurityScreen from '../screens/PrivacySecurityScreen';
 import DeleteAccountInfoScreen from '../screens/DeleteAccountInfoScreen';
 import ChildSafetyScreen from '../screens/ChildSafetyScreen';
 
-// 👇 añadido para usar tu botón y evitar doble flecha en DebugUserData
-import BackButton from '../components/BackButton';
-
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
@@ -161,12 +158,7 @@ export default function AppNavigator() {
       <Stack.Screen
         name="DebugUserData"
         component={DebugUserDataScreen}
-        options={{
-          headerShown: true,
-          title: 'Datos de usuario',
-          headerBackVisible: false,          // oculta flecha nativa
-          headerLeft: () => <BackButton />,  // usa tu BackButton (globo en iOS)
-        }}
+        options={{ headerShown: true, title: 'Datos de usuario' }}
       />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
