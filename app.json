@@ -51,7 +51,16 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.elenlace.app",
-      "versionCode": 168
+      "versionCode": 170
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content",
+      "translucent": false
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content"
     },
     "web": {
       "favicon": "./assets/favicon.png"
