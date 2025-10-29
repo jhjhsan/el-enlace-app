@@ -7,7 +7,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "eas-build-pre-install": "node scripts/write-google-services-json.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "~14.0.4",
@@ -65,7 +66,9 @@
     "react-native-screens": "~4.4.0",
     "react-native-uuid": "^2.0.3",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "expo-dev-client": "~5.0.20",
+    "expo-navigation-bar": "~4.0.9"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
