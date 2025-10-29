@@ -1,10 +1,14 @@
 // app.config.js
 module.exports = ({ config }) => ({
   ...config,
+  android: {
+    ...config.android,
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_JSON || config.android?.googleServicesFile,
+  },
   ios: {
     ...config.ios,
-    // En el builder de EAS usará el secreto (ruta temporal).
-    // Localmente seguirá valiendo lo que tengas en app.json.
-    googleServicesFile: process.env.GOOGLE_SERVICE_INFO_PLIST || config.ios?.googleServicesFile,
+    googleServicesFile:
+      process.env.GOOGLE_SERVICE_INFO_PLIST || config.ios?.googleServicesFile,
   },
 });
