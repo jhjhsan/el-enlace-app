@@ -7,10 +7,7 @@
     "internal-apk": {
       "distribution": "internal",
       "developmentClient": false,
-      "android": { "buildType": "apk" },
-      "env": {
-        "GOOGLE_SERVICES_JSON": "@file:./google-services.json"
-      }
+      "android": { "buildType": "apk" }
     },
     "development": {
       "developmentClient": true,

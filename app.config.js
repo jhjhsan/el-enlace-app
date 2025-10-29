@@ -6,7 +6,6 @@ function pickPath(envValue, fallback) {
   if (!envValue || String(envValue).startsWith('@file:')) {
     return fallback;
   }
-  // Si existe en el FS, úsalo; si no, cae al fallback
   try {
     if (fs.existsSync(envValue)) return envValue;
   } catch {}
