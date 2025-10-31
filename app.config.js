@@ -1,15 +1,19 @@
-// app.config.js
-module.exports = ({ config }) => {
+// app.config.js (reemplazo completo)
+const base = require("./app.json"); // reutiliza tu app.json existente
+
+module.exports = () => {
+  const expo = base.expo || base;
   return {
-    ...config,
-    android: {
-      ...(config.android || {}),
-      // Forzar el archivo local (sin @file:)
-      googleServicesFile: "./google-services.json",
-    },
-    ios: {
-      ...(config.ios || {}),
-      googleServicesFile: "./GoogleService-Info.plist",
+    expo: {
+      ...expo,
+      android: {
+        ...(expo.android || {}),
+        googleServicesFile: "./google-services.json",
+      },
+      ios: {
+        ...(expo.ios || {}),
+        googleServicesFile: "./GoogleService-Info.plist",
+      },
     },
   };
 };
