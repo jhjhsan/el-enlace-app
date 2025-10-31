@@ -11,9 +11,9 @@ module.exports = () => {
         googleServicesFile: "./google-services.json",
       },
       ios: {
-        ...(expo.ios || {}),
-        googleServicesFile: "./GoogleService-Info.plist",
-      },
+  ...(config.ios || {}),
+  googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || "./GoogleService-Info.plist",
+},
     },
   };
 };
